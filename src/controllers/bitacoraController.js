@@ -7,7 +7,10 @@ import Bitacora from "../models/Bitacora.js";
 export const iniciarTurno = async (req, res) => {
   try {
     let { turno, turnoNumero } = req.body || {};
-    const { nombre, rol } = req.user;
+    let { nombre, rol } = req.user;
+
+    // 🔥 LIMPIAMOS NOMBRE
+    nombre = String(nombre).trim();
 
     if (rol !== "OPERADOR") {
       return res.status(403).json({
@@ -26,7 +29,7 @@ export const iniciarTurno = async (req, res) => {
 
     // 🔒 VALIDAR QUE NO TENGA UNA ABIERTA
     const existeAbierta = await Bitacora.findOne({
-      operador: nombre,
+      operador: new RegExp(`^\\s*${nombre}\\s*$`, "i"),
       estado: "ABIERTA"
     });
 
@@ -38,7 +41,7 @@ export const iniciarTurno = async (req, res) => {
     }
 
     const nuevaBitacora = await Bitacora.create({
-      operador: nombre,
+      operador: nombre, // 🔥 guardamos limpio
       turno,
       turnoNumero,
       estado: "ABIERTA",
@@ -61,7 +64,8 @@ export const iniciarTurno = async (req, res) => {
 ===================================================== */
 export const obtenerBitacoraAbierta = async (req, res) => {
   try {
-    const { nombre, rol } = req.user;
+    let { nombre, rol } = req.user;
+    nombre = String(nombre).trim();
 
     if (rol !== "OPERADOR") {
       return res.status(403).json({
@@ -70,7 +74,7 @@ export const obtenerBitacoraAbierta = async (req, res) => {
     }
 
     const abierta = await Bitacora.findOne({
-      operador: nombre,
+      operador: new RegExp(`^\\s*${nombre}\\s*$`, "i"),
       estado: "ABIERTA"
     });
 
@@ -90,19 +94,24 @@ export const obtenerBitacoraAbierta = async (req, res) => {
 ===================================================== */
 export const listarBitacoras = async (req, res) => {
   try {
-    const { rol, nombre } = req.user;
+    let { rol, nombre } = req.user;
     const { estado } = req.query;
+
+    nombre = String(nombre).trim();
 
     const filtro = {};
 
+    // 🔥 OPERADOR → solo sus bitácoras
     if (rol === "OPERADOR") {
-      filtro.operador = nombre;
+      filtro.operador = new RegExp(`^\\s*${nombre}\\s*$`, "i");
     }
 
+    // 🔥 SUPERVISOR → solo cerradas
     if (rol === "SUPERVISOR") {
       filtro.estado = "CERRADA";
     }
 
+    // 🔥 Si viene estado por query lo respetamos
     if (estado) {
       filtro.estado = estado;
     }
