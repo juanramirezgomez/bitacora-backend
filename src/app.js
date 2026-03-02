@@ -26,6 +26,8 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+
+app.disable("etag"); // 🔥 IMPORTANTE
 /* =========================================
    CONFIGURACIÓN BASE
 ========================================= */
