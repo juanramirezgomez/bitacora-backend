@@ -108,7 +108,7 @@ app.use("/api/bitacoras", requireAuth, checklistRoutes);
 app.use("/api/bitacoras", requireAuth, registroOperacionRoutes);
 app.use("/api/bitacoras", requireAuth, detalleBitacoraRoutes);
 app.use("/api/bitacoras", requireAuth, cierreTurnoRoutes);
-app.use("/api/bitacoras", requireAuth, reportePdfRoutes);
+app.use("/api/bitacoras", reportePdfRoutes);
 
 /* =========================================
    404
