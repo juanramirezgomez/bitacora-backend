@@ -6,7 +6,7 @@ import Bitacora from "../models/Bitacora.js";
 ===================================================== */
 export const iniciarTurno = async (req, res) => {
   try {
-    let { turno, turnoNumero } = req.body || {};
+    let { turno, turnoNumero, fechaInicio } = req.body || {};
     let { nombre, rol } = req.user;
 
     // 🔥 LIMPIAMOS NOMBRE
@@ -40,15 +40,35 @@ export const iniciarTurno = async (req, res) => {
       });
     }
 
+    // 🔥 VALIDACIÓN FECHA PERSONALIZADA
+    let fechaFinal;
+
+    if (fechaInicio) {
+      const fechaParseada = new Date(fechaInicio);
+
+      if (isNaN(fechaParseada.getTime())) {
+        return res.status(400).json({
+          message: "Fecha inválida"
+        });
+      }
+
+      fechaFinal = fechaParseada;
+    } else {
+      fechaFinal = new Date();
+    }
+
     const nuevaBitacora = await Bitacora.create({
-      operador: nombre, // 🔥 guardamos limpio
+      operador: nombre,
       turno,
       turnoNumero,
       estado: "ABIERTA",
-      fechaInicio: new Date()
+      fechaInicio: fechaFinal
     });
 
-    return res.status(201).json(nuevaBitacora);
+    return res.status(201).json({
+      message: "Turno iniciado correctamente",
+      bitacora: nuevaBitacora
+    });
 
   } catch (error) {
     console.error(error);
@@ -57,6 +77,7 @@ export const iniciarTurno = async (req, res) => {
     });
   }
 };
+
 
 /* =====================================================
    OBTENER BITÁCORA ABIERTA
@@ -78,7 +99,9 @@ export const obtenerBitacoraAbierta = async (req, res) => {
       estado: "ABIERTA"
     });
 
-    return res.json({ abierta: abierta || null });
+    return res.json({
+      bitacora: abierta || null
+    });
 
   } catch (error) {
     console.error(error);
@@ -87,6 +110,7 @@ export const obtenerBitacoraAbierta = async (req, res) => {
     });
   }
 };
+
 
 /* =====================================================
    LISTAR BITÁCORAS
@@ -106,7 +130,7 @@ export const listarBitacoras = async (req, res) => {
       filtro.operador = new RegExp(`^\\s*${nombre}\\s*$`, "i");
     }
 
-    // 🔥 SUPERVISOR → solo cerradas
+    // 🔥 SUPERVISOR → solo cerradas por defecto
     if (rol === "SUPERVISOR") {
       filtro.estado = "CERRADA";
     }
@@ -128,6 +152,7 @@ export const listarBitacoras = async (req, res) => {
     });
   }
 };
+
 
 /* =====================================================
    OBTENER BITÁCORA POR ID
