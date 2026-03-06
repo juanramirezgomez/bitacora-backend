@@ -18,16 +18,16 @@ import bitacoraRoutes from "./routes/bitacoraRoutes.js";
 import checklistRoutes from "./routes/checklistRoutes.js";
 import registroOperacionRoutes from "./routes/registroOperacionRoutes.js";
 import detalleBitacoraRoutes from "./routes/detalleBitacoraRoutes.js";
-import reportePdfRoutes from "./routes/reportePdfRoutes.js";
 import cierreTurnoRoutes from "./routes/cierreTurnoRoutes.js";
+import reportePdfRoutes from "./routes/reportePdfRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 
+app.disable("etag");
 
-app.disable("etag"); // 🔥 IMPORTANTE
 /* =========================================
    CONFIGURACIÓN BASE
 ========================================= */
@@ -93,22 +93,20 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 
 /* =========================================
-   RUTAS ADMIN (PROTEGIDAS)
+   🔥 RUTAS PROTEGIDAS (JWT GLOBAL)
+   Se aplica requireAuth UNA SOLA VEZ
 ========================================= */
 
-app.use("/api/users", requireAuth, usersRoutes);
+app.use("/api", requireAuth);
 
-/* =========================================
-   RUTAS BITÁCORA (PROTEGIDAS)
-   🔥 ORDEN IMPORTANTE
-========================================= */
+app.use("/api/users", usersRoutes);
 
-app.use("/api/bitacoras", requireAuth, bitacoraRoutes);
-app.use("/api/bitacoras", requireAuth, checklistRoutes);
-app.use("/api/bitacoras", requireAuth, registroOperacionRoutes);
-app.use("/api/bitacoras", requireAuth, detalleBitacoraRoutes);
-app.use("/api/bitacoras", requireAuth, cierreTurnoRoutes);
-app.use("/api/bitacoras", requireAuth, reportePdfRoutes);
+app.use("/api/bitacoras", bitacoraRoutes);
+app.use("/api/bitacoras", checklistRoutes);
+app.use("/api/bitacoras", registroOperacionRoutes);
+app.use("/api/bitacoras", detalleBitacoraRoutes);
+app.use("/api/bitacoras", cierreTurnoRoutes);
+app.use("/api/bitacoras", reportePdfRoutes);
 
 /* =========================================
    404
