@@ -102,13 +102,13 @@ app.use("/api/users", requireAuth, usersRoutes);
    RUTAS BITÁCORA (PROTEGIDAS)
    🔥 ORDEN IMPORTANTE
 ========================================= */
-app.use("/api/reportes", reportePdfRoutes);
+
 app.use("/api/bitacoras", requireAuth, bitacoraRoutes);
 app.use("/api/bitacoras", requireAuth, checklistRoutes);
 app.use("/api/bitacoras", requireAuth, registroOperacionRoutes);
 app.use("/api/bitacoras", requireAuth, detalleBitacoraRoutes);
 app.use("/api/bitacoras", requireAuth, cierreTurnoRoutes);
-
+app.use("/api/bitacoras", requireAuth, reportePdfRoutes);
 
 /* =========================================
    404
