@@ -74,14 +74,6 @@ app.use(
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-/*SERVIR FRONTEND IONIC */
-const frontendPath = path.join(__dirname, "www");
-
-app.use(express.static(frontendPath));
-
-app.get("*", (req, res) => {
-  res.sendFile(path.join(frontendPath, "index.html"));
-});
 
 
 /* =========================================
