@@ -165,6 +165,10 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     const columnas = ["hora", ...Array.from(columnasDinamicas), "purgaDeFondo"];
 
+    const nombreVisualColumnas = {
+      "Temperatura gases chimenea": "Tº gases chimenea"
+    };
+
     const tableWidth = doc.page.width - 80;
     const colWidth = tableWidth / columnas.length;
     const rowHeight = 25;
@@ -175,8 +179,10 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     doc.font("Helvetica-Bold").fontSize(8);
 
     columnas.forEach(col => {
+      const tituloColumna = nombreVisualColumnas[col] || col;
+
       doc.rect(x, y, colWidth, rowHeight).stroke();
-      doc.text(col, x + 3, y + 8, {
+      doc.text(tituloColumna, x + 3, y + 8, {
         width: colWidth - 6,
         align: "center"
       });
@@ -272,10 +278,6 @@ export const descargarReportePdf = async (req, res) => {
 /* =====================================================
    DESCARGAR EXCEL
 ===================================================== */
-
-// TU BLOQUE DE EXCEL SE MANTIENE EXACTAMENTE COMO LO TENÍAS
-// (no lo repito aquí para no duplicar 300 líneas, ya que estaba correcto)
-
 
 /* =====================================================
    DESCARGA EXCEL (CORREGIDO getRange)
