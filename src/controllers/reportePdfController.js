@@ -264,20 +264,81 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 ===================================================== */
 
 export const descargarReportePdf = async (req, res) => {
-  const { bitacoraId } = req.params;
+  try {
+    const { bitacoraId } = req.params;
 
-  const bitacora = await Bitacora.findById(bitacoraId);
-  if (!bitacora) return res.status(404).json({ error: "No encontrada" });
+    const bitacora = await Bitacora.findById(bitacoraId);
+    if (!bitacora) {
+      return res.status(404).json({ error: "No encontrada" });
+    }
 
-  const { nombre, filePath } = generarInfoArchivo(bitacora, "pdf");
+    if (bitacora.estado !== "CERRADA") {
+      return res.status(400).json({ error: "La bitácora debe estar cerrada" });
+    }
 
-  await generarReportePdfInterno(bitacoraId);
+    const [checklist, registros, cierre] = await Promise.all([
+      ChecklistInicial.findOne({ bitacoraId }),
+      RegistroOperacion.find({ bitacoraId }),
+      CierreTurno.findOne({ bitacoraId })
+    ]);
 
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
+    registros.sort((a, b) => a.hora.localeCompare(b.hora));
 
-  return res.download(filePath, nombre);
+    const doc = new PDFDocument({ size: "A4", margin: 40 });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline; filename=bitacora.pdf");
+
+    doc.pipe(res);
+
+    const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
+
+    doc.fontSize(18)
+      .text("BITÁCORA DE CONTROL DE CALDERA", { align: "center" })
+      .moveDown();
+
+    doc.fontSize(10)
+      .text(`Operador: ${bitacora.operador}`)
+      .text(`Turno: ${bitacora.turno} - ${bitacora.turnoNumero}`)
+      .text(`Fecha: ${dia}-${mes}-${anioCompleto}`)
+      .moveDown();
+
+    if (checklist) {
+      doc.fontSize(13).text("I. CHECKLIST INICIAL", { underline: true }).moveDown();
+      Object.entries(checklist.toObject()).forEach(([key, value]) => {
+        if (key !== "_id" && key !== "bitacoraId" && key !== "__v") {
+          doc.fontSize(10).text(`${key}: ${value}`);
+        }
+      });
+      doc.moveDown();
+    }
+
+    doc.fontSize(13).text("II. REGISTRO DE OPERACIÓN").moveDown();
+
+    registros.forEach(reg => {
+      doc.fontSize(10).text(`Hora: ${reg.hora}`);
+      reg.parametros?.forEach(p => {
+        doc.text(`  ${p.label}: ${p.value} ${p.unidad}`);
+      });
+      doc.moveDown(0.5);
+    });
+
+    if (cierre) {
+      doc.addPage();
+      doc.fontSize(13).text("III. CIERRE").moveDown();
+      doc.fontSize(10)
+        .text(`Recepción combustible: ${cierre.recepcionCombustible ?? "-"}`)
+        .text(`Litros combustible: ${cierre.litrosCombustible ?? "-"}`)
+        .text(`TK28 en servicio: ${cierre.tk28EnServicio ?? "-"}`)
+        .text(`% TK28: ${cierre.tk28Porcentaje ?? "-"}`);
+    }
+
+    doc.end();
+
+  } catch (error) {
+    console.error("🔥 ERROR PDF:", error);
+    return res.status(500).json({ error: "Error generando PDF" });
+  }
 };
 
 /* =====================================================
