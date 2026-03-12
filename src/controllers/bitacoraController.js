@@ -74,7 +74,7 @@ export const iniciarTurno = async (req, res) => {
       }
 
       // 🔥 Fecha local real (NO UTC)
-      fechaFinal = new Date(year, month, day);
+      fechaFinal = new Date(year, month, day, 12, 0, 0)
 
     } else {
 
@@ -83,7 +83,8 @@ export const iniciarTurno = async (req, res) => {
       fechaFinal = new Date(
         hoy.getFullYear(),
         hoy.getMonth(),
-        hoy.getDate()
+        hoy.getDate(),
+        12, 0, 0
       );
     }
 
