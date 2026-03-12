@@ -117,8 +117,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   doc.fontSize(10)
     .text(`Operador: ${bitacora.operador}`)
     .text(`Turno: ${bitacora.turno} - ${bitacora.turnoNumero}`)
-    .text(`Inicio: ${new Date(bitacora.fechaInicio).toLocaleString("es-CL")}`)
-    .text(`Cierre: ${new Date(bitacora.fechaCierre).toLocaleString("es-CL")}`)
+    .text(`Fecha: ${dia}-${mes}-${anioCompleto}`)
     .moveDown(1);
 
   if (checklist) {
@@ -351,7 +350,8 @@ export const descargarReporteExcel = async (req, res) => {
   header.alignment = { horizontal: "center", vertical: "middle" };
   header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4682B4" } };
 
-  const fechaTxt = new Date(bitacora.fechaInicio).toLocaleDateString("es-CL");
+  const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
+  const fechaTxt = `${dia}-${mes}-${anioCompleto}`;
 
   const infoStartRow = 5;
   const info = [
