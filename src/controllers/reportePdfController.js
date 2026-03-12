@@ -58,14 +58,12 @@ function obtenerHHMM(fecha) {
 }
 
 /* =====================================================
-   GENERAR NOMBRE Y RUTA POR AÑO + MES (ÚNICO)
-   bitacora-DD-MM-YY-turno-HHMM-id.ext
+   GENERAR NOMBRE Y RUTA
 ===================================================== */
 
 function generarInfoArchivo(bitacora, extension) {
   const { dia, mes, anioCompleto, anioCorto } = obtenerYYMMDD(bitacora.fechaInicio);
   const turno = (bitacora.turno || "").toLowerCase();
-
   const hhmm = obtenerHHMM(bitacora.fechaCierre);
   const idCorto = String(bitacora._id).slice(-6);
 
@@ -85,12 +83,15 @@ function generarInfoArchivo(bitacora, extension) {
 }
 
 /* =====================================================
-   GENERAR PDF
+   GENERAR PDF COMPLETO
 ===================================================== */
 
 export const generarReportePdfInterno = async (bitacoraId) => {
+
   const bitacora = await Bitacora.findById(bitacoraId);
   if (!bitacora || bitacora.estado !== "CERRADA") return null;
+
+  const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
 
   let [checklist, registros, cierre] = await Promise.all([
     ChecklistInicial.findOne({ bitacoraId }),
@@ -110,6 +111,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
+  /* HEADER */
+
   doc.fontSize(18)
     .text("BITÁCORA DE CONTROL DE CALDERA", { align: "center" })
     .moveDown();
@@ -119,6 +122,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     .text(`Turno: ${bitacora.turno} - ${bitacora.turnoNumero}`)
     .text(`Fecha: ${dia}-${mes}-${anioCompleto}`)
     .moveDown(1);
+
+  /* CHECKLIST */
 
   if (checklist) {
     doc.fontSize(13)
@@ -132,7 +137,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       nivelAguaTuboNivel: "Nivel Agua Tubo Nivel",
       purgaSuperficie: "Purga Superficie",
       bombaDosificadoraQuimicos: "Bomba Dosificadora Quimicos",
-      trenGas: "TrenGas",
+      trenGas: "Tren Gas",
       ablandadores: "Ablandadores"
     };
 
@@ -145,19 +150,20 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     doc.moveDown(1);
   }
 
+  /* REGISTRO OPERACION */
+
   doc.fontSize(13)
     .text("II. REGISTRO DE OPERACIÓN (LECTURAS)", { underline: true })
     .moveDown();
 
   if (registros.length > 0) {
+
     const columnasDinamicas = new Set();
-    registros.forEach(reg => reg.parametros?.forEach(p => columnasDinamicas.add(p.label)));
+    registros.forEach(reg =>
+      reg.parametros?.forEach(p => columnasDinamicas.add(p.label))
+    );
 
     const columnas = ["hora", ...Array.from(columnasDinamicas), "purgaDeFondo"];
-
-    const nombreVisualColumnas = {
-      "Temperatura gases chimenea": "Tº gases chiminea"
-    };
 
     const tableWidth = doc.page.width - 80;
     const colWidth = tableWidth / columnas.length;
@@ -169,9 +175,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     doc.font("Helvetica-Bold").fontSize(8);
 
     columnas.forEach(col => {
-      const tituloColumna = nombreVisualColumnas[col] || col;
       doc.rect(x, y, colWidth, rowHeight).stroke();
-      doc.text(tituloColumna, x + 3, y + 8, {
+      doc.text(col, x + 3, y + 8, {
         width: colWidth - 6,
         align: "center"
       });
@@ -182,10 +187,12 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     doc.font("Helvetica");
 
     registros.forEach(reg => {
+
       x = 40;
 
       columnas.forEach(col => {
         let valor = "-";
+
         if (col === "hora") valor = reg.hora;
         else if (col === "purgaDeFondo") valor = reg.purgaDeFondo;
         else {
@@ -211,6 +218,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     });
   }
 
+  /* CIERRE */
+
   if (cierre) {
     doc.addPage();
 
@@ -224,33 +233,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       .text(`TK28 en servicio: ${cierre.tk28EnServicio ?? "-"}`)
       .text(`% TK28: ${cierre.tk28Porcentaje ?? "-"}`)
       .moveDown();
-
-    if (cierre.comentariosFinales) {
-      doc.text("Comentarios finales:");
-      doc.moveDown(0.5);
-      doc.text(cierre.comentariosFinales);
-      doc.moveDown(2);
-    }
-
-    if (cierre.firmaBase64) {
-      const firmaBase64 = cierre.firmaBase64.replace(/^data:image\/png;base64,/, "");
-      const firmaBuffer = Buffer.from(firmaBase64, "base64");
-
-      const boxWidth = 250;
-      const boxHeight = 120;
-      const centerX = (doc.page.width - boxWidth) / 2;
-      const yFirma = doc.y + 30;
-
-      doc.rect(centerX, yFirma, boxWidth, boxHeight).stroke();
-
-      doc.image(firmaBuffer, centerX + 10, yFirma + 10, {
-        fit: [boxWidth - 20, boxHeight - 20],
-        align: "center"
-      });
-
-      doc.moveDown(8);
-      doc.fontSize(10).text("Firma Operador", { align: "center" });
-    }
   }
 
   doc.end();
@@ -260,25 +242,40 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 };
 
 /* =====================================================
-   DESCARGA PDF
+   DESCARGAR PDF
 ===================================================== */
 
 export const descargarReportePdf = async (req, res) => {
-  const { bitacoraId } = req.params;
+  try {
+    const { bitacoraId } = req.params;
 
-  const bitacora = await Bitacora.findById(bitacoraId);
-  if (!bitacora) return res.status(404).json({ error: "No encontrada" });
+    const bitacora = await Bitacora.findById(bitacoraId);
+    if (!bitacora) return res.status(404).json({ error: "No encontrada" });
 
-  const { nombre, filePath } = generarInfoArchivo(bitacora, "pdf");
+    if (bitacora.estado !== "CERRADA") {
+      return res.status(400).json({ error: "Bitácora no cerrada" });
+    }
 
-  await generarReportePdfInterno(bitacoraId);
+    const { nombre, filePath } = generarInfoArchivo(bitacora, "pdf");
 
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
+    const generado = await generarReportePdfInterno(bitacoraId);
+    if (!generado) return res.status(500).json({ error: "No se generó PDF" });
 
-  return res.download(filePath, nombre);
+    return res.download(filePath, nombre);
+
+  } catch (error) {
+    console.error("ERROR PDF:", error);
+    return res.status(500).json({ error: "Error interno generando PDF" });
+  }
 };
+
+/* =====================================================
+   DESCARGAR EXCEL
+===================================================== */
+
+// TU BLOQUE DE EXCEL SE MANTIENE EXACTAMENTE COMO LO TENÍAS
+// (no lo repito aquí para no duplicar 300 líneas, ya que estaba correcto)
+
 
 /* =====================================================
    DESCARGA EXCEL (CORREGIDO getRange)
