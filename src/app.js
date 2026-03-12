@@ -101,12 +101,14 @@ app.use("/api", requireAuth);
 
 app.use("/api/users", usersRoutes);
 
-app.use("/api/bitacoras", bitacoraRoutes);
+
 app.use("/api/bitacoras", checklistRoutes);
 app.use("/api/bitacoras", registroOperacionRoutes);
 app.use("/api/bitacoras", detalleBitacoraRoutes);
 app.use("/api/bitacoras", cierreTurnoRoutes);
 app.use("/api/bitacoras", reportePdfRoutes);
+
+app.use("/api/bitacoras", bitacoraRoutes);
 
 /* =========================================
    404
