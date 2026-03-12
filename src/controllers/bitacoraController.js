@@ -6,11 +6,15 @@ import Bitacora from "../models/Bitacora.js";
 ===================================================== */
 export const iniciarTurno = async (req, res) => {
   try {
+
     let { turno, turnoNumero, fechaInicio } = req.body || {};
     let { nombre, rol } = req.user;
 
-    // 🔥 LIMPIAMOS NOMBRE
     nombre = String(nombre).trim();
+
+    /* =========================================
+       VALIDACIONES BÁSICAS
+    ========================================= */
 
     if (rol !== "OPERADOR") {
       return res.status(403).json({
@@ -27,7 +31,10 @@ export const iniciarTurno = async (req, res) => {
     turno = String(turno).trim();
     turnoNumero = String(turnoNumero).trim();
 
-    // 🔒 VALIDAR QUE NO TENGA UNA ABIERTA
+    /* =========================================
+       VALIDAR QUE NO TENGA BITÁCORA ABIERTA
+    ========================================= */
+
     const existeAbierta = await Bitacora.findOne({
       operador: new RegExp(`^\\s*${nombre}\\s*$`, "i"),
       estado: "ABIERTA"
@@ -40,22 +47,49 @@ export const iniciarTurno = async (req, res) => {
       });
     }
 
-    // 🔥 VALIDACIÓN FECHA PERSONALIZADA
+    /* =========================================
+       PROCESAR FECHA (SIN PROBLEMAS DE UTC)
+    ========================================= */
+
     let fechaFinal;
 
     if (fechaInicio) {
-      const fechaParseada = new Date(fechaInicio);
 
-      if (isNaN(fechaParseada.getTime())) {
+      const partes = fechaInicio.split("-");
+
+      if (partes.length !== 3) {
+        return res.status(400).json({
+          message: "Formato de fecha inválido"
+        });
+      }
+
+      const year = parseInt(partes[0]);
+      const month = parseInt(partes[1]) - 1;
+      const day = parseInt(partes[2]);
+
+      if (isNaN(year) || isNaN(month) || isNaN(day)) {
         return res.status(400).json({
           message: "Fecha inválida"
         });
       }
 
-      fechaFinal = fechaParseada;
+      // 🔥 Fecha local real (NO UTC)
+      fechaFinal = new Date(year, month, day);
+
     } else {
-      fechaFinal = new Date();
+
+      const hoy = new Date();
+
+      fechaFinal = new Date(
+        hoy.getFullYear(),
+        hoy.getMonth(),
+        hoy.getDate()
+      );
     }
+
+    /* =========================================
+       CREAR BITÁCORA
+    ========================================= */
 
     const nuevaBitacora = await Bitacora.create({
       operador: nombre,
@@ -71,7 +105,7 @@ export const iniciarTurno = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("🔥 Error iniciarTurno:", error);
     return res.status(500).json({
       message: "Error al iniciar turno"
     });
@@ -85,6 +119,7 @@ export const iniciarTurno = async (req, res) => {
 ===================================================== */
 export const obtenerBitacoraAbierta = async (req, res) => {
   try {
+
     let { nombre, rol } = req.user;
     nombre = String(nombre).trim();
 
@@ -104,7 +139,7 @@ export const obtenerBitacoraAbierta = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("🔥 Error obtenerBitacoraAbierta:", error);
     return res.status(500).json({
       message: "Error buscando bitácora abierta"
     });
@@ -118,6 +153,7 @@ export const obtenerBitacoraAbierta = async (req, res) => {
 ===================================================== */
 export const listarBitacoras = async (req, res) => {
   try {
+
     let { rol, nombre } = req.user;
     const { estado } = req.query;
 
@@ -125,17 +161,17 @@ export const listarBitacoras = async (req, res) => {
 
     const filtro = {};
 
-    // 🔥 OPERADOR → solo sus bitácoras
+    // OPERADOR → solo sus bitácoras
     if (rol === "OPERADOR") {
       filtro.operador = new RegExp(`^\\s*${nombre}\\s*$`, "i");
     }
 
-    // 🔥 SUPERVISOR → solo cerradas por defecto
+    // SUPERVISOR → solo cerradas por defecto
     if (rol === "SUPERVISOR") {
       filtro.estado = "CERRADA";
     }
 
-    // 🔥 Si viene estado por query lo respetamos
+    // Si viene estado por query lo respetamos
     if (estado) {
       filtro.estado = estado;
     }
@@ -146,7 +182,7 @@ export const listarBitacoras = async (req, res) => {
     return res.json(bitacoras);
 
   } catch (error) {
-    console.error(error);
+    console.error("🔥 Error listarBitacoras:", error);
     return res.status(500).json({
       message: "Error listando bitácoras"
     });
@@ -160,6 +196,7 @@ export const listarBitacoras = async (req, res) => {
 ===================================================== */
 export const obtenerBitacora = async (req, res) => {
   try {
+
     const { bitacoraId } = req.params;
 
     const bitacora = await Bitacora.findById(bitacoraId);
@@ -173,7 +210,7 @@ export const obtenerBitacora = async (req, res) => {
     return res.json(bitacora);
 
   } catch (error) {
-    console.error(error);
+    console.error("🔥 Error obtenerBitacora:", error);
     return res.status(500).json({
       message: "Error obteniendo bitácora"
     });
