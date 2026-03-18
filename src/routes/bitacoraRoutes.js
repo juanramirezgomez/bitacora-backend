@@ -18,6 +18,6 @@ router.get("/", listarBitacoras);
 
 router.get("/:bitacoraId", obtenerBitacora);
 
-router.delete("/:bitacorId", eliminarBitacora);
+router.delete("/:bitacoraId", eliminarBitacora);
 
 export default router;

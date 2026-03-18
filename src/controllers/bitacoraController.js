@@ -1,5 +1,7 @@
 import Bitacora from "../models/Bitacora.js";
-
+import ChecklistInicial from "../models/ChecklistInicial.js";
+import RegistroOperacion from "../models/RegistroOperacion.js";
+import CierreTurno from "../models/CierreTurno.js";
 /* =====================================================
    INICIAR TURNO
    POST /api/bitacoras/iniciar
@@ -219,7 +221,6 @@ export const obtenerBitacora = async (req, res) => {
 };
 
 export const eliminarBitacora = async (req, res) => {
-
   try {
 
     const { bitacoraId } = req.params;
@@ -238,9 +239,12 @@ export const eliminarBitacora = async (req, res) => {
       });
     }
 
-    await ChecklistInicial.deleteMany({ bitacoraId });
-    await RegistroOperacion.deleteMany({ bitacoraId });
-    await CierreTurno.deleteMany({ bitacoraId });
+    // 🔥 eliminar en paralelo
+    await Promise.all([
+      ChecklistInicial.deleteMany({ bitacoraId }),
+      RegistroOperacion.deleteMany({ bitacoraId }),
+      CierreTurno.deleteMany({ bitacoraId })
+    ]);
 
     await Bitacora.findByIdAndDelete(bitacoraId);
 
@@ -257,5 +261,4 @@ export const eliminarBitacora = async (req, res) => {
     });
 
   }
-
 };
