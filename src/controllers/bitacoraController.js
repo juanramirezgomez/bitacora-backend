@@ -217,3 +217,45 @@ export const obtenerBitacora = async (req, res) => {
     });
   }
 };
+
+export const eliminarBitacora = async (req, res) => {
+
+  try {
+
+    const { bitacoraId } = req.params;
+
+    const bitacora = await Bitacora.findById(bitacoraId);
+
+    if (!bitacora) {
+      return res.status(404).json({
+        message: "Bitácora no encontrada"
+      });
+    }
+
+    if (bitacora.estado !== "CERRADA") {
+      return res.status(400).json({
+        message: "Solo se pueden eliminar bitácoras cerradas"
+      });
+    }
+
+    await ChecklistInicial.deleteMany({ bitacoraId });
+    await RegistroOperacion.deleteMany({ bitacoraId });
+    await CierreTurno.deleteMany({ bitacoraId });
+
+    await Bitacora.findByIdAndDelete(bitacoraId);
+
+    res.json({
+      message: "Bitácora eliminada correctamente"
+    });
+
+  } catch (error) {
+
+    console.error("Error eliminando bitácora:", error);
+
+    res.status(500).json({
+      message: "Error eliminando bitácora"
+    });
+
+  }
+
+};

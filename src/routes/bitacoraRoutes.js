@@ -3,7 +3,8 @@ import {
   iniciarTurno,
   listarBitacoras,
   obtenerBitacora,
-  obtenerBitacoraAbierta
+  obtenerBitacoraAbierta,
+  eliminarBitacora
 } from "../controllers/bitacoraController.js";
 
 const router = express.Router();
@@ -16,5 +17,7 @@ router.post("/iniciar", iniciarTurno);
 router.get("/", listarBitacoras);
 
 router.get("/:bitacoraId", obtenerBitacora);
+
+router.delete("/:bitacorId", eliminarBitacora);
 
 export default router;
