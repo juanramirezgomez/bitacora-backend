@@ -366,75 +366,192 @@ export const descargarReporteExcel = async (req, res) => {
 
   const { bitacoraId } = req.params;
 
-  const bitacora =
-  await Bitacora.findById(bitacoraId);
-
+  const bitacora = await Bitacora.findById(bitacoraId);
   if (!bitacora)
-  return res.status(404).json({ error: "No encontrada" });
+    return res.status(404).json({ error: "No encontrada" });
 
-  const [checklist, registros, cierre] = await Promise.all([
+  let [checklist, registros, cierre] = await Promise.all([
     ChecklistInicial.findOne({ bitacoraId }),
     RegistroOperacion.find({ bitacoraId }),
     CierreTurno.findOne({ bitacoraId })
   ]);
 
+  registros = ordenarPorTurno(registros, bitacora.turno);
+
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Bitacora");
 
+  /* =========================
+     ANCHO COLUMNAS
+  ========================= */
+  sheet.columns = [
+    { width: 28 },
+    { width: 20 },
+    { width: 25 },
+    { width: 20 },
+    { width: 20 },
+    { width: 20 },
+    { width: 20 }
+  ];
+
+  /* =========================
+     HEADER
+  ========================= */
   sheet.mergeCells("A1:G2");
 
-  const titulo = sheet.getCell("A1");
-  titulo.value = "CONTROL DE OPERACIONES";
-  titulo.alignment = { horizontal: "center", vertical: "middle" };
-  titulo.font = { size: 16, bold: true };
-  titulo.fill = {
+  const titleCell = sheet.getCell("A1");
+  titleCell.value = "CONTROL DE OPERACIONES";
+  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+  titleCell.font = { size: 16, bold: true, color: { argb: "FFFFFFFF" } };
+  titleCell.fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "3F6E9E" }
+    fgColor: { argb: "4472C4" }
   };
+
+  /* =========================
+     INFO
+  ========================= */
+  const { dia, mes, anioCompleto } =
+    obtenerYYMMDD(bitacora.fechaInicio);
 
   sheet.addRow([]);
   sheet.addRow(["Operador", bitacora.operador]);
   sheet.addRow(["Turno", bitacora.turno]);
   sheet.addRow(["N° Turno", bitacora.turnoNumero]);
-
-  const { dia, mes, anioCompleto } =
-  obtenerYYMMDD(bitacora.fechaInicio);
-
   sheet.addRow(["Fecha", `${dia}-${mes}-${anioCompleto}`]);
 
-  /* CHECKLIST */
-
+  /* =========================
+     CHECKLIST
+  ========================= */
   sheet.addRow([]);
   sheet.addRow(["I. CHECKLIST INICIAL"]);
 
-  if (checklist) {
+  const headerChecklist = sheet.addRow([
+    "Equipo", "Estado", "Observación"
+  ]);
 
-    const equipos = [
-      ["Caldera Hurst", checklist.calderaHurst],
-      ["Bomba Agua", checklist.bombaAlimentacionAgua],
-      ["Bomba Petróleo", checklist.bombaPetroleo],
-      ["Nivel Agua", checklist.nivelAguaTuboNivel],
-      ["Purga Superficie", checklist.purgaSuperficie],
-      ["Bomba Químicos", checklist.bombaDosificadoraQuimicos],
-      ["Tren Gas", checklist.trenGas],
-      ["Ablandadores", checklist.ablandadores]
-    ];
+  headerChecklist.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "1F4E78" } };
+    cell.alignment = { horizontal: "center" };
+    cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+  });
 
-    equipos.forEach(eq => {
-      sheet.addRow(eq);
+  const agregarFilaChecklist = (equipo, estado) => {
+    const row = sheet.addRow([
+      equipo,
+      estado?.replaceAll("_", " "),
+      checklist?.observacionesIniciales || "-"
+    ]);
+
+    row.eachCell((cell, colNumber) => {
+      cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+
+      if (colNumber === 2) {
+        if (estado === "EN_SERVICIO") {
+          cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"C6EFCE"} };
+        } else {
+          cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"FFC7CE"} };
+        }
+      }
     });
+  };
 
-    if (checklist.observacionesIniciales) {
-      sheet.addRow(["Observaciones", checklist.observacionesIniciales]);
-    }
+  if (checklist) {
+    agregarFilaChecklist("Caldera Hurst", checklist.calderaHurst);
+    agregarFilaChecklist("Bomba Alimentación Agua", checklist.bombaAlimentacionAgua);
+    agregarFilaChecklist("Bomba Petróleo", checklist.bombaPetroleo);
+    agregarFilaChecklist("Nivel Agua Tubo Nivel", checklist.nivelAguaTuboNivel);
+    agregarFilaChecklist("Purga Superficie", checklist.purgaSuperficie);
+    agregarFilaChecklist("Bomba Dosificadora Químicos", checklist.bombaDosificadoraQuimicos);
+    agregarFilaChecklist("Tren Gas", checklist.trenGas);
+    agregarFilaChecklist("Ablandadores", checklist.ablandadores);
   }
 
-  const { nombre, filePath } =
-  generarInfoArchivo(bitacora, "xlsx");
+  /* =========================
+     REGISTROS
+  ========================= */
+  sheet.addRow([]);
+  sheet.addRow(["II. REGISTRO DE OPERACIÓN"]);
+
+  if (registros.length > 0) {
+
+    const columnasDinamicas = new Set();
+
+    registros.forEach(r =>
+      r.parametros.forEach(p => columnasDinamicas.add(p.label))
+    );
+
+    const columnas = ["hora", ...Array.from(columnasDinamicas)];
+
+    const header = sheet.addRow(columnas);
+
+    header.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"1F4E78"} };
+      cell.alignment = { horizontal:"center" };
+      cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+    });
+
+    registros.forEach(r => {
+
+      const rowData = columnas.map(col => {
+        if (col === "hora") return r.hora;
+
+        const param = r.parametros.find(p => p.label === col);
+        return param ? param.value : "-";
+      });
+
+      const row = sheet.addRow(rowData);
+
+      row.eachCell(cell => {
+        cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+      });
+
+    });
+  }
+
+  /* =========================
+     CIERRE
+  ========================= */
+  sheet.addRow([]);
+  sheet.addRow(["III. CIERRE DE TURNO"]);
+
+  const cierreHeader = sheet.addRow(["Campo", "Valor", "Observación"]);
+
+  cierreHeader.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"1F4E78"} };
+    cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+  });
+
+  if (cierre) {
+
+    const add = (campo, valor) => {
+      const row = sheet.addRow([
+        campo,
+        valor ?? "-",
+        cierre.comentariosFinales || "-"
+      ]);
+
+      row.eachCell(cell => {
+        cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+      });
+    };
+
+    add("Recepción combustible", cierre.recepcionCombustible);
+    add("Litros combustible", cierre.litrosCombustible);
+    add("TK28 en servicio", cierre.tk28EnServicio);
+    add("% TK28", cierre.tk28Porcentaje);
+  }
+
+  /* =========================
+     EXPORTAR
+  ========================= */
+  const { nombre, filePath } = generarInfoArchivo(bitacora, "xlsx");
 
   await workbook.xlsx.writeFile(filePath);
 
   return res.download(filePath, nombre);
-
 };
