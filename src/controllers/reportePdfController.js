@@ -146,7 +146,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     .moveDown(0.5);
 
     const labelsChecklist = {
-
       calderaHurst: "Caldera Hurst",
       bombaAlimentacionAgua: "Bomba Alimentacion Agua",
       bombaPetroleo: "Bomba Petroleo",
@@ -155,7 +154,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       bombaDosificadoraQuimicos: "Bomba Dosificadora Quimicos",
       trenGas: "Tren Gas",
       ablandadores: "Ablandadores"
-
     };
 
     Object.entries(labelsChecklist).forEach(([key, label]) => {
@@ -169,6 +167,11 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       .text(`${label}: ${value}`);
 
     });
+
+    if (checklist.observacionesIniciales) {
+      doc.moveDown(0.5);
+      doc.text(`Observaciones: ${checklist.observacionesIniciales}`);
+    }
 
     doc.moveDown(1);
   }
@@ -257,7 +260,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     });
 
   }
-    /* CIERRE + FIRMA */
+
+  /* CIERRE + FIRMA */
 
   if (cierre) {
 
@@ -274,6 +278,10 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     .text(`% TK28: ${cierre.tk28Porcentaje ?? "-"}`)
     .moveDown(2);
 
+    if (cierre.comentariosFinales) {
+      doc.text(`Observaciones: ${cierre.comentariosFinales}`);
+    }
+
     if (cierre.firmaBase64) {
 
       try {
@@ -284,30 +292,16 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         const firmaBuffer =
         Buffer.from(firmaBase64, "base64");
 
-        const boxWidth = 250;
-        const boxHeight = 120;
-
-        const centerX =
-        (doc.page.width - boxWidth) / 2;
-
-        const yFirma = doc.y + 20;
-
-        doc.rect(centerX, yFirma, boxWidth, boxHeight).stroke();
-
-        doc.image(firmaBuffer, centerX + 10, yFirma + 10, {
-          fit: [boxWidth - 20, boxHeight - 20],
+        doc.image(firmaBuffer, {
+          fit: [250, 120],
           align: "center"
         });
 
-        doc.moveDown(8);
-
-        doc.fontSize(10)
-        .text("Firma operador", { align: "center" });
+        doc.moveDown();
+        doc.text("Firma operador", { align: "center" });
 
       } catch (err) {
-
-        console.log("Error cargando firma:", err);
-
+        console.log("Error firma:", err);
       }
 
     }
@@ -365,7 +359,7 @@ export const descargarReportePdf = async (req, res) => {
 };
 
 /* =====================================================
-   EXCEL
+   EXCEL COMPLETO
 ===================================================== */
 
 export const descargarReporteExcel = async (req, res) => {
@@ -378,36 +372,63 @@ export const descargarReporteExcel = async (req, res) => {
   if (!bitacora)
   return res.status(404).json({ error: "No encontrada" });
 
-  const workbook = new ExcelJS.Workbook();
+  const [checklist, registros, cierre] = await Promise.all([
+    ChecklistInicial.findOne({ bitacoraId }),
+    RegistroOperacion.find({ bitacoraId }),
+    CierreTurno.findOne({ bitacoraId })
+  ]);
 
+  const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Bitacora");
 
-  sheet.addRow(["CONTROL DE OPERACIONES"]);
+  sheet.mergeCells("A1:G2");
+
+  const titulo = sheet.getCell("A1");
+  titulo.value = "CONTROL DE OPERACIONES";
+  titulo.alignment = { horizontal: "center", vertical: "middle" };
+  titulo.font = { size: 16, bold: true };
+  titulo.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "3F6E9E" }
+  };
 
   sheet.addRow([]);
-
-  sheet.addRow([
-    "Operador",
-    bitacora.operador
-  ]);
-
-  sheet.addRow([
-    "Turno",
-    bitacora.turno
-  ]);
-
-  sheet.addRow([
-    "N° Turno",
-    bitacora.turnoNumero
-  ]);
+  sheet.addRow(["Operador", bitacora.operador]);
+  sheet.addRow(["Turno", bitacora.turno]);
+  sheet.addRow(["N° Turno", bitacora.turnoNumero]);
 
   const { dia, mes, anioCompleto } =
   obtenerYYMMDD(bitacora.fechaInicio);
 
-  sheet.addRow([
-    "Fecha",
-    `${dia}-${mes}-${anioCompleto}`
-  ]);
+  sheet.addRow(["Fecha", `${dia}-${mes}-${anioCompleto}`]);
+
+  /* CHECKLIST */
+
+  sheet.addRow([]);
+  sheet.addRow(["I. CHECKLIST INICIAL"]);
+
+  if (checklist) {
+
+    const equipos = [
+      ["Caldera Hurst", checklist.calderaHurst],
+      ["Bomba Agua", checklist.bombaAlimentacionAgua],
+      ["Bomba Petróleo", checklist.bombaPetroleo],
+      ["Nivel Agua", checklist.nivelAguaTuboNivel],
+      ["Purga Superficie", checklist.purgaSuperficie],
+      ["Bomba Químicos", checklist.bombaDosificadoraQuimicos],
+      ["Tren Gas", checklist.trenGas],
+      ["Ablandadores", checklist.ablandadores]
+    ];
+
+    equipos.forEach(eq => {
+      sheet.addRow(eq);
+    });
+
+    if (checklist.observacionesIniciales) {
+      sheet.addRow(["Observaciones", checklist.observacionesIniciales]);
+    }
+  }
 
   const { nombre, filePath } =
   generarInfoArchivo(bitacora, "xlsx");
