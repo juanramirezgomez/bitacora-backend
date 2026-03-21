@@ -379,18 +379,16 @@ export const descargarReporteExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Bitacora");
 
-    // ==========================================
-    // CONFIG COLUMNAS 🔥
-    // ==========================================
+    // 🔥 NO TOCAR COL A (como pediste)
     sheet.columns = [
-      { width: 30 },
-      { width: 18 },
-      { width: 35 },
-      { width: 18 },
-      { width: 20 },
-      { width: 20 },
-      { width: 20 },
-      { width: 20 }
+      { width: 30 }, // A
+      { width: 16 },
+      { width: 16 },
+      { width: 16 },
+      { width: 16 },
+      { width: 16 },
+      { width: 16 },
+      { width: 16 }
     ];
 
     let rowIndex = 1;
@@ -413,21 +411,18 @@ export const descargarReporteExcel = async (req, res) => {
 
     const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
 
-    const datos = [
+    [
       ["Operador", bitacora.operador],
       ["Turno", bitacora.turno],
       ["N° Turno", bitacora.turnoNumero],
       ["Fecha", `${dia}-${mes}-${anioCompleto}`]
-    ];
-
-    datos.forEach(d => {
+    ].forEach(d => {
       const row = sheet.getRow(rowIndex++);
       row.getCell(1).value = d[0];
       row.getCell(2).value = d[1];
 
       row.eachCell(cell => {
         cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
-        cell.alignment = { vertical:"middle", horizontal:"left" };
       });
     });
 
@@ -445,7 +440,6 @@ export const descargarReporteExcel = async (req, res) => {
       cell.value = t;
       cell.font = { bold:true, color:{argb:"FFFFFFFF"} };
       cell.fill = { type:"pattern",pattern:"solid",fgColor:{argb:"1F4E78"} };
-      cell.alignment = { horizontal:"center" };
       cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
     });
 
@@ -465,49 +459,57 @@ export const descargarReporteExcel = async (req, res) => {
       row.getCell(1).value = f[0];
       row.getCell(2).value = f[1].replace(/_/g," ");
 
-      // estilos
       row.eachCell((cell, col) => {
         cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
-        cell.alignment = {
-          vertical:"middle",
-          horizontal: col === 1 ? "left" : "center",
-          wrapText:true
-        };
+        cell.alignment = { wrapText:true };
       });
 
-      // colores 🔥
-      if (f[1] === "EN_SERVICIO" || f[1] === "NORMAL") {
-        row.getCell(2).fill = { type:"pattern",pattern:"solid",fgColor:{argb:"C6EFCE"} };
-      }
-      if (f[1] === "FUERA_DE_SERVICIO" || f[1] === "BAJO") {
+      // colores
+      if (f[1] === "BAJO" || f[1] === "FUERA_DE_SERVICIO") {
         row.getCell(2).fill = { type:"pattern",pattern:"solid",fgColor:{argb:"FFC7CE"} };
+      }
+      if (f[1] === "NORMAL" || f[1] === "EN_SERVICIO") {
+        row.getCell(2).fill = { type:"pattern",pattern:"solid",fgColor:{argb:"C6EFCE"} };
       }
     });
 
-    // Observaciones checklist
+    // 🔥 OBSERVACIONES (ARREGLADAS)
     rowIndex++;
     sheet.getCell(`A${rowIndex}`).value = "Observaciones";
-    sheet.mergeCells(`A${rowIndex}:C${rowIndex}`);
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+
+    const obsHeader = sheet.getCell(`A${rowIndex}`);
+    obsHeader.fill = { type:"pattern",pattern:"solid",fgColor:{argb:"D9D9D9"} };
+
     rowIndex++;
 
-    sheet.mergeCells(`A${rowIndex}:C${rowIndex+2}`);
-    const obs = sheet.getCell(`A${rowIndex}`);
-    obs.value = checklist.observacionesIniciales || "-";
-    obs.alignment = { wrapText:true };
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex+2}`);
+    const obsCell = sheet.getCell(`A${rowIndex}`);
+    obsCell.value = checklist.observacionesIniciales || "-";
+    obsCell.alignment = { wrapText:true, vertical:"top" };
+
+    // bordes
+    for (let i = 0; i < 3; i++) {
+      sheet.getRow(rowIndex + i).eachCell(cell=>{
+        cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
+      });
+    }
 
     rowIndex += 4;
 
     // ==========================================
-    // REGISTRO OPERACION
+    // REGISTRO OPERACION (SIN SCROLL 🔥)
     // ==========================================
     sheet.getCell(`A${rowIndex}`).value = "II. REGISTRO DE OPERACIÓN";
     rowIndex++;
 
-    const columnas = ["Hora","Presión caldera","Vapor","Temp. gases","Nivel TK","Consumo","Flujo","Temp ITC"];
+    const columnas = [
+      "Hora","P. Caldera","Vapor","T° Gases","Nivel TK","Consumo","Flujo","T° ITC"
+    ];
 
-    const rowHeader = sheet.getRow(rowIndex++);
+    const rowHeader2 = sheet.getRow(rowIndex++);
     columnas.forEach((c,i)=>{
-      const cell = rowHeader.getCell(i+1);
+      const cell = rowHeader2.getCell(i+1);
       cell.value = c;
       cell.font = { bold:true, color:{argb:"FFFFFFFF"} };
       cell.fill = { type:"pattern",pattern:"solid",fgColor:{argb:"1F4E78"} };
@@ -539,7 +541,7 @@ export const descargarReporteExcel = async (req, res) => {
     rowIndex++;
 
     // ==========================================
-    // CIERRE
+    // CIERRE (ARREGLADO)
     // ==========================================
     sheet.getCell(`A${rowIndex}`).value = "III. CIERRE DE TURNO";
     rowIndex++;
@@ -561,14 +563,26 @@ export const descargarReporteExcel = async (req, res) => {
       });
     });
 
-    // Observaciones finales
+    // 🔥 OBSERVACIONES FINALES (TABLA)
     rowIndex++;
     sheet.getCell(`A${rowIndex}`).value = "Observaciones Finales";
-    sheet.mergeCells(`A${rowIndex}:C${rowIndex}`);
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+
+    const obsFHeader = sheet.getCell(`A${rowIndex}`);
+    obsFHeader.fill = { type:"pattern",pattern:"solid",fgColor:{argb:"D9D9D9"} };
+
     rowIndex++;
 
-    sheet.mergeCells(`A${rowIndex}:C${rowIndex+2}`);
-    sheet.getCell(`A${rowIndex}`).value = cierre.comentariosFinales || "-";
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex+2}`);
+    const obsF = sheet.getCell(`A${rowIndex}`);
+    obsF.value = cierre.comentariosFinales || "-";
+    obsF.alignment = { wrapText:true };
+
+    for (let i = 0; i < 3; i++) {
+      sheet.getRow(rowIndex + i).eachCell(cell=>{
+        cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
+      });
+    }
 
     // ==========================================
     // GUARDAR
