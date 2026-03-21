@@ -361,12 +361,13 @@ export const descargarReportePdf = async (req, res) => {
 /* =====================================================
    EXCEL COMPLETO
 ===================================================== */
-
 export const descargarReporteExcel = async (req, res) => {
 
   const { bitacoraId } = req.params;
 
   const bitacora = await Bitacora.findById(bitacoraId);
+  if (!bitacora)
+    return res.status(404).json({ error: "No encontrada" });
 
   let [checklist, registros, cierre] = await Promise.all([
     ChecklistInicial.findOne({ bitacoraId }),
@@ -380,7 +381,7 @@ export const descargarReporteExcel = async (req, res) => {
   const sheet = workbook.addWorksheet("Bitacora");
 
   /* =========================
-     COLUMNAS (AJUSTADAS A H)
+     COLUMNAS (H)
   ========================= */
   sheet.columns = [
     { width: 28 }, { width: 18 }, { width: 18 }, { width: 18 },
@@ -403,7 +404,7 @@ export const descargarReporteExcel = async (req, res) => {
   };
 
   /* =========================
-     BLOQUE INFO (CON TABLA)
+     INFO TABLA
   ========================= */
   const { dia, mes, anioCompleto } =
     obtenerYYMMDD(bitacora.fechaInicio);
@@ -438,6 +439,7 @@ export const descargarReporteExcel = async (req, res) => {
   header.eachCell(cell => {
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
     cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"1F4E78"} };
+    cell.alignment = { horizontal:"center" };
     cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
   });
 
@@ -448,11 +450,17 @@ export const descargarReporteExcel = async (req, res) => {
       estado?.replaceAll("_", " ")
     ]);
 
+    row.height = 25;
+
     row.eachCell((cell, col) => {
 
-      cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+      cell.alignment = { vertical: "middle", wrapText: true };
 
-      // colores
+      cell.border = {
+        top:{style:'thin'}, left:{style:'thin'},
+        bottom:{style:'thin'}, right:{style:'thin'}
+      };
+
       if (col === 2) {
 
         if (equipo === "Nivel Agua Tubo Nivel") {
@@ -485,13 +493,30 @@ export const descargarReporteExcel = async (req, res) => {
     addChecklist("Tren Gas", checklist.trenGas);
     addChecklist("Ablandadores", checklist.ablandadores);
 
-    // OBSERVACIÓN ABAJO
+    // OBSERVACIONES TABLA
     sheet.addRow([]);
-    sheet.addRow(["Observaciones:", checklist.observacionesIniciales || "-"]);
+
+    const obsHeader = sheet.addRow(["Observaciones"]);
+    sheet.mergeCells(`A${obsHeader.number}:B${obsHeader.number}`);
+
+    obsHeader.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"1F4E78"} };
+      cell.alignment = { horizontal:"center" };
+      cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+    });
+
+    const obsRow = sheet.addRow([checklist.observacionesIniciales || "-"]);
+    sheet.mergeCells(`A${obsRow.number}:B${obsRow.number}`);
+
+    obsRow.eachCell(cell => {
+      cell.alignment = { wrapText: true };
+      cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+    });
   }
 
   /* =========================
-     REGISTRO (AJUSTADO)
+     REGISTRO
   ========================= */
   sheet.addRow([]);
   sheet.addRow(["II. REGISTRO DE OPERACIÓN"]);
@@ -515,7 +540,6 @@ export const descargarReporteExcel = async (req, res) => {
       cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
     });
 
-    // auto ancho dinámico
     columnas.forEach((col, i) => {
       sheet.getColumn(i + 1).width = Math.min(25, col.length + 5);
     });
@@ -524,8 +548,9 @@ export const descargarReporteExcel = async (req, res) => {
 
       const rowData = columnas.map(col => {
         if (col === "hora") return r.hora;
+
         const param = r.parametros.find(p => p.label === col);
-        return param ? param.value : "-";
+        return param ? `${param.value} ${param.unidad}` : "-";
       });
 
       const row = sheet.addRow(rowData);
@@ -564,11 +589,31 @@ export const descargarReporteExcel = async (req, res) => {
     add("TK28 en servicio", cierre.tk28EnServicio);
     add("% TK28", cierre.tk28Porcentaje);
 
-    // OBSERVACIONES FINALES ABAJO
+    // OBSERVACIONES FINALES
     sheet.addRow([]);
-    sheet.addRow(["Observaciones finales:", cierre.comentariosFinales || "-"]);
+
+    const obsFinalHeader = sheet.addRow(["Observaciones finales"]);
+    sheet.mergeCells(`A${obsFinalHeader.number}:B${obsFinalHeader.number}`);
+
+    obsFinalHeader.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"1F4E78"} };
+      cell.alignment = { horizontal:"center" };
+      cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+    });
+
+    const obsFinalRow = sheet.addRow([cierre.comentariosFinales || "-"]);
+    sheet.mergeCells(`A${obsFinalRow.number}:B${obsFinalRow.number}`);
+
+    obsFinalRow.eachCell(cell => {
+      cell.alignment = { wrapText: true };
+      cell.border = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+    });
   }
 
+  /* =========================
+     EXPORTAR
+  ========================= */
   const { nombre, filePath } = generarInfoArchivo(bitacora, "xlsx");
 
   await workbook.xlsx.writeFile(filePath);
