@@ -275,7 +275,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     .text(`Recepción combustible: ${cierre.recepcionCombustible ?? "-"}`)
     .text(`Litros combustible: ${cierre.litrosCombustible ?? "-"}`)
     .text(`TK28 en servicio: ${cierre.tk28EnServicio ?? "-"}`)
-    .text(`% TK28: ${cierre.tk28Porcentaje ?? "-"}`)
+    .text(`% TK de agua blanda: ${cierre.tk28Porcentaje ?? "-"}`)
     .moveDown(2);
 
     if (cierre.comentariosFinales) {
@@ -379,9 +379,11 @@ export const descargarReporteExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Bitacora");
 
-    // 🔥 NO TOCAR COL A (como pediste)
+    // ==========================================
+    // COLUMNAS (NO TOCAR A)
+    // ==========================================
     sheet.columns = [
-      { width: 30 }, // A
+      { width: 30 },
       { width: 16 },
       { width: 16 },
       { width: 16 },
@@ -464,7 +466,6 @@ export const descargarReporteExcel = async (req, res) => {
         cell.alignment = { wrapText:true };
       });
 
-      // colores
       if (f[1] === "BAJO" || f[1] === "FUERA_DE_SERVICIO") {
         row.getCell(2).fill = { type:"pattern",pattern:"solid",fgColor:{argb:"FFC7CE"} };
       }
@@ -473,32 +474,36 @@ export const descargarReporteExcel = async (req, res) => {
       }
     });
 
-    // 🔥 OBSERVACIONES (ARREGLADAS)
+    // ==========================================
+    // OBSERVACIONES CHECKLIST
+    // ==========================================
     rowIndex++;
-    sheet.getCell(`A${rowIndex}`).value = "Observaciones";
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
 
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
     const obsHeader = sheet.getCell(`A${rowIndex}`);
+    obsHeader.value = "Observaciones";
     obsHeader.fill = { type:"pattern",pattern:"solid",fgColor:{argb:"D9D9D9"} };
 
     rowIndex++;
 
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex+2}`);
+    const textoObs = checklist.observacionesIniciales || "-";
+
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
     const obsCell = sheet.getCell(`A${rowIndex}`);
-    obsCell.value = checklist.observacionesIniciales || "-";
+    obsCell.value = textoObs;
     obsCell.alignment = { wrapText:true, vertical:"top" };
 
-    // bordes
-    for (let i = 0; i < 3; i++) {
-      sheet.getRow(rowIndex + i).eachCell(cell=>{
-        cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
-      });
-    }
+    const lineas = textoObs.split("\n").length;
+    sheet.getRow(rowIndex).height = lineas * 18;
 
-    rowIndex += 4;
+    sheet.getRow(rowIndex).eachCell(cell=>{
+      cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
+    });
+
+    rowIndex += 2;
 
     // ==========================================
-    // REGISTRO OPERACION (SIN SCROLL 🔥)
+    // REGISTRO OPERACION
     // ==========================================
     sheet.getCell(`A${rowIndex}`).value = "II. REGISTRO DE OPERACIÓN";
     rowIndex++;
@@ -541,16 +546,22 @@ export const descargarReporteExcel = async (req, res) => {
     rowIndex++;
 
     // ==========================================
-    // CIERRE (ARREGLADO)
+    // CIERRE
     // ==========================================
-    sheet.getCell(`A${rowIndex}`).value = "III. CIERRE DE TURNO";
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+    const cierreHeader = sheet.getCell(`A${rowIndex}`);
+    cierreHeader.value = "III. CIERRE DE TURNO";
+    cierreHeader.font = { bold:true, color:{argb:"FFFFFFFF"} };
+    cierreHeader.fill = { type:"pattern",pattern:"solid",fgColor:{argb:"1F4E78"} };
+    cierreHeader.alignment = { horizontal:"center" };
+
     rowIndex++;
 
     const cierreDatos = [
       ["Recepción combustible", cierre.recepcionCombustible],
       ["Litros combustible", cierre.litrosCombustible],
       ["TK28 en servicio", cierre.tk28EnServicio],
-      ["% TK28", cierre.tk28Porcentaje]
+      ["% TK de agua blanda", cierre.tk28Porcentaje]
     ];
 
     cierreDatos.forEach(d=>{
@@ -563,26 +574,31 @@ export const descargarReporteExcel = async (req, res) => {
       });
     });
 
-    // 🔥 OBSERVACIONES FINALES (TABLA)
+    // ==========================================
+    // OBSERVACIONES FINALES
+    // ==========================================
     rowIndex++;
-    sheet.getCell(`A${rowIndex}`).value = "Observaciones Finales";
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
 
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
     const obsFHeader = sheet.getCell(`A${rowIndex}`);
+    obsFHeader.value = "Observaciones Finales";
     obsFHeader.fill = { type:"pattern",pattern:"solid",fgColor:{argb:"D9D9D9"} };
 
     rowIndex++;
 
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex+2}`);
-    const obsF = sheet.getCell(`A${rowIndex}`);
-    obsF.value = cierre.comentariosFinales || "-";
-    obsF.alignment = { wrapText:true };
+    const textoFinal = cierre.comentariosFinales || "-";
 
-    for (let i = 0; i < 3; i++) {
-      sheet.getRow(rowIndex + i).eachCell(cell=>{
-        cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
-      });
-    }
+    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+    const obsFinal = sheet.getCell(`A${rowIndex}`);
+    obsFinal.value = textoFinal;
+    obsFinal.alignment = { wrapText:true };
+
+    const lineasFinal = textoFinal.split("\n").length;
+    sheet.getRow(rowIndex).height = lineasFinal * 18;
+
+    sheet.getRow(rowIndex).eachCell(cell=>{
+      cell.border = { top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"} };
+    });
 
     // ==========================================
     // GUARDAR
