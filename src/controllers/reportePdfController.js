@@ -519,9 +519,9 @@ export const descargarReporteExcel = async (req, res) => {
       "Presión",
       "Vapor",
       "T° Gases",
-      "% Comb.",
+      "% Combustible.",
       "BBA41",
-      "Flujo",
+      "Consumo combustible",
       "T° ITC"
     ];
 
