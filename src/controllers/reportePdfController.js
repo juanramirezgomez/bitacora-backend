@@ -383,7 +383,6 @@ export const descargarReporteExcel = async (req, res) => {
 
     const azul = "FF1F4E78";
     const azulClaro = "FFD9E1F2";
-    const gris = "FFD9D9D9";
     const verde = "FFC6EFCE";
     const rojo = "FFFFC7CE";
 
@@ -412,7 +411,7 @@ export const descargarReporteExcel = async (req, res) => {
 
     let rowIndex = 1;
 
-    /* ================= HEADER PRO ================= */
+    /* ================= HEADER ================= */
 
     sheet.mergeCells("A1:H2");
     const header = sheet.getCell("A1");
@@ -425,14 +424,12 @@ export const descargarReporteExcel = async (req, res) => {
 
     const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
 
-    const datosHeader = [
+    [
       ["Operador", bitacora.operador],
       ["Turno", bitacora.turno],
       ["N° Turno", bitacora.turnoNumero],
       ["Fecha", `${dia}-${mes}-${anioCompleto}`]
-    ];
-
-    datosHeader.forEach(d => {
+    ].forEach(d => {
       const row = sheet.getRow(rowIndex++);
       row.getCell(1).value = d[0];
       row.getCell(2).value = d[1];
@@ -504,30 +501,9 @@ export const descargarReporteExcel = async (req, res) => {
       }
     });
 
-    /* ================= OBS CHECKLIST ================= */
-
-    rowIndex += 2;
-
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
-    sheet.getCell(`A${rowIndex}`).value = "Observaciones";
-    sheet.getCell(`A${rowIndex}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: gris } };
-
-    rowIndex++;
-
-    const textoObs = checklist?.observacionesIniciales || "-";
-
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
-    const obs = sheet.getCell(`A${rowIndex}`);
-    obs.value = textoObs;
-    obs.alignment = left;
-
-    sheet.getRow(rowIndex).height = Math.max(40, textoObs.length / 2);
-
-    sheet.getRow(rowIndex).eachCell(c => (c.border = borde));
-
     /* ================= REGISTRO ================= */
 
-    rowIndex += 3;
+    rowIndex += 2;
 
     sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
     cell = sheet.getCell(`A${rowIndex}`);
@@ -610,27 +586,6 @@ export const descargarReporteExcel = async (req, res) => {
         cell.alignment = left;
       });
     });
-
-    /* ================= OBS FINAL ================= */
-
-    rowIndex += 2;
-
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
-    sheet.getCell(`A${rowIndex}`).value = "Observaciones Finales";
-    sheet.getCell(`A${rowIndex}`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: gris } };
-
-    rowIndex++;
-
-    const textoFinal = cierre?.comentariosFinales || "-";
-
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
-    const obsF = sheet.getCell(`A${rowIndex}`);
-    obsF.value = textoFinal;
-    obsF.alignment = left;
-
-    sheet.getRow(rowIndex).height = Math.max(40, textoFinal.length / 2);
-
-    sheet.getRow(rowIndex).eachCell(c => (c.border = borde));
 
     /* ================= EXPORT ================= */
 
