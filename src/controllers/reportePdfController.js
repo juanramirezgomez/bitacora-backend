@@ -545,8 +545,8 @@ export const descargarReporteExcel = async (req, res) => {
         get("Vapor")?.value ? `${get("Vapor").value} T/H` : "-",
         get("Temperatura gases chimenea")?.value ? `${get("Temperatura gases chimenea").value} °C` : "-",
         get("Nivel TK combustible")?.value ? `${get("Nivel TK combustible").value} %` : "-",
-        get("Consumo combustible")?.value || "-",
         get("Flujo bomba 41")?.value || "-",
+        get("Consumo combustible")?.value || "-",
         get("Temperatura salida ITC")?.value ? `${get("Temperatura salida ITC").value} °C` : "-"
       ];
 
