@@ -381,36 +381,44 @@ export const descargarReporteExcel = async (req, res) => {
   const sheet = workbook.addWorksheet("Bitacora");
 
   /* =========================
-     ANCHOS DE COLUMNAS
+     CONFIG BASE
   ========================= */
-  sheet.columns = [
-    { width: 22 }, // A
-    { width: 22 }, // B
-    { width: 22 }, // C
-    { width: 22 }, // D
-    { width: 22 }, // E
-    { width: 22 }, // F
-    { width: 22 }, // G
-    { width: 22 }, // H
-  ];
+  sheet.columns = new Array(8).fill({ width: 22 });
 
-  /* =========================
-     HEADER
-  ========================= */
-  const header = sheet.addRow(["CALDERA HURST"]);
-  sheet.mergeCells(`A${header.number}:H${header.number}`);
-  header.font = { bold: true, size: 14 };
-  header.alignment = { horizontal: "center" };
-  header.fill = {
+  const borderAll = {
+    top: { style: "thin" },
+    bottom: { style: "thin" },
+    left: { style: "thin" },
+    right: { style: "thin" }
+  };
+
+  const azulHeader = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "FFBDD7EE" }
+    fgColor: { argb: "FF9DC3E6" }
   };
+
+  const azulSuave = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFD9E1F2" }
+  };
+
+  /* =========================
+     HEADER PRINCIPAL
+  ========================= */
+  const header = sheet.addRow(["CALDERA HURST - CONTROL OPERACIONAL"]);
+  sheet.mergeCells(`A${header.number}:H${header.number}`);
+
+  header.font = { bold: true, size: 16 };
+  header.alignment = { horizontal: "center", vertical: "middle" };
+  header.fill = azulHeader;
+  header.height = 30;
 
   sheet.addRow([]);
 
   /* =========================
-     DATOS GENERALES (TABLA)
+     DATOS GENERALES
   ========================= */
   const turnoSeguro =
     ["DIA", "NOCHE"].includes(bitacora.turno)
@@ -424,13 +432,11 @@ export const descargarReporteExcel = async (req, res) => {
 
   datos.forEach(d => {
     const row = sheet.addRow(d);
+    row.height = 20;
+
     row.eachCell(c => {
-      c.border = {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" }
-      };
+      c.border = borderAll;
+      c.alignment = { vertical: "middle" };
     });
   });
 
@@ -439,13 +445,11 @@ export const descargarReporteExcel = async (req, res) => {
   /* =========================
      CHECKLIST
   ========================= */
-  const rowTitle = sheet.addRow(["CHECKLIST INICIAL"]);
-  sheet.mergeCells(`A${rowTitle.number}:H${rowTitle.number}`);
-  rowTitle.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FFBDD7EE" }
-  };
+  const titleChecklist = sheet.addRow(["CHECKLIST INICIAL"]);
+  sheet.mergeCells(`A${titleChecklist.number}:H${titleChecklist.number}`);
+  titleChecklist.fill = azulHeader;
+  titleChecklist.font = { bold: true };
+  titleChecklist.alignment = { horizontal: "center" };
 
   const labelsChecklist = {
     calderaHurst: "Caldera Hurst",
@@ -461,27 +465,23 @@ export const descargarReporteExcel = async (req, res) => {
   Object.entries(labelsChecklist).forEach(([key, label]) => {
 
     let value = checklist?.[key] || "-";
-
     if (typeof value === "string") value = value.replace(/_/g, " ");
 
     const row = sheet.addRow([label, value]);
+    row.height = 18;
 
     row.eachCell((c, col) => {
-      c.border = {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" }
-      };
+      c.border = borderAll;
+      c.alignment = { vertical: "middle" };
 
-      // 🎯 COLOR ESPECIAL NIVEL
+      if (col === 1) {
+        c.fill = azulSuave;
+        c.font = { bold: true };
+      }
+
       if (key === "nivelAguaTuboNivel" && col === 2) {
-        if (value === "BAJO") {
-          c.font = { color: { argb: "FFFF0000" }, bold: true };
-        }
-        if (value === "NORMAL") {
-          c.font = { color: { argb: "FF008000" }, bold: true };
-        }
+        if (value === "BAJO") c.font = { color: { argb: "FFFF0000" }, bold: true };
+        if (value === "NORMAL") c.font = { color: { argb: "FF008000" }, bold: true };
       }
     });
   });
@@ -489,41 +489,29 @@ export const descargarReporteExcel = async (req, res) => {
   /* =========================
      OBSERVACIONES CHECKLIST
   ========================= */
-  const obsTexto = checklist?.observacionesIniciales || "-";
-  const obsLineas = obsTexto.split("\n").length;
+  const textoObs = checklist?.observacionesIniciales || "-";
+  const rowObs = sheet.addRow(["OBSERVACIONES", textoObs]);
 
-  const obsRow = sheet.addRow(["OBSERVACIONES", obsTexto]);
+  sheet.mergeCells(`B${rowObs.number}:H${rowObs.number}`);
 
-  sheet.mergeCells(`B${obsRow.number}:H${obsRow.number}`);
+  rowObs.height = Math.max(40, textoObs.length / 2);
 
-  obsRow.height = Math.max(40, obsLineas * 15);
-
-  obsRow.getCell(2).alignment = {
+  rowObs.getCell(2).alignment = {
     wrapText: true,
     vertical: "top"
   };
 
-  obsRow.eachCell(c => {
-    c.border = {
-      top: { style: "thin" },
-      bottom: { style: "thin" },
-      left: { style: "thin" },
-      right: { style: "thin" }
-    };
-  });
+  rowObs.eachCell(c => c.border = borderAll);
 
   sheet.addRow([]);
 
   /* =========================
      REGISTRO OPERACION
   ========================= */
-  const regTitle = sheet.addRow(["REGISTRO DE OPERACIÓN"]);
-  sheet.mergeCells(`A${regTitle.number}:H${regTitle.number}`);
-  regTitle.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FFBDD7EE" }
-  };
+  const titleReg = sheet.addRow(["REGISTRO DE OPERACIÓN"]);
+  sheet.mergeCells(`A${titleReg.number}:H${titleReg.number}`);
+  titleReg.fill = azulHeader;
+  titleReg.alignment = { horizontal: "center" };
 
   if (registros.length > 0) {
 
@@ -534,48 +522,33 @@ export const descargarReporteExcel = async (req, res) => {
     );
 
     const columnas = ["hora", ...Array.from(columnasDinamicas), "purgaDeFondo"];
-
-    const headers = columnas.slice(0, 8); // 🔥 límite pantalla
+    const headers = columnas.slice(0, 8);
 
     const headerRow = sheet.addRow(headers);
 
     headerRow.eachCell(c => {
-      c.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFD9E1F2" }
-      };
-      c.border = {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" }
-      };
+      c.fill = azulSuave;
+      c.font = { bold: true };
+      c.border = borderAll;
+      c.alignment = { horizontal: "center" };
     });
 
     registros.forEach(reg => {
 
       const rowData = headers.map(col => {
-
         if (col === "hora") return reg.hora;
         if (col === "purgaDeFondo") return reg.purgaDeFondo;
 
         const p = reg.parametros?.find(x => x.label === col);
-
         return p ? `${p.value} ${p.unidad}` : "-";
       });
 
       const row = sheet.addRow(rowData);
 
       row.eachCell(c => {
-        c.border = {
-          top: { style: "thin" },
-          bottom: { style: "thin" },
-          left: { style: "thin" },
-          right: { style: "thin" }
-        };
+        c.border = borderAll;
+        c.alignment = { horizontal: "center" };
       });
-
     });
   }
 
@@ -584,13 +557,10 @@ export const descargarReporteExcel = async (req, res) => {
   /* =========================
      CIERRE
   ========================= */
-  const cierreTitle = sheet.addRow(["CIERRE DE TURNO"]);
-  sheet.mergeCells(`A${cierreTitle.number}:H${cierreTitle.number}`);
-  cierreTitle.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FFBDD7EE" }
-  };
+  const titleCierre = sheet.addRow(["CIERRE DE TURNO"]);
+  sheet.mergeCells(`A${titleCierre.number}:H${titleCierre.number}`);
+  titleCierre.fill = azulHeader;
+  titleCierre.alignment = { horizontal: "center" };
 
   const cierreDatos = [
     ["Recepción combustible", cierre?.recepcionCombustible || "-"],
@@ -602,13 +572,12 @@ export const descargarReporteExcel = async (req, res) => {
   cierreDatos.forEach(d => {
     const row = sheet.addRow(d);
 
-    row.eachCell(c => {
-      c.border = {
-        top: { style: "thin" },
-        bottom: { style: "thin" },
-        left: { style: "thin" },
-        right: { style: "thin" }
-      };
+    row.eachCell((c, col) => {
+      c.border = borderAll;
+      if (col === 1) {
+        c.fill = azulSuave;
+        c.font = { bold: true };
+      }
     });
   });
 
@@ -616,30 +585,22 @@ export const descargarReporteExcel = async (req, res) => {
      OBSERVACIONES FINALES
   ========================= */
   const textoFinal = cierre?.comentariosFinales || "-";
-  const lineasFinal = textoFinal.split("\n").length;
 
   const rowFinal = sheet.addRow(["OBSERVACIONES FINALES", textoFinal]);
 
   sheet.mergeCells(`B${rowFinal.number}:H${rowFinal.number}`);
 
-  rowFinal.height = Math.max(40, lineasFinal * 15);
+  rowFinal.height = Math.max(50, textoFinal.length / 2);
 
   rowFinal.getCell(2).alignment = {
     wrapText: true,
     vertical: "top"
   };
 
-  rowFinal.eachCell(c => {
-    c.border = {
-      top: { style: "thin" },
-      bottom: { style: "thin" },
-      left: { style: "thin" },
-      right: { style: "thin" }
-    };
-  });
+  rowFinal.eachCell(c => c.border = borderAll);
 
   /* =========================
-     GUARDAR
+     EXPORTAR
   ========================= */
   const { nombre, filePath } = generarInfoArchivo(bitacora, "xlsx");
 
