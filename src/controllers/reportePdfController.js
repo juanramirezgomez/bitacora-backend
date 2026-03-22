@@ -375,42 +375,24 @@ export const descargarReporteExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Bitácora');
 
-    /* =========================================
-       CONFIGURAR COLUMNAS
-    ========================================= */
+    /* ================= COLUMNAS ================= */
 
     sheet.columns = [
-      { header: '', key: 'a', width: 3 },
-      { header: '', key: 'b', width: 28 },
-      { header: '', key: 'c', width: 18 },
-      { header: '', key: 'd', width: 18 },
-      { header: '', key: 'e', width: 18 },
-      { header: '', key: 'f', width: 18 },
-      { header: '', key: 'g', width: 18 },
-      { header: '', key: 'h', width: 18 }
+      { width: 3 },
+      { width: 30 },
+      { width: 18 },
+      { width: 18 },
+      { width: 18 },
+      { width: 18 },
+      { width: 18 },
+      { width: 18 }
     ];
 
-    /* =========================================
-       FUNCIONES DE ESTILO
-    ========================================= */
+    /* ================= ESTILOS ================= */
 
-    const azul = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4472C4' }
-    };
-
-    const verde = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFC6EFCE' }
-    };
-
-    const rojo = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFFC7CE' }
-    };
+    const azul = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+    const verde = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
+    const rojo = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
 
     const borde = {
       top: { style: 'thin' },
@@ -419,59 +401,66 @@ export const descargarReporteExcel = async (req, res) => {
       right: { style: 'thin' }
     };
 
-    const centrar = {
-      vertical: 'middle',
-      horizontal: 'center',
-      wrapText: true
-    };
+    const center = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    const left = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
-    const izquierda = {
-      vertical: 'middle',
-      horizontal: 'left',
-      wrapText: true
-    };
+    const limpiarTexto = (txt) =>
+      txt ? txt.replace(/_/g, ' ') : '-';
 
-    const estadoColor = (valor) => {
+    const colorEstado = (valor, tipo = '') => {
+
       if (!valor) return {};
 
-      if (valor === 'EN_SERVICIO' || valor === 'NORMAL') return verde;
-      if (valor === 'FUERA_DE_SERVICIO' || valor === 'BAJO') return rojo;
+      if (tipo === 'nivel') {
+        if (valor === 'BAJO') return rojo;
+        return verde;
+      }
+
+      if (valor === 'EN_SERVICIO') return verde;
+      if (valor === 'FUERA_DE_SERVICIO') return rojo;
 
       return {};
     };
 
+    const autoHeight = (text) => {
+      if (!text) return 20;
+      const lines = Math.ceil(text.length / 90);
+      return lines * 18;
+    };
+
     let row = 1;
 
-    /* =========================================
-       HEADER
-    ========================================= */
+    /* ================= HEADER ================= */
 
     sheet.mergeCells(`B${row}:H${row}`);
-    const titulo = sheet.getCell(`B${row}`);
-    titulo.value = 'REPORTE OPERACIÓN CALDERA HURST';
-    titulo.font = { bold: true, size: 16 };
-    titulo.alignment = centrar;
+    sheet.getCell(`B${row}`).value = 'REPORTE CALDERA HURST';
+    sheet.getCell(`B${row}`).font = { bold: true, size: 16 };
+    sheet.getCell(`B${row}`).alignment = center;
 
     row++;
 
     sheet.mergeCells(`B${row}:H${row}`);
-    const fecha = sheet.getCell(`B${row}`);
-    fecha.value = `Fecha: ${new Date(bitacora.fechaInicio).toLocaleDateString('es-CL')}`;
-    fecha.font = { bold: true };
-    fecha.alignment = centrar;
+    sheet.getCell(`B${row}`).value =
+      `Operador: ${bitacora.operador} | Turno: ${bitacora.turno} - ${bitacora.turnoNumero}`;
+    sheet.getCell(`B${row}`).alignment = center;
+
+    row++;
+
+    sheet.mergeCells(`B${row}:H${row}`);
+    sheet.getCell(`B${row}`).value =
+      `Fecha: ${new Date(bitacora.fechaInicio).toLocaleDateString('es-CL')}`;
+    sheet.getCell(`B${row}`).alignment = center;
 
     row += 2;
 
-    /* =========================================
-       CHECKLIST INICIAL
-    ========================================= */
+    /* ================= CHECKLIST ================= */
 
     sheet.mergeCells(`B${row}:H${row}`);
-    const tituloChecklist = sheet.getCell(`B${row}`);
-    tituloChecklist.value = 'CHECKLIST INICIAL';
-    tituloChecklist.fill = azul;
-    tituloChecklist.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    tituloChecklist.alignment = centrar;
+    const t1 = sheet.getCell(`B${row}`);
+    t1.value = 'CHECKLIST INICIAL';
+    t1.fill = azul;
+    t1.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    t1.alignment = center;
 
     row++;
 
@@ -484,80 +473,80 @@ export const descargarReporteExcel = async (req, res) => {
       ['Bomba Dosificadora Químicos', checklist?.bombaDosificadoraQuimicos],
       ['Tren de Gas', checklist?.trenGas],
       ['Ablandadores', checklist?.ablandadores],
-      ['Nivel Agua Tubo de Nivel', checklist?.nivelAguaTuboNivel]
+      ['Nivel Agua Tubo de Nivel', checklist?.nivelAguaTuboNivel, 'nivel']
     ];
 
-    items.forEach(([nombre, valor]) => {
+    items.forEach(([nombre, valor, tipo]) => {
 
       const r = sheet.getRow(row);
 
-      r.getCell('B').value = nombre;
-      r.getCell('C').value = valor || '-';
+      r.getCell(2).value = nombre;
+      r.getCell(3).value = limpiarTexto(valor);
 
-      r.getCell('B').alignment = izquierda;
-      r.getCell('C').alignment = centrar;
+      r.getCell(2).alignment = left;
+      r.getCell(3).alignment = center;
 
-      r.getCell('C').fill = estadoColor(valor);
+      r.getCell(3).fill = colorEstado(valor, tipo);
 
-      r.getCell('B').border = borde;
-      r.getCell('C').border = borde;
+      r.getCell(2).border = borde;
+      r.getCell(3).border = borde;
 
       row++;
     });
 
-    /* =========================================
-       OBSERVACIONES
-    ========================================= */
+    /* ================= OBSERVACIONES ================= */
 
     row += 2;
 
     sheet.mergeCells(`B${row}:H${row}`);
-    const obsTitle = sheet.getCell(`B${row}`);
-    obsTitle.value = 'OBSERVACIONES';
-    obsTitle.fill = azul;
-    obsTitle.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    obsTitle.alignment = centrar;
+    const obsT = sheet.getCell(`B${row}`);
+    obsT.value = 'OBSERVACIONES';
+    obsT.fill = azul;
+    obsT.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+    obsT.alignment = center;
 
     row++;
 
+    const obs = checklist?.observacionesIniciales || '-';
+
     sheet.mergeCells(`B${row}:H${row}`);
-    const obs = sheet.getCell(`B${row}`);
-    obs.value = checklist?.observacionesIniciales || '-';
-    obs.alignment = { wrapText: true };
-    obs.border = borde;
+    const obsCell = sheet.getCell(`B${row}`);
+    obsCell.value = obs;
+    obsCell.alignment = { wrapText: true };
+    obsCell.border = borde;
 
-    sheet.getRow(row).height = 60;
+    sheet.getRow(row).height = autoHeight(obs);
 
-    /* =========================================
-       REGISTRO OPERACIÓN
-    ========================================= */
+    /* ================= REGISTRO ================= */
 
     row += 3;
 
     sheet.mergeCells(`B${row}:H${row}`);
-    const tituloRegistro = sheet.getCell(`B${row}`);
-    tituloRegistro.value = 'REGISTRO DE OPERACIÓN';
-    tituloRegistro.fill = azul;
-    tituloRegistro.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    tituloRegistro.alignment = centrar;
+    const t2 = sheet.getCell(`B${row}`);
+    t2.value = 'REGISTRO DE OPERACIÓN';
+    t2.fill = azul;
+    t2.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+    t2.alignment = center;
 
     row++;
 
     const headers = [
       'Hora',
-      'Presión (bar)',
-      'Vapor (T/H)',
-      'Temp ITC (°C)',
-      'Temp TK-23 (°C)'
+      'Presión Caldera',
+      'Vapor T/H',
+      'Temp Gases',
+      '% Diésel',
+      'BBA41',
+      'Temp ITC'
     ];
 
     headers.forEach((h, i) => {
-      const cell = sheet.getRow(row).getCell(i + 2);
-      cell.value = h;
-      cell.fill = azul;
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.alignment = centrar;
-      cell.border = borde;
+      const c = sheet.getRow(row).getCell(i + 2);
+      c.value = h;
+      c.fill = azul;
+      c.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+      c.alignment = center;
+      c.border = borde;
     });
 
     row++;
@@ -567,79 +556,73 @@ export const descargarReporteExcel = async (req, res) => {
       const r = sheet.getRow(row);
 
       r.getCell(2).value = rg.hora || '-';
-      r.getCell(3).value = `${rg.presionCaldera || ''} bar`;
-      r.getCell(4).value = `${rg.vaporGenerado || ''} T/H`;
-      r.getCell(5).value = `${rg.temperaturaITC || ''} °C`;
-      r.getCell(6).value = `${rg.temperaturaTK23 || ''} °C`;
+      r.getCell(3).value = rg.presionCaldera ? `${rg.presionCaldera} bar` : '-';
+      r.getCell(4).value = rg.vaporTH ? `${rg.vaporTH} T/H` : '-';
+      r.getCell(5).value = rg.tempGases ? `${rg.tempGases} °C` : '-';
+      r.getCell(6).value = rg.porcentajeDiesel ? `${rg.porcentajeDiesel} %` : '-';
+      r.getCell(7).value = rg.bba41 || '-';
+      r.getCell(8).value = rg.tempITC ? `${rg.tempITC} °C` : '-';
 
-      for (let i = 2; i <= 6; i++) {
+      for (let i = 2; i <= 8; i++) {
         r.getCell(i).border = borde;
-        r.getCell(i).alignment = centrar;
+        r.getCell(i).alignment = center;
       }
 
       row++;
     });
 
-    /* =========================================
-       CIERRE
-    ========================================= */
+    /* ================= CIERRE ================= */
 
     row += 3;
 
     sheet.mergeCells(`B${row}:H${row}`);
-    const tituloCierre = sheet.getCell(`B${row}`);
-    tituloCierre.value = 'CIERRE DE TURNO';
-    tituloCierre.fill = azul;
-    tituloCierre.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    tituloCierre.alignment = centrar;
+    const t3 = sheet.getCell(`B${row}`);
+    t3.value = 'CIERRE DE TURNO';
+    t3.fill = azul;
+    t3.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+    t3.alignment = center;
 
     row++;
 
     const cierreItems = [
-      ['Recepción de Combustible', cierre?.recepcionCombustible],
-      ['Litros Combustible', cierre?.litrosCombustible],
-      ['% TK de Agua Blanda', cierre?.tk28Porcentaje]
+      ['Recepción Combustible', cierre?.recepcionCombustible],
+      ['Litros', cierre?.litrosCombustible],
+      ['% TK Agua Blanda', cierre?.tk28Porcentaje]
     ];
 
-    cierreItems.forEach(([nombre, valor]) => {
-
+    cierreItems.forEach(([n, v]) => {
       const r = sheet.getRow(row);
-
-      r.getCell('B').value = nombre;
-      r.getCell('C').value = valor ?? '-';
-
-      r.getCell('B').border = borde;
-      r.getCell('C').border = borde;
-
+      r.getCell(2).value = n;
+      r.getCell(3).value = v ?? '-';
+      r.getCell(2).border = borde;
+      r.getCell(3).border = borde;
       row++;
     });
 
-    /* =========================================
-       OBSERVACIONES FINALES
-    ========================================= */
+    /* ================= OBS FINAL ================= */
 
     row += 2;
 
     sheet.mergeCells(`B${row}:H${row}`);
-    const obsFinalTitle = sheet.getCell(`B${row}`);
-    obsFinalTitle.value = 'OBSERVACIONES FINALES';
-    obsFinalTitle.fill = azul;
-    obsFinalTitle.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    obsFinalTitle.alignment = centrar;
+    const t4 = sheet.getCell(`B${row}`);
+    t4.value = 'OBSERVACIONES FINALES';
+    t4.fill = azul;
+    t4.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+    t4.alignment = center;
 
     row++;
 
+    const obsF = cierre?.comentariosFinales || '-';
+
     sheet.mergeCells(`B${row}:H${row}`);
-    const obsFinal = sheet.getCell(`B${row}`);
-    obsFinal.value = cierre?.comentariosFinales || '-';
-    obsFinal.alignment = { wrapText: true };
-    obsFinal.border = borde;
+    const obsFCell = sheet.getCell(`B${row}`);
+    obsFCell.value = obsF;
+    obsFCell.alignment = { wrapText: true };
+    obsFCell.border = borde;
 
-    sheet.getRow(row).height = 80;
+    sheet.getRow(row).height = autoHeight(obsF);
 
-    /* =========================================
-       EXPORTAR
-    ========================================= */
+    /* ================= EXPORTAR ================= */
 
     const buffer = await workbook.xlsx.writeBuffer();
 
