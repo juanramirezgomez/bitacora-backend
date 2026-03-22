@@ -2,6 +2,7 @@ import Bitacora from "../models/Bitacora.js";
 import ChecklistInicial from "../models/ChecklistInicial.js";
 import RegistroOperacion from "../models/RegistroOperacion.js";
 import CierreTurno from "../models/CierreTurno.js";
+
 /* =====================================================
    INICIAR TURNO
    POST /api/bitacoras/iniciar
@@ -30,8 +31,21 @@ export const iniciarTurno = async (req, res) => {
       });
     }
 
-    turno = String(turno).trim();
+    // 🔥 NORMALIZAR
+    turno = String(turno).trim().toUpperCase();
     turnoNumero = String(turnoNumero).trim();
+
+    /* =========================================
+       VALIDAR TURNOS PERMITIDOS
+    ========================================= */
+
+    const turnosValidos = ["DIA", "NOCHE"];
+
+    if (!turnosValidos.includes(turno)) {
+      return res.status(400).json({
+        message: "Turno inválido. Debe ser DIA o NOCHE"
+      });
+    }
 
     /* =========================================
        VALIDAR QUE NO TENGA BITÁCORA ABIERTA
@@ -75,8 +89,8 @@ export const iniciarTurno = async (req, res) => {
         });
       }
 
-      // 🔥 Fecha local real (NO UTC)
-      fechaFinal = new Date(year, month, day, 12, 0, 0)
+      // 🔥 Fecha local correcta
+      fechaFinal = new Date(year, month, day, 12, 0, 0);
 
     } else {
 
@@ -108,7 +122,9 @@ export const iniciarTurno = async (req, res) => {
     });
 
   } catch (error) {
+
     console.error("🔥 Error iniciarTurno:", error);
+
     return res.status(500).json({
       message: "Error al iniciar turno"
     });
@@ -124,6 +140,7 @@ export const obtenerBitacoraAbierta = async (req, res) => {
   try {
 
     let { nombre, rol } = req.user;
+
     nombre = String(nombre).trim();
 
     if (rol !== "OPERADOR") {
@@ -142,7 +159,9 @@ export const obtenerBitacoraAbierta = async (req, res) => {
     });
 
   } catch (error) {
+
     console.error("🔥 Error obtenerBitacoraAbierta:", error);
+
     return res.status(500).json({
       message: "Error buscando bitácora abierta"
     });
@@ -164,17 +183,17 @@ export const listarBitacoras = async (req, res) => {
 
     const filtro = {};
 
-    // OPERADOR → solo sus bitácoras
+    // 🔥 OPERADOR → solo sus bitácoras
     if (rol === "OPERADOR") {
       filtro.operador = new RegExp(`^\\s*${nombre}\\s*$`, "i");
     }
 
-    // SUPERVISOR → solo cerradas por defecto
+    // 🔥 SUPERVISOR → solo cerradas por defecto
     if (rol === "SUPERVISOR") {
       filtro.estado = "CERRADA";
     }
 
-    // Si viene estado por query lo respetamos
+    // 🔥 Query manda
     if (estado) {
       filtro.estado = estado;
     }
@@ -185,7 +204,9 @@ export const listarBitacoras = async (req, res) => {
     return res.json(bitacoras);
 
   } catch (error) {
+
     console.error("🔥 Error listarBitacoras:", error);
+
     return res.status(500).json({
       message: "Error listando bitácoras"
     });
@@ -213,13 +234,19 @@ export const obtenerBitacora = async (req, res) => {
     return res.json(bitacora);
 
   } catch (error) {
+
     console.error("🔥 Error obtenerBitacora:", error);
+
     return res.status(500).json({
       message: "Error obteniendo bitácora"
     });
   }
 };
 
+
+/* =====================================================
+   ELIMINAR BITÁCORA
+===================================================== */
 export const eliminarBitacora = async (req, res) => {
   try {
 
@@ -239,7 +266,7 @@ export const eliminarBitacora = async (req, res) => {
       });
     }
 
-    // 🔥 eliminar en paralelo
+    // 🔥 eliminar en cascada
     await Promise.all([
       ChecklistInicial.deleteMany({ bitacoraId }),
       RegistroOperacion.deleteMany({ bitacoraId }),
@@ -248,17 +275,16 @@ export const eliminarBitacora = async (req, res) => {
 
     await Bitacora.findByIdAndDelete(bitacoraId);
 
-    res.json({
+    return res.json({
       message: "Bitácora eliminada correctamente"
     });
 
   } catch (error) {
 
-    console.error("Error eliminando bitácora:", error);
+    console.error("🔥 Error eliminando bitácora:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Error eliminando bitácora"
     });
-
   }
 };
