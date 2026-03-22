@@ -5,7 +5,6 @@ import CierreTurno from "../models/CierreTurno.js";
 
 /* =====================================================
    INICIAR TURNO
-   POST /api/bitacoras/iniciar
 ===================================================== */
 export const iniciarTurno = async (req, res) => {
   try {
@@ -15,9 +14,7 @@ export const iniciarTurno = async (req, res) => {
 
     nombre = String(nombre).trim();
 
-    /* =========================================
-       VALIDACIONES BÁSICAS
-    ========================================= */
+    /* ================= VALIDACIONES ================= */
 
     if (rol !== "OPERADOR") {
       return res.status(403).json({
@@ -31,25 +28,24 @@ export const iniciarTurno = async (req, res) => {
       });
     }
 
-    // 🔥 NORMALIZAR
     turno = String(turno).trim().toUpperCase();
     turnoNumero = String(turnoNumero).trim();
 
-    /* =========================================
-       VALIDAR TURNOS PERMITIDOS
-    ========================================= */
-
-    const turnosValidos = ["DIA", "NOCHE"];
-
-    if (!turnosValidos.includes(turno)) {
+    // 🔥 VALIDACIÓN FUERTE (ANTI BUG DIAMETRO)
+    if (!["DIA", "NOCHE"].includes(turno)) {
+      console.warn("⚠️ Turno inválido detectado:", turno);
       return res.status(400).json({
-        message: "Turno inválido. Debe ser DIA o NOCHE"
+        message: "Turno inválido (solo DIA o NOCHE)"
       });
     }
 
-    /* =========================================
-       VALIDAR QUE NO TENGA BITÁCORA ABIERTA
-    ========================================= */
+    if (!["39", "44"].includes(turnoNumero)) {
+      return res.status(400).json({
+        message: "Turno número inválido"
+      });
+    }
+
+    /* ================= BITÁCORA ABIERTA ================= */
 
     const existeAbierta = await Bitacora.findOne({
       operador: new RegExp(`^\\s*${nombre}\\s*$`, "i"),
@@ -63,9 +59,7 @@ export const iniciarTurno = async (req, res) => {
       });
     }
 
-    /* =========================================
-       PROCESAR FECHA (SIN PROBLEMAS DE UTC)
-    ========================================= */
+    /* ================= FECHA ================= */
 
     let fechaFinal;
 
@@ -74,9 +68,7 @@ export const iniciarTurno = async (req, res) => {
       const partes = fechaInicio.split("-");
 
       if (partes.length !== 3) {
-        return res.status(400).json({
-          message: "Formato de fecha inválido"
-        });
+        return res.status(400).json({ message: "Formato de fecha inválido" });
       }
 
       const year = parseInt(partes[0]);
@@ -84,18 +76,14 @@ export const iniciarTurno = async (req, res) => {
       const day = parseInt(partes[2]);
 
       if (isNaN(year) || isNaN(month) || isNaN(day)) {
-        return res.status(400).json({
-          message: "Fecha inválida"
-        });
+        return res.status(400).json({ message: "Fecha inválida" });
       }
 
-      // 🔥 Fecha local correcta
       fechaFinal = new Date(year, month, day, 12, 0, 0);
 
     } else {
 
       const hoy = new Date();
-
       fechaFinal = new Date(
         hoy.getFullYear(),
         hoy.getMonth(),
@@ -104,9 +92,7 @@ export const iniciarTurno = async (req, res) => {
       );
     }
 
-    /* =========================================
-       CREAR BITÁCORA
-    ========================================= */
+    /* ================= CREAR ================= */
 
     const nuevaBitacora = await Bitacora.create({
       operador: nombre,
@@ -122,9 +108,7 @@ export const iniciarTurno = async (req, res) => {
     });
 
   } catch (error) {
-
     console.error("🔥 Error iniciarTurno:", error);
-
     return res.status(500).json({
       message: "Error al iniciar turno"
     });
@@ -133,19 +117,17 @@ export const iniciarTurno = async (req, res) => {
 
 
 /* =====================================================
-   OBTENER BITÁCORA ABIERTA
-   GET /api/bitacoras/abierta
+   BITÁCORA ABIERTA
 ===================================================== */
 export const obtenerBitacoraAbierta = async (req, res) => {
   try {
 
     let { nombre, rol } = req.user;
-
     nombre = String(nombre).trim();
 
     if (rol !== "OPERADOR") {
       return res.status(403).json({
-        message: "Solo OPERADOR puede consultar bitácora abierta"
+        message: "Solo OPERADOR puede consultar"
       });
     }
 
@@ -159,19 +141,16 @@ export const obtenerBitacoraAbierta = async (req, res) => {
     });
 
   } catch (error) {
-
-    console.error("🔥 Error obtenerBitacoraAbierta:", error);
-
+    console.error("🔥 Error:", error);
     return res.status(500).json({
-      message: "Error buscando bitácora abierta"
+      message: "Error buscando bitácora"
     });
   }
 };
 
 
 /* =====================================================
-   LISTAR BITÁCORAS
-   GET /api/bitacoras
+   LISTAR BITÁCORAS (SANITIZA DATOS)
 ===================================================== */
 export const listarBitacoras = async (req, res) => {
   try {
@@ -183,30 +162,33 @@ export const listarBitacoras = async (req, res) => {
 
     const filtro = {};
 
-    // 🔥 OPERADOR → solo sus bitácoras
     if (rol === "OPERADOR") {
       filtro.operador = new RegExp(`^\\s*${nombre}\\s*$`, "i");
     }
 
-    // 🔥 SUPERVISOR → solo cerradas por defecto
-    if (rol === "SUPERVISOR") {
-      filtro.estado = "CERRADA";
-    }
-
-    // 🔥 Query manda
     if (estado) {
       filtro.estado = estado;
     }
 
-    const bitacoras = await Bitacora.find(filtro)
+    let bitacoras = await Bitacora.find(filtro)
       .sort({ fechaInicio: -1 });
+
+    // 🔥 SANITIZAR DATOS (ANTI DIAMETRO)
+    bitacoras = bitacoras.map(b => {
+      const turnoValido = ["DIA", "NOCHE"].includes(b.turno)
+        ? b.turno
+        : "NOCHE"; // fallback seguro
+
+      return {
+        ...b.toObject(),
+        turno: turnoValido
+      };
+    });
 
     return res.json(bitacoras);
 
   } catch (error) {
-
     console.error("🔥 Error listarBitacoras:", error);
-
     return res.status(500).json({
       message: "Error listando bitácoras"
     });
@@ -215,8 +197,7 @@ export const listarBitacoras = async (req, res) => {
 
 
 /* =====================================================
-   OBTENER BITÁCORA POR ID
-   GET /api/bitacoras/:bitacoraId
+   OBTENER POR ID
 ===================================================== */
 export const obtenerBitacora = async (req, res) => {
   try {
@@ -231,12 +212,15 @@ export const obtenerBitacora = async (req, res) => {
       });
     }
 
+    // 🔥 SANITIZAR
+    if (!["DIA", "NOCHE"].includes(bitacora.turno)) {
+      bitacora.turno = "NOCHE";
+    }
+
     return res.json(bitacora);
 
   } catch (error) {
-
-    console.error("🔥 Error obtenerBitacora:", error);
-
+    console.error("🔥 Error:", error);
     return res.status(500).json({
       message: "Error obteniendo bitácora"
     });
@@ -245,7 +229,7 @@ export const obtenerBitacora = async (req, res) => {
 
 
 /* =====================================================
-   ELIMINAR BITÁCORA
+   ELIMINAR
 ===================================================== */
 export const eliminarBitacora = async (req, res) => {
   try {
@@ -262,11 +246,10 @@ export const eliminarBitacora = async (req, res) => {
 
     if (bitacora.estado !== "CERRADA") {
       return res.status(400).json({
-        message: "Solo se pueden eliminar bitácoras cerradas"
+        message: "Solo se pueden eliminar cerradas"
       });
     }
 
-    // 🔥 eliminar en cascada
     await Promise.all([
       ChecklistInicial.deleteMany({ bitacoraId }),
       RegistroOperacion.deleteMany({ bitacoraId }),
@@ -275,15 +258,11 @@ export const eliminarBitacora = async (req, res) => {
 
     await Bitacora.findByIdAndDelete(bitacoraId);
 
-    return res.json({
-      message: "Bitácora eliminada correctamente"
-    });
+    res.json({ message: "Eliminada correctamente" });
 
   } catch (error) {
-
-    console.error("🔥 Error eliminando bitácora:", error);
-
-    return res.status(500).json({
+    console.error("Error eliminando:", error);
+    res.status(500).json({
       message: "Error eliminando bitácora"
     });
   }
