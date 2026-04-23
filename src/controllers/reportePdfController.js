@@ -12,6 +12,7 @@ import CierreTurno from "../models/CierreTurno.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+
 /* =====================================================
    ORDENAR HORAS SEGÚN TURNO
 ===================================================== */
@@ -193,7 +194,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     const columnas = ["hora", ...Array.from(columnasDinamicas), "purgaDeFondo"];
 
     const nombreVisualColumnas = {
-      "Temperatura gases chimenea": "Tº gases chimenea"
+      "Temperatura gases chimenea": "Tº gases"
     };
 
     const tableWidth = doc.page.width - 80;
@@ -358,15 +359,13 @@ export const descargarReportePdf = async (req, res) => {
 
 };
 
-/* =====================================================
-   EXCEL COMPLETO
-===================================================== */
 export const descargarReporteExcel = async (req, res) => {
   try {
     const { bitacoraId } = req.params;
 
     const bitacora = await Bitacora.findById(bitacoraId);
-    if (!bitacora) return res.status(404).json({ error: "No encontrada" });
+    if (!bitacora)
+      return res.status(404).json({ error: "No encontrada" });
 
     let [checklist, registros, cierre] = await Promise.all([
       ChecklistInicial.findOne({ bitacoraId }),
@@ -393,25 +392,19 @@ export const descargarReporteExcel = async (req, res) => {
       right: { style: "thin" }
     };
 
-    const center = { horizontal: "center", vertical: "middle", wrapText: true };
-    const left = { horizontal: "left", vertical: "middle", wrapText: true };
+    const center = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true
+    };
 
-    /* ================= COLUMNAS ================= */
+    const left = {
+      horizontal: "left",
+      vertical: "middle",
+      wrapText: true
+    };
 
-    sheet.columns = [
-      { width: 30 },
-      { width: 16 },
-      { width: 16 },
-      { width: 16 },
-      { width: 16 },
-      { width: 16 },
-      { width: 16 },
-      { width: 16 }
-    ];
-
-    let rowIndex = 1;
-
-    /* ================= HEADER ================= */
+    /* ================= HEADER GENERAL ================= */
 
     sheet.mergeCells("A1:H2");
     const header = sheet.getCell("A1");
@@ -420,7 +413,7 @@ export const descargarReporteExcel = async (req, res) => {
     header.alignment = center;
     header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
 
-    rowIndex = 4;
+    let rowIndex = 4;
 
     const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
 
@@ -456,6 +449,7 @@ export const descargarReporteExcel = async (req, res) => {
     rowIndex++;
 
     const headerRow = sheet.getRow(rowIndex++);
+
     ["Equipo", "Estado"].forEach((t, i) => {
       const c = headerRow.getCell(i + 1);
       c.value = t;
@@ -514,18 +508,23 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
+    /* ================= 🔥 DINÁMICO REAL ================= */
+
+    const columnasSet = new Set();
+
+    registros.forEach(r => {
+      r.parametros?.forEach(p => {
+        columnasSet.add(p.label);
+      });
+    });
+
     const columnas = [
       "Hora",
-      "Presión",
-      "Vapor",
-      "T° Gases",
-      "% Combustible.",
-      "BBA41",
-      "Consumo combustible",
-      "T° ITC"
+      ...Array.from(columnasSet)
     ];
 
     const header2 = sheet.getRow(rowIndex++);
+
     columnas.forEach((c, i) => {
       const celda = header2.getCell(i + 1);
       celda.value = c;
@@ -536,24 +535,26 @@ export const descargarReporteExcel = async (req, res) => {
     });
 
     registros.forEach(r => {
+
       const row = sheet.getRow(rowIndex++);
       const get = label => r.parametros?.find(p => p.label === label);
 
-      row.values = [
-        r.hora || "-",
-        get("Presión caldera")?.value ? `${get("Presión caldera").value} bar` : "-",
-        get("Vapor")?.value ? `${get("Vapor").value} T/H` : "-",
-        get("Temperatura gases chimenea")?.value ? `${get("Temperatura gases chimenea").value} °C` : "-",
-        get("Nivel TK combustible")?.value ? `${get("Nivel TK combustible").value} %` : "-",
-        get("Flujo bomba 41")?.value || "-",
-        get("Consumo combustible")?.value || "-",
-        get("Temperatura salida ITC")?.value ? `${get("Temperatura salida ITC").value} °C` : "-"
-      ];
+      const fila = [];
+
+      fila.push(r.hora || "-");
+
+      columnas.slice(1).forEach(col => {
+        const p = get(col);
+        fila.push(p ? `${p.value} ${p.unidad}` : "-");
+      });
+
+      row.values = fila;
 
       row.eachCell(cell => {
         cell.border = borde;
         cell.alignment = center;
       });
+
     });
 
     /* ================= CIERRE ================= */
@@ -591,8 +592,15 @@ export const descargarReporteExcel = async (req, res) => {
 
     const buffer = await workbook.xlsx.writeBuffer();
 
-    res.setHeader("Content-Disposition", `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`);
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
 
     res.send(buffer);
 
