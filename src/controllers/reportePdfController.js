@@ -601,3 +601,159 @@ export const descargarReporteExcel = async (req, res) => {
     res.status(500).json({ error: "Error generando Excel" });
   }
 };
+
+async function obtenerRegistrosPorRango(desde, hasta) {
+
+  const inicio = new Date(desde);
+  const fin = new Date(hasta);
+
+  fin.setHours(23,59,59,999);
+
+  const bitacoras = await Bitacora.find({
+    estado: "CERRADA",
+    fechaInicio: { $gte: inicio, $lte: fin }
+  });
+
+  let todosRegistros = [];
+
+  for (const b of bitacoras) {
+
+    let registros = await RegistroOperacion.find({
+      bitacoraId: b._id
+    });
+
+    registros = ordenarPorTurno(registros, b.turno);
+
+    const fecha = obtenerYYMMDD(b.fechaInicio);
+
+    registros.forEach(r => {
+
+      todosRegistros.push({
+        fecha: `${fecha.dia}-${fecha.mes}-${fecha.anioCompleto}`,
+        hora: r.hora,
+        parametros: r.parametros,
+        purgaDeFondo: r.purgaDeFondo
+      });
+
+    });
+
+  }
+
+  return todosRegistros;
+}
+
+export const descargarExcelRango = async (req, res) => {
+
+  try {
+
+    const { desde, hasta } = req.query;
+
+    const registros = await obtenerRegistrosPorRango(desde, hasta);
+
+    if (!registros.length) {
+      return res.status(404).json({ error: "Sin datos en ese rango" });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Rango");
+
+    const columnas = [
+      "Fecha",
+      "Hora",
+      "Presión",
+      "Vapor",
+      "T° Gases",
+      "% Combustible",
+      "BBA41",
+      "Consumo",
+      "T° ITC"
+    ];
+
+    sheet.addRow(columnas);
+
+    registros.forEach(r => {
+
+      const get = label =>
+        r.parametros?.find(p => p.label === label);
+
+      sheet.addRow([
+        r.fecha,
+        r.hora,
+        get("Presión caldera")?.value ?? "-",
+        get("Vapor")?.value ?? "-",
+        get("Temperatura gases chimenea")?.value ?? "-",
+        get("Nivel TK combustible")?.value ?? "-",
+        get("Flujo bomba 41")?.value ?? "-",
+        get("Consumo combustible")?.value ?? "-",
+        get("Temperatura salida ITC")?.value ?? "-"
+      ]);
+
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    res.setHeader("Content-Disposition", `attachment; filename=reporte_rango.xlsx`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    res.send(buffer);
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({ error: "Error generando Excel rango" });
+
+  }
+
+};
+
+export const descargarPdfRango = async (req, res) => {
+
+  try {
+
+    const { desde, hasta } = req.query;
+
+    const registros = await obtenerRegistrosPorRango(desde, hasta);
+
+    if (!registros.length) {
+      return res.status(404).json({ error: "Sin datos en ese rango" });
+    }
+
+    const doc = new PDFDocument({ size: "A4", margin: 40 });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline; filename=reporte_rango.pdf");
+
+    doc.pipe(res);
+
+    doc.fontSize(16)
+      .text("REPORTE POR RANGO DE FECHAS", { align: "center" })
+      .moveDown();
+
+    doc.fontSize(10)
+      .text(`Desde: ${desde}`)
+      .text(`Hasta: ${hasta}`)
+      .moveDown();
+
+    registros.forEach(r => {
+
+      const get = label =>
+        r.parametros?.find(p => p.label === label);
+
+      doc.text(
+        `${r.fecha} ${r.hora} | Presión: ${get("Presión caldera")?.value ?? "-"} | Vapor: ${get("Vapor")?.value ?? "-"}`
+      );
+
+    });
+
+    doc.end();
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({ error: "Error generando PDF rango" });
+
+  }
+
+};
