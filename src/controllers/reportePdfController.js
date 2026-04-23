@@ -643,7 +643,6 @@ async function obtenerRegistrosPorRango(desde, hasta) {
 }
 
 export const descargarExcelRango = async (req, res) => {
-
   try {
 
     const { desde, hasta } = req.query;
@@ -657,38 +656,73 @@ export const descargarExcelRango = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Rango");
 
+    /* ===== COLORES ===== */
+    const azul = "FF1F4E78";
+    const azulClaro = "FFD9E1F2";
+
+    const borde = {
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" }
+    };
+
+    const center = { horizontal: "center", vertical: "middle", wrapText: true };
+
+    /* ===== COLUMNAS DINÁMICAS ===== */
+    const columnasSet = new Set();
+
+    registros.forEach(r =>
+      r.parametros?.forEach(p => columnasSet.add(p.label))
+    );
+
     const columnas = [
       "Fecha",
       "Hora",
-      "Presión",
-      "Vapor",
-      "T° Gases",
-      "% Combustible",
-      "BBA41",
-      "Consumo",
-      "T° ITC"
+      ...Array.from(columnasSet),
+      "Purga de fondo"
     ];
 
-    sheet.addRow(columnas);
+    /* ===== HEADER ===== */
+    const header = sheet.addRow(columnas);
 
+    header.eachCell(cell => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: azul }
+      };
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.alignment = center;
+      cell.border = borde;
+    });
+
+    /* ===== FILAS ===== */
     registros.forEach(r => {
 
-      const get = label =>
-        r.parametros?.find(p => p.label === label);
+      const fila = [];
 
-      sheet.addRow([
-        r.fecha,
-        r.hora,
-        get("Presión caldera")?.value ?? "-",
-        get("Vapor")?.value ?? "-",
-        get("Temperatura gases chimenea")?.value ?? "-",
-        get("Nivel TK combustible")?.value ?? "-",
-        get("Flujo bomba 41")?.value ?? "-",
-        get("Consumo combustible")?.value ?? "-",
-        get("Temperatura salida ITC")?.value ?? "-"
-      ]);
+      fila.push(r.fecha);
+      fila.push(r.hora);
+
+      columnas.slice(2, -1).forEach(col => {
+        const p = r.parametros?.find(x => x.label === col);
+        fila.push(p ? `${p.value} ${p.unidad}` : "-");
+      });
+
+      fila.push(r.purgaDeFondo || "-");
+
+      const row = sheet.addRow(fila);
+
+      row.eachCell(cell => {
+        cell.border = borde;
+        cell.alignment = center;
+      });
 
     });
+
+    /* AUTO WIDTH */
+    sheet.columns.forEach(col => col.width = 18);
 
     const buffer = await workbook.xlsx.writeBuffer();
 
@@ -698,17 +732,12 @@ export const descargarExcelRango = async (req, res) => {
     res.send(buffer);
 
   } catch (error) {
-
     console.error(error);
-
     res.status(500).json({ error: "Error generando Excel rango" });
-
   }
-
 };
 
 export const descargarPdfRango = async (req, res) => {
-
   try {
 
     const { desde, hasta } = req.query;
@@ -726,8 +755,9 @@ export const descargarPdfRango = async (req, res) => {
 
     doc.pipe(res);
 
+    /* ===== TITULO ===== */
     doc.fontSize(16)
-      .text("REPORTE POR RANGO DE FECHAS", { align: "center" })
+      .text("REPORTE DE OPERACIÓN POR RANGO", { align: "center" })
       .moveDown();
 
     doc.fontSize(10)
@@ -735,25 +765,82 @@ export const descargarPdfRango = async (req, res) => {
       .text(`Hasta: ${hasta}`)
       .moveDown();
 
+    /* ===== COLUMNAS DINÁMICAS ===== */
+    const columnasSet = new Set();
+
+    registros.forEach(r =>
+      r.parametros?.forEach(p => columnasSet.add(p.label))
+    );
+
+    const columnas = [
+      "Fecha",
+      "Hora",
+      ...Array.from(columnasSet),
+      "Purga"
+    ];
+
+    const tableWidth = doc.page.width - 80;
+    const colWidth = tableWidth / columnas.length;
+    const rowHeight = 20;
+
+    let y = doc.y;
+
+    /* ===== HEADER ===== */
+    doc.font("Helvetica-Bold").fontSize(7);
+
+    columnas.forEach((col, i) => {
+      doc.rect(40 + i * colWidth, y, colWidth, rowHeight)
+        .fillAndStroke("#1F4E78", "#000");
+
+      doc.fillColor("white").text(col, 40 + i * colWidth + 2, y + 6, {
+        width: colWidth - 4,
+        align: "center"
+      });
+    });
+
+    y += rowHeight;
+
+    /* ===== FILAS ===== */
+    doc.font("Helvetica").fontSize(7);
+
     registros.forEach(r => {
 
-      const get = label =>
-        r.parametros?.find(p => p.label === label);
+      columnas.forEach((col, i) => {
 
-      doc.text(
-        `${r.fecha} ${r.hora} | Presión: ${get("Presión caldera")?.value ?? "-"} | Vapor: ${get("Vapor")?.value ?? "-"}`
-      );
+        let val = "-";
+
+        if (col === "Fecha") val = r.fecha;
+        else if (col === "Hora") val = r.hora;
+        else if (col === "Purga") val = r.purgaDeFondo;
+        else {
+          const p = r.parametros?.find(x => x.label === col);
+          if (p) val = `${p.value} ${p.unidad}`;
+        }
+
+        doc.fillColor("black");
+
+        doc.rect(40 + i * colWidth, y, colWidth, rowHeight).stroke();
+
+        doc.text(val, 40 + i * colWidth + 2, y + 6, {
+          width: colWidth - 4,
+          align: "center"
+        });
+
+      });
+
+      y += rowHeight;
+
+      if (y > 750) {
+        doc.addPage();
+        y = 50;
+      }
 
     });
 
     doc.end();
 
   } catch (error) {
-
     console.error(error);
-
     res.status(500).json({ error: "Error generando PDF rango" });
-
   }
-
 };
