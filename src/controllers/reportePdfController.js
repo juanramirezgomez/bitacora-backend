@@ -378,6 +378,14 @@ export const descargarReporteExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Bitacora");
 
+    /* ===== FORMATO HORIZONTAL ===== */
+    sheet.pageSetup = {
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: false
+    };
+
     /* ================= ESTILOS ================= */
 
     const azul = "FF1F4E78";
@@ -417,6 +425,7 @@ export const descargarReporteExcel = async (req, res) => {
       const row = sheet.getRow(rowIndex++);
       row.getCell(1).value = d[0];
       row.getCell(2).value = d[1];
+
       row.getCell(1).font = { bold: true };
 
       row.eachCell(cell => {
@@ -472,7 +481,7 @@ export const descargarReporteExcel = async (req, res) => {
         cell.alignment = left;
       });
 
-      if (f[1] === "BAJO" || f[1] === "FUERA_DE_SERVICIO") {
+      if (["BAJO", "FUERA_DE_SERVICIO"].includes(f[1])) {
         row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: rojo } };
       }
 
@@ -494,8 +503,6 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
-    /* ===== DINÁMICO ===== */
-
     const columnasSet = new Set();
 
     registros.forEach(r => {
@@ -503,17 +510,17 @@ export const descargarReporteExcel = async (req, res) => {
     });
 
     const nombresVisuales = {
-      "Presión caldera": "Presión (bar)",
-      "Vapor": "Vapor (T/H)",
-      "Flujo alimentación caldera": "Flujo Alimentación",
-      "Totalizador alimentación": "Totalizador Alimentación",
+      "Presión caldera": "Presión",
+      "Vapor": "Vapor",
+      "Flujo alimentación caldera": "Flujo",
+      "Totalizador alimentación": "Tot. Alim",
       "Temperatura gases chimenea": "T° Gases",
-      "% Diesel": "% Combustible",
-      "Flujo agua blanda": "Flujo Agua Blanda",
-      "Totalizador agua blanda": "Totalizador Agua Blanda",
+      "% Diesel": "% Comb",
+      "Flujo agua blanda": "Flujo AB",
+      "Totalizador agua blanda": "Tot AB",
       "Flujo BBA41": "BBA41",
-      "Totalizador BBA41": "Totalizador BBA41",
-      "Consumo diesel": "Consumo Combustible",
+      "Totalizador BBA41": "Tot BBA41",
+      "Consumo diesel": "Consumo",
       "Temperatura salida ITC": "T° ITC"
     };
 
@@ -531,7 +538,6 @@ export const descargarReporteExcel = async (req, res) => {
     });
 
     registros.forEach(r => {
-
       const row = sheet.getRow(rowIndex++);
       const get = label => r.parametros?.find(p => p.label === label);
 
@@ -540,7 +546,7 @@ export const descargarReporteExcel = async (req, res) => {
 
       columnas.slice(1).forEach(col => {
         const p = get(col);
-        fila.push(p ? `${p.value} ${p.unidad}` : "-");
+        fila.push(p ? `${p.value}` : "-");
       });
 
       row.values = fila;
@@ -551,20 +557,8 @@ export const descargarReporteExcel = async (req, res) => {
       });
     });
 
-    /* ===== AJUSTE VISUAL ===== */
-
-    sheet.columns.forEach(col => {
-      let maxLength = 10;
-
-      col.eachCell?.({ includeEmpty: true }, cell => {
-        const length = cell.value ? cell.value.toString().length : 0;
-        if (length > maxLength) maxLength = length;
-      });
-
-      col.width = Math.min(maxLength + 2, 25);
-    });
-
-    sheet.views = [{ state: "frozen", ySplit: rowIndex - registros.length - 1 }];
+    /* 🔥 columnas compactas */
+    sheet.columns.forEach(col => col.width = 12);
 
     /* ================= CIERRE ================= */
 
