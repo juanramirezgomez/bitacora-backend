@@ -392,19 +392,10 @@ export const descargarReporteExcel = async (req, res) => {
       right: { style: "thin" }
     };
 
-    const center = {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: true
-    };
+    const center = { horizontal: "center", vertical: "middle", wrapText: true };
+    const left = { horizontal: "left", vertical: "middle", wrapText: true };
 
-    const left = {
-      horizontal: "left",
-      vertical: "middle",
-      wrapText: true
-    };
-
-    /* ================= HEADER GENERAL ================= */
+    /* ================= HEADER ================= */
 
     sheet.mergeCells("A1:H2");
     const header = sheet.getCell("A1");
@@ -426,7 +417,6 @@ export const descargarReporteExcel = async (req, res) => {
       const row = sheet.getRow(rowIndex++);
       row.getCell(1).value = d[0];
       row.getCell(2).value = d[1];
-
       row.getCell(1).font = { bold: true };
 
       row.eachCell(cell => {
@@ -486,11 +476,7 @@ export const descargarReporteExcel = async (req, res) => {
         row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: rojo } };
       }
 
-      if (
-        f[1] === "NORMAL" ||
-        f[1] === "LLENO" ||
-        f[1] === "EN_SERVICIO"
-      ) {
+      if (["NORMAL", "LLENO", "EN_SERVICIO"].includes(f[1])) {
         row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: verde } };
       }
     });
@@ -499,7 +485,7 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex += 2;
 
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
     cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "II. REGISTRO DE OPERACIÓN";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
@@ -508,26 +494,36 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
-    /* ================= 🔥 DINÁMICO REAL ================= */
+    /* ===== DINÁMICO ===== */
 
     const columnasSet = new Set();
 
     registros.forEach(r => {
-      r.parametros?.forEach(p => {
-        columnasSet.add(p.label);
-      });
+      r.parametros?.forEach(p => columnasSet.add(p.label));
     });
 
-    const columnas = [
-      "Hora",
-      ...Array.from(columnasSet)
-    ];
+    const nombresVisuales = {
+      "Presión caldera": "Presión (bar)",
+      "Vapor": "Vapor (T/H)",
+      "Flujo alimentación caldera": "Flujo Alimentación",
+      "Totalizador alimentación": "Totalizador Alimentación",
+      "Temperatura gases chimenea": "T° Gases",
+      "% Diesel": "% Combustible",
+      "Flujo agua blanda": "Flujo Agua Blanda",
+      "Totalizador agua blanda": "Totalizador Agua Blanda",
+      "Flujo BBA41": "BBA41",
+      "Totalizador BBA41": "Totalizador BBA41",
+      "Consumo diesel": "Consumo Combustible",
+      "Temperatura salida ITC": "T° ITC"
+    };
+
+    const columnas = ["Hora", ...Array.from(columnasSet)];
 
     const header2 = sheet.getRow(rowIndex++);
 
-    columnas.forEach((c, i) => {
+    columnas.forEach((col, i) => {
       const celda = header2.getCell(i + 1);
-      celda.value = c;
+      celda.value = nombresVisuales[col] || col;
       celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azulClaro } };
       celda.font = { bold: true };
       celda.border = borde;
@@ -540,7 +536,6 @@ export const descargarReporteExcel = async (req, res) => {
       const get = label => r.parametros?.find(p => p.label === label);
 
       const fila = [];
-
       fila.push(r.hora || "-");
 
       columnas.slice(1).forEach(col => {
@@ -554,8 +549,22 @@ export const descargarReporteExcel = async (req, res) => {
         cell.border = borde;
         cell.alignment = center;
       });
-
     });
+
+    /* ===== AJUSTE VISUAL ===== */
+
+    sheet.columns.forEach(col => {
+      let maxLength = 10;
+
+      col.eachCell?.({ includeEmpty: true }, cell => {
+        const length = cell.value ? cell.value.toString().length : 0;
+        if (length > maxLength) maxLength = length;
+      });
+
+      col.width = Math.min(maxLength + 2, 25);
+    });
+
+    sheet.views = [{ state: "frozen", ySplit: rowIndex - registros.length - 1 }];
 
     /* ================= CIERRE ================= */
 
