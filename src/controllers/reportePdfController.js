@@ -521,19 +521,19 @@ export const descargarReporteExcel = async (req, res) => {
       const get = label => r.parametros?.find(p => p.label === label);
 
       row.values = [
-        r.hora || "-",
-        get("Presión caldera")?.value || "-",
-        get("Vapor")?.value || "-",
-        get("Flujo alimentación caldera")?.value || "-",
-        get("Totalizador alimentación")?.value || "-",
-        get("Temperatura gases chimenea")?.value || "-",
-        get("% Diesel")?.value || "-",
-        get("Flujo agua blanda")?.value || "-",
-        get("Totalizador agua blanda")?.value || "-",
-        get("Flujo BBA41")?.value || "-",
-        get("Totalizador BBA41")?.value || "-",
-        get("Consumo diesel")?.value || "-",
-        get("Temperatura salida ITC")?.value || "-"
+       r.hora || "-",
+       getVal("Presión caldera"),
+       getVal("Vapor"),
+       getVal("Flujo alimentación caldera"),      // ✅ CORRECTO
+       getVal("Totalizador alimentación"),        // ✅ CORRECTO
+       getVal("Temperatura gases chimenea", "°C"),// ✅ CORRECTO
+       getVal("% Diesel"),
+       getVal("Flujo agua blanda"),               // ✅ CORRECTO
+       getVal("Totalizador agua blanda"),         // ✅ CORRECTO
+       getVal("Flujo BBA41"),                     // ✅ CORRECTO
+       getVal("Totalizador BBA41"),               // ✅ CORRECTO
+       getVal("Consumo diesel"),                  // ✅ CORRECTO
+       getVal("Temperatura salida ITC", "°C")     // ✅ CORRECTO
       ];
 
       row.eachCell(cell => {
