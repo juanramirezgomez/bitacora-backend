@@ -364,8 +364,7 @@ export const descargarReporteExcel = async (req, res) => {
     const { bitacoraId } = req.params;
 
     const bitacora = await Bitacora.findById(bitacoraId);
-    if (!bitacora)
-      return res.status(404).json({ error: "No encontrada" });
+    if (!bitacora) return res.status(404).json({ error: "No encontrada" });
 
     let [checklist, registros, cierre] = await Promise.all([
       ChecklistInicial.findOne({ bitacoraId }),
@@ -378,41 +377,40 @@ export const descargarReporteExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Bitacora");
 
-    /* ===== LANDSCAPE ===== */
+    /* ===== CONFIGURACIÓN HOJA ===== */
     sheet.pageSetup = {
       orientation: 'landscape',
       fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: false
+      fitToWidth: 1
     };
 
-    /* ===== COLORES PRO ===== */
-    const azul = "FF2F5597";
-    const azulClaro = "FFE7EFFB";
-    const grisFila = "FFF7F9FC";
+    /* ===== COLORES ===== */
+    const azul = "FF1F4E78";
+    const azulClaro = "FFD9E1F2";
     const verde = "FFC6EFCE";
     const rojo = "FFFFC7CE";
 
     const borde = {
-      top: { style: "thin", color: { argb: "FFBFBFBF" } },
-      left: { style: "thin", color: { argb: "FFBFBFBF" } },
-      bottom: { style: "thin", color: { argb: "FFBFBFBF" } },
-      right: { style: "thin", color: { argb: "FFBFBFBF" } }
+      top: { style: "thin" },
+      left: { style: "thin" },
+      bottom: { style: "thin" },
+      right: { style: "thin" }
     };
 
     const center = { horizontal: "center", vertical: "middle", wrapText: true };
     const left = { horizontal: "left", vertical: "middle", wrapText: true };
 
-    /* ================= HEADER ================= */
+    let rowIndex = 1;
 
-    sheet.mergeCells("A1:Z2");
+    /* ===== HEADER ===== */
+    sheet.mergeCells("A1:N2");
     const header = sheet.getCell("A1");
     header.value = "REPORTE OPERACIONAL - CALDERA HURST";
-    header.font = { size: 18, bold: true, color: { argb: "FFFFFFFF" } };
+    header.font = { size: 16, bold: true, color: { argb: "FFFFFFFF" } };
     header.alignment = center;
     header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
 
-    let rowIndex = 4;
+    rowIndex = 4;
 
     const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
 
@@ -436,9 +434,8 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
-    /* ================= CHECKLIST ================= */
-
-    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
+    /* ===== CHECKLIST ===== */
+    sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
     let cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "I. CHECKLIST INICIAL";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
@@ -458,17 +455,17 @@ export const descargarReporteExcel = async (req, res) => {
     });
 
     const filasChecklist = [
-      ["Caldera Hurst", checklist.calderaHurst],
-      ["Bomba Alimentación Agua", checklist.bombaAlimentacionAgua],
-      ["Bomba Petróleo", checklist.bombaPetroleo],
-      ["Nivel Agua Tubo Nivel", checklist.nivelAguaTuboNivel],
-      ["Purga Superficie", checklist.purgaSuperficie],
-      ["Bomba Dosificadora Químicos", checklist.bombaDosificadoraQuimicos],
-      ["Tren Gas", checklist.trenGas],
-      ["Ablandadores", checklist.ablandadores]
+      ["Caldera Hurst", checklist?.calderaHurst],
+      ["Bomba Alimentación Agua", checklist?.bombaAlimentacionAgua],
+      ["Bomba Petróleo", checklist?.bombaPetroleo],
+      ["Nivel Agua Tubo Nivel", checklist?.nivelAguaTuboNivel],
+      ["Purga Superficie", checklist?.purgaSuperficie],
+      ["Bomba Dosificadora Químicos", checklist?.bombaDosificadoraQuimicos],
+      ["Tren Gas", checklist?.trenGas],
+      ["Ablandadores", checklist?.ablandadores]
     ];
 
-    filasChecklist.forEach((f, index) => {
+    filasChecklist.forEach(f => {
       const row = sheet.getRow(rowIndex++);
       const estado = (f[1] || "-").replace(/_/g, " ");
 
@@ -480,13 +477,7 @@ export const descargarReporteExcel = async (req, res) => {
         cell.alignment = left;
       });
 
-      if (index % 2 === 0) {
-        row.eachCell(cell => {
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: grisFila } };
-        });
-      }
-
-      if (["BAJO", "FUERA_DE_SERVICIO"].includes(f[1])) {
+      if (f[1] === "BAJO" || f[1] === "FUERA_DE_SERVICIO") {
         row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: rojo } };
       }
 
@@ -495,11 +486,10 @@ export const descargarReporteExcel = async (req, res) => {
       }
     });
 
-    /* ================= REGISTRO ================= */
-
+    /* ===== REGISTRO ===== */
     rowIndex += 2;
 
-    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
+    sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
     cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "II. REGISTRO DE OPERACIÓN";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
@@ -508,69 +498,54 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
-    const columnasSet = new Set();
-    registros.forEach(r => r.parametros?.forEach(p => columnasSet.add(p.label)));
+    const columnas = [
+      "Hora","P (bar)","Vapor","F. Alim","Tot. Alim",
+      "T° Gases","% Diesel","F. Blanda","Tot. Blanda",
+      "BBA41","Tot. BBA41","Cons.","T° ITC"
+    ];
 
-    const nombresVisuales = {
-      "Presión caldera": "Presión",
-      "Vapor": "Vapor",
-      "Flujo alimentación caldera": "Flujo",
-      "Totalizador alimentación": "Tot. Alim",
-      "Temperatura gases chimenea": "T° Gases",
-      "% Diesel": "% Comb",
-      "Flujo agua blanda": "Flujo AB",
-      "Totalizador agua blanda": "Tot AB",
-      "Flujo BBA41": "BBA41",
-      "Totalizador BBA41": "Tot BBA41",
-      "Consumo diesel": "Consumo",
-      "Temperatura salida ITC": "T° ITC"
-    };
-
-    const columnas = ["Hora", ...Array.from(columnasSet)];
+    sheet.columns = columnas.map(() => ({ width: 11 }));
 
     const header2 = sheet.getRow(rowIndex++);
-    columnas.forEach((col, i) => {
+    columnas.forEach((c, i) => {
       const celda = header2.getCell(i + 1);
-      celda.value = nombresVisuales[col] || col;
+      celda.value = c;
       celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azulClaro } };
       celda.font = { bold: true };
       celda.border = borde;
       celda.alignment = center;
     });
 
-    registros.forEach((r, index) => {
+    registros.forEach(r => {
       const row = sheet.getRow(rowIndex++);
       const get = label => r.parametros?.find(p => p.label === label);
 
-      const fila = [r.hora || "-"];
-
-      columnas.slice(1).forEach(col => {
-        const p = get(col);
-        fila.push(p ? `${p.value}` : "-");
-      });
-
-      row.values = fila;
+      row.values = [
+        r.hora || "-",
+        get("Presión caldera")?.value || "-",
+        get("Vapor")?.value || "-",
+        get("Flujo alimentación caldera")?.value || "-",
+        get("Totalizador alimentación")?.value || "-",
+        get("Temperatura gases chimenea")?.value || "-",
+        get("% Diesel")?.value || "-",
+        get("Flujo agua blanda")?.value || "-",
+        get("Totalizador agua blanda")?.value || "-",
+        get("Flujo BBA41")?.value || "-",
+        get("Totalizador BBA41")?.value || "-",
+        get("Consumo diesel")?.value || "-",
+        get("Temperatura salida ITC")?.value || "-"
+      ];
 
       row.eachCell(cell => {
         cell.border = borde;
         cell.alignment = center;
       });
-
-      /* zebra rows */
-      if (index % 2 === 0) {
-        row.eachCell(cell => {
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: grisFila } };
-        });
-      }
     });
 
-    sheet.columns.forEach(col => col.width = 12);
-
-    /* ================= CIERRE ================= */
-
+    /* ===== CIERRE ===== */
     rowIndex += 3;
 
-    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
+    sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
     cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "III. CIERRE DE TURNO";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
@@ -597,19 +572,11 @@ export const descargarReporteExcel = async (req, res) => {
       });
     });
 
-    /* ================= EXPORT ================= */
-
+    /* ===== EXPORT ===== */
     const buffer = await workbook.xlsx.writeBuffer();
 
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`
-    );
-
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
+    res.setHeader("Content-Disposition", `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
     res.send(buffer);
 
