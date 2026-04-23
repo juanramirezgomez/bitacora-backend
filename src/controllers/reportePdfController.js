@@ -378,7 +378,7 @@ export const descargarReporteExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Bitacora");
 
-    /* ===== FORMATO HORIZONTAL ===== */
+    /* ===== LANDSCAPE ===== */
     sheet.pageSetup = {
       orientation: 'landscape',
       fitToPage: true,
@@ -386,18 +386,18 @@ export const descargarReporteExcel = async (req, res) => {
       fitToHeight: false
     };
 
-    /* ================= ESTILOS ================= */
-
-    const azul = "FF1F4E78";
-    const azulClaro = "FFD9E1F2";
+    /* ===== COLORES PRO ===== */
+    const azul = "FF2F5597";
+    const azulClaro = "FFE7EFFB";
+    const grisFila = "FFF7F9FC";
     const verde = "FFC6EFCE";
     const rojo = "FFFFC7CE";
 
     const borde = {
-      top: { style: "thin" },
-      left: { style: "thin" },
-      bottom: { style: "thin" },
-      right: { style: "thin" }
+      top: { style: "thin", color: { argb: "FFBFBFBF" } },
+      left: { style: "thin", color: { argb: "FFBFBFBF" } },
+      bottom: { style: "thin", color: { argb: "FFBFBFBF" } },
+      right: { style: "thin", color: { argb: "FFBFBFBF" } }
     };
 
     const center = { horizontal: "center", vertical: "middle", wrapText: true };
@@ -405,10 +405,10 @@ export const descargarReporteExcel = async (req, res) => {
 
     /* ================= HEADER ================= */
 
-    sheet.mergeCells("A1:H2");
+    sheet.mergeCells("A1:Z2");
     const header = sheet.getCell("A1");
     header.value = "REPORTE OPERACIONAL - CALDERA HURST";
-    header.font = { size: 16, bold: true, color: { argb: "FFFFFFFF" } };
+    header.font = { size: 18, bold: true, color: { argb: "FFFFFFFF" } };
     header.alignment = center;
     header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
 
@@ -438,7 +438,7 @@ export const descargarReporteExcel = async (req, res) => {
 
     /* ================= CHECKLIST ================= */
 
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
     let cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "I. CHECKLIST INICIAL";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
@@ -448,7 +448,6 @@ export const descargarReporteExcel = async (req, res) => {
     rowIndex++;
 
     const headerRow = sheet.getRow(rowIndex++);
-
     ["Equipo", "Estado"].forEach((t, i) => {
       const c = headerRow.getCell(i + 1);
       c.value = t;
@@ -469,7 +468,7 @@ export const descargarReporteExcel = async (req, res) => {
       ["Ablandadores", checklist.ablandadores]
     ];
 
-    filasChecklist.forEach(f => {
+    filasChecklist.forEach((f, index) => {
       const row = sheet.getRow(rowIndex++);
       const estado = (f[1] || "-").replace(/_/g, " ");
 
@@ -480,6 +479,12 @@ export const descargarReporteExcel = async (req, res) => {
         cell.border = borde;
         cell.alignment = left;
       });
+
+      if (index % 2 === 0) {
+        row.eachCell(cell => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: grisFila } };
+        });
+      }
 
       if (["BAJO", "FUERA_DE_SERVICIO"].includes(f[1])) {
         row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: rojo } };
@@ -504,10 +509,7 @@ export const descargarReporteExcel = async (req, res) => {
     rowIndex++;
 
     const columnasSet = new Set();
-
-    registros.forEach(r => {
-      r.parametros?.forEach(p => columnasSet.add(p.label));
-    });
+    registros.forEach(r => r.parametros?.forEach(p => columnasSet.add(p.label)));
 
     const nombresVisuales = {
       "Presión caldera": "Presión",
@@ -527,7 +529,6 @@ export const descargarReporteExcel = async (req, res) => {
     const columnas = ["Hora", ...Array.from(columnasSet)];
 
     const header2 = sheet.getRow(rowIndex++);
-
     columnas.forEach((col, i) => {
       const celda = header2.getCell(i + 1);
       celda.value = nombresVisuales[col] || col;
@@ -537,12 +538,11 @@ export const descargarReporteExcel = async (req, res) => {
       celda.alignment = center;
     });
 
-    registros.forEach(r => {
+    registros.forEach((r, index) => {
       const row = sheet.getRow(rowIndex++);
       const get = label => r.parametros?.find(p => p.label === label);
 
-      const fila = [];
-      fila.push(r.hora || "-");
+      const fila = [r.hora || "-"];
 
       columnas.slice(1).forEach(col => {
         const p = get(col);
@@ -555,16 +555,22 @@ export const descargarReporteExcel = async (req, res) => {
         cell.border = borde;
         cell.alignment = center;
       });
+
+      /* zebra rows */
+      if (index % 2 === 0) {
+        row.eachCell(cell => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: grisFila } };
+        });
+      }
     });
 
-    /* 🔥 columnas compactas */
     sheet.columns.forEach(col => col.width = 12);
 
     /* ================= CIERRE ================= */
 
     rowIndex += 3;
 
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
     cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "III. CIERRE DE TURNO";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
