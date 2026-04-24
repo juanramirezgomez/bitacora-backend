@@ -433,6 +433,76 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex += 2;
 
+    /* ================= CHECKLIST ================= */
+
+rowIndex += 1;
+
+sheet.mergeCells(`A${rowIndex}:D${rowIndex}`);
+let cell = sheet.getCell(`A${rowIndex}`);
+cell.value = "I. CHECKLIST INICIAL";
+cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
+cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+cell.alignment = center;
+
+rowIndex++;
+
+/* 🔥 ENCABEZADO */
+const headerChecklist = sheet.getRow(rowIndex++);
+
+["Equipo", "Estado"].forEach((t, i) => {
+  const c = headerChecklist.getCell(i + 1);
+  c.value = t;
+  c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azulClaro } };
+  c.font = { bold: true };
+  c.border = borde;
+  c.alignment = center;
+});
+
+/* 🔥 DATOS */
+const filasChecklist = [
+  ["Caldera Hurst", checklist?.calderaHurst],
+  ["Bomba Alimentación Agua", checklist?.bombaAlimentacionAgua],
+  ["Bomba Petróleo", checklist?.bombaPetroleo],
+  ["Nivel Agua Tubo Nivel", checklist?.nivelAguaTuboNivel],
+  ["Purga Superficie", checklist?.purgaSuperficie],
+  ["Bomba Dosificadora Químicos", checklist?.bombaDosificadoraQuimicos],
+  ["Tren Gas", checklist?.trenGas],
+  ["Ablandadores", checklist?.ablandadores]
+];
+
+filasChecklist.forEach(f => {
+  const row = sheet.getRow(rowIndex++);
+  const estadoRaw = f[1] || "-";
+  const estado = estadoRaw.replace(/_/g, " ");
+
+  row.getCell(1).value = f[0];
+  row.getCell(2).value = estado;
+
+  row.eachCell(c => {
+    c.border = borde;
+    c.alignment = left;
+  });
+
+  /* 🔥 COLORES */
+  if (["FUERA_DE_SERVICIO", "BAJO"].includes(estadoRaw)) {
+    row.getCell(2).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: rojo }
+    };
+  }
+
+  if (["EN_SERVICIO", "NORMAL", "LLENO"].includes(estadoRaw)) {
+    row.getCell(2).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: verde }
+    };
+  }
+});
+
+rowIndex += 2;
+
     /* ================= 🔥 COLUMNAS DINÁMICAS ================= */
 
     const columnasSet = new Set();
