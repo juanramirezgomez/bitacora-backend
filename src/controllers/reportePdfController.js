@@ -516,7 +516,11 @@ export const descargarReporteExcel = async (req, res) => {
           x => normalizar(x.label) === normalizar(col)
         );
 
-        fila.push(p ? `${p.value}` : "-");
+        fila.push(
+          p
+            ? `${p.value}${p.unidad ? " " + p.unidad : ""}`
+            : "-"
+        );
       });
 
       row.values = fila;
