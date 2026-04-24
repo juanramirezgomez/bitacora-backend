@@ -382,8 +382,7 @@ export const descargarReporteExcel = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Bitacora");
 
-    /* ================= ESTILOS ================= */
-
+    /* ===== ESTILOS ===== */
     const azul = "FF1F4E78";
     const azulClaro = "FFD9E1F2";
     const verde = "FFC6EFCE";
@@ -396,28 +395,20 @@ export const descargarReporteExcel = async (req, res) => {
       right: { style: "thin" }
     };
 
-    const center = {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: true
-    };
+    const center = { horizontal: "center", vertical: "middle", wrapText: true };
+    const left = { horizontal: "left", vertical: "middle", wrapText: true };
 
-    const left = {
-      horizontal: "left",
-      vertical: "middle",
-      wrapText: true
-    };
+    let rowIndex = 1;
 
-    /* ================= HEADER GENERAL ================= */
-
-    sheet.mergeCells("A1:H2");
+    /* ===== HEADER ===== */
+    sheet.mergeCells("A1:Z2");
     const header = sheet.getCell("A1");
     header.value = "REPORTE OPERACIONAL - CALDERA HURST";
     header.font = { size: 16, bold: true, color: { argb: "FFFFFFFF" } };
     header.alignment = center;
     header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
 
-    let rowIndex = 4;
+    rowIndex = 4;
 
     const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
 
@@ -441,9 +432,8 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
-    /* ================= CHECKLIST ================= */
-
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+    /* ===== CHECKLIST ===== */
+    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
     let cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "I. CHECKLIST INICIAL";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
@@ -452,26 +442,15 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
-    const headerRow = sheet.getRow(rowIndex++);
-
-    ["Equipo", "Estado"].forEach((t, i) => {
-      const c = headerRow.getCell(i + 1);
-      c.value = t;
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azulClaro } };
-      c.font = { bold: true };
-      c.border = borde;
-      c.alignment = center;
-    });
-
     const filasChecklist = [
-      ["Caldera Hurst", checklist.calderaHurst],
-      ["Bomba Alimentación Agua", checklist.bombaAlimentacionAgua],
-      ["Bomba Petróleo", checklist.bombaPetroleo],
-      ["Nivel Agua Tubo Nivel", checklist.nivelAguaTuboNivel],
-      ["Purga Superficie", checklist.purgaSuperficie],
-      ["Bomba Dosificadora Químicos", checklist.bombaDosificadoraQuimicos],
-      ["Tren Gas", checklist.trenGas],
-      ["Ablandadores", checklist.ablandadores]
+      ["Caldera", checklist?.calderaHurst],
+      ["Bomba Agua", checklist?.bombaAlimentacionAgua],
+      ["Bomba Petróleo", checklist?.bombaPetroleo],
+      ["Nivel Agua", checklist?.nivelAguaTuboNivel],
+      ["Purga", checklist?.purgaSuperficie],
+      ["Dosificación", checklist?.bombaDosificadoraQuimicos],
+      ["Tren Gas", checklist?.trenGas],
+      ["Ablandadores", checklist?.ablandadores]
     ];
 
     filasChecklist.forEach(f => {
@@ -486,60 +465,85 @@ export const descargarReporteExcel = async (req, res) => {
         cell.alignment = left;
       });
 
-      if (f[1] === "BAJO" || f[1] === "FUERA_DE_SERVICIO") {
-        row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: rojo } };
-      }
-
-      if (
-        f[1] === "NORMAL" ||
-        f[1] === "LLENO" ||
-        f[1] === "EN_SERVICIO"
-      ) {
-        row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: verde } };
+      if (f[1]?.includes("FUERA") || f[1]?.includes("BAJO")) {
+        row.getCell(2).fill = { fgColor: { argb: rojo }, type: "pattern", pattern: "solid" };
+      } else {
+        row.getCell(2).fill = { fgColor: { argb: verde }, type: "pattern", pattern: "solid" };
       }
     });
 
-    /* ================= REGISTRO ================= */
-
     rowIndex += 2;
 
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+    /* ===== REGISTRO DINÁMICO ===== */
+
+    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
     cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "II. REGISTRO DE OPERACIÓN";
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
+    cell.fill = { fgColor: { argb: azul }, type: "pattern", pattern: "solid" };
     cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
     cell.alignment = center;
 
     rowIndex++;
 
-    /* ================= 🔥 DINÁMICO REAL ================= */
-
+    /* 🔥 columnas dinámicas */
     const columnasSet = new Set();
 
     registros.forEach(r => {
-      r.parametros?.forEach(p => {
-        columnasSet.add(p.label);
-      });
+      r.parametros?.forEach(p => columnasSet.add(p.label));
     });
+
+    /* 🔥 orden inteligente (prioriza importantes) */
+    const ordenPreferido = [
+      "Presión caldera",
+      "Vapor",
+      "Flujo alimentación caldera",
+      "Totalizador alimentación",
+      "Temperatura gases chimenea",
+      "% Diesel",
+      "Flujo agua blanda",
+      "Totalizador agua blanda",
+      "Flujo BBA41",
+      "Totalizador BBA41",
+      "Consumo diesel",
+      "Temperatura salida ITC"
+    ];
 
     const columnas = [
       "Hora",
-      ...Array.from(columnasSet)
+      ...ordenPreferido.filter(c => columnasSet.has(c)),
+      ...Array.from(columnasSet).filter(c => !ordenPreferido.includes(c))
     ];
 
-    const header2 = sheet.getRow(rowIndex++);
-
+    /* ===== HEADER TABLA ===== */
+    const headerRow = sheet.getRow(rowIndex++);
     columnas.forEach((c, i) => {
-      const celda = header2.getCell(i + 1);
-      celda.value = c;
-      celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azulClaro } };
+      const celda = headerRow.getCell(i + 1);
+
+      // nombres cortos visuales
+      const nombresCortos = {
+        "Presión caldera": "P",
+        "Vapor": "V",
+        "Flujo alimentación caldera": "F.Al",
+        "Totalizador alimentación": "Tot.Al",
+        "Temperatura gases chimenea": "T°Gas",
+        "% Diesel": "%D",
+        "Flujo agua blanda": "F.Bl",
+        "Totalizador agua blanda": "Tot.Bl",
+        "Flujo BBA41": "BBA41",
+        "Totalizador BBA41": "Tot41",
+        "Consumo diesel": "Cons",
+        "Temperatura salida ITC": "T°ITC"
+      };
+
+      celda.value = nombresCortos[c] || c;
+      celda.fill = { fgColor: { argb: azulClaro }, type: "pattern", pattern: "solid" };
       celda.font = { bold: true };
       celda.border = borde;
       celda.alignment = center;
     });
 
+    /* ===== FILAS ===== */
     registros.forEach(r => {
-
       const row = sheet.getRow(rowIndex++);
       const get = label => r.parametros?.find(p => p.label === label);
 
@@ -558,30 +562,26 @@ export const descargarReporteExcel = async (req, res) => {
         cell.border = borde;
         cell.alignment = center;
       });
-
     });
 
-    /* ================= CIERRE ================= */
+    rowIndex += 2;
 
-    rowIndex += 3;
-
-    sheet.mergeCells(`A${rowIndex}:H${rowIndex}`);
+    /* ===== CIERRE ===== */
+    sheet.mergeCells(`A${rowIndex}:Z${rowIndex}`);
     cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "III. CIERRE DE TURNO";
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
+    cell.fill = { fgColor: { argb: azul }, type: "pattern", pattern: "solid" };
     cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
     cell.alignment = center;
 
     rowIndex++;
 
-    const cierreDatos = [
+    [
       ["Recepción combustible", cierre?.recepcionCombustible],
       ["Litros combustible", cierre?.litrosCombustible],
       ["TK en servicio", cierre?.tk28EnServicio],
       ["% TK agua blanda", cierre?.tk28Porcentaje]
-    ];
-
-    cierreDatos.forEach(d => {
+    ].forEach(d => {
       const row = sheet.getRow(rowIndex++);
       row.getCell(1).value = d[0];
       row.getCell(2).value = d[1] ?? "-";
@@ -592,7 +592,8 @@ export const descargarReporteExcel = async (req, res) => {
       });
     });
 
-    /* ================= EXPORT ================= */
+    /* ===== AJUSTE ===== */
+    sheet.columns.forEach(col => col.width = 12);
 
     const buffer = await workbook.xlsx.writeBuffer();
 
