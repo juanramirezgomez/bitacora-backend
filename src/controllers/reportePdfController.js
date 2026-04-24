@@ -455,7 +455,8 @@ export const descargarReporteExcel = async (req, res) => {
 
     checklistData.forEach((f, i) => {
       const row = sheet.getRow(rowIndex++);
-      const estado = (f[1] || "-").replace(/_/g, " ");
+      const estadoRaw = f[1] || "-";
+      const estado = estadoRaw.replace(/_/g, " ");
 
       row.getCell(1).value = f[0];
       row.getCell(2).value = estado;
@@ -465,12 +466,12 @@ export const descargarReporteExcel = async (req, res) => {
         c.alignment = left;
       });
 
-      /* 🔥 COLORES INTELIGENTES */
-      if (["EN_SERVICIO", "NORMAL", "LLENO"].includes(f[1])) {
+      /* 🔥 COLORES */
+      if (["EN_SERVICIO", "NORMAL", "LLENO"].includes(estadoRaw)) {
         row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: verde } };
       }
 
-      if (["FUERA_DE_SERVICIO", "BAJO"].includes(f[1])) {
+      if (["FUERA_DE_SERVICIO", "BAJO"].includes(estadoRaw)) {
         row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: rojo } };
       }
 
@@ -508,8 +509,20 @@ export const descargarReporteExcel = async (req, res) => {
       celda.alignment = center;
     });
 
-    const getVal = (r, label) => {
-      const p = r.parametros?.find(x => x.label === label);
+    /* 🔥 FUNCIÓN ROBUSTA */
+    const normalizar = (txt) =>
+      txt?.toLowerCase()
+         .normalize("NFD")
+         .replace(/[\u0300-\u036f]/g, "")
+         .trim();
+
+    const getVal = (r, labelBuscado) => {
+      const buscado = normalizar(labelBuscado);
+
+      const p = r.parametros?.find(x =>
+        normalizar(x.label).includes(buscado)
+      );
+
       return p ? p.value : "-";
     };
 
@@ -518,18 +531,18 @@ export const descargarReporteExcel = async (req, res) => {
 
       row.values = [
         r.hora || "-",
-        getVal(r,"Presión caldera"),
-        getVal(r,"Vapor"),
-        getVal(r,"Flujo alimentación caldera"),
-        getVal(r,"Totalizador alimentación"),
-        getVal(r,"Temperatura gases chimenea"),
-        getVal(r,"% Diesel"),
-        getVal(r,"Flujo agua blanda"),
-        getVal(r,"Totalizador agua blanda"),
-        getVal(r,"Flujo BBA41"),
-        getVal(r,"Totalizador BBA41"),
-        getVal(r,"Consumo diesel"),
-        getVal(r,"Temperatura salida ITC")
+        getVal(r,"presion"),
+        getVal(r,"vapor"),
+        getVal(r,"flujo alimentacion"),
+        getVal(r,"totalizador alimentacion"),
+        getVal(r,"temperatura gases"),
+        getVal(r,"diesel"),
+        getVal(r,"agua blanda"),
+        getVal(r,"totalizador agua blanda"),
+        getVal(r,"bba41"),
+        getVal(r,"totalizador bba41"),
+        getVal(r,"consumo"),
+        getVal(r,"itc")
       ];
 
       row.eachCell(c => {
@@ -538,7 +551,9 @@ export const descargarReporteExcel = async (req, res) => {
       });
 
       if (idx % 2 === 0) {
-        row.eachCell(c => c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: gris } });
+        row.eachCell(c => {
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: gris } };
+        });
       }
     });
 
