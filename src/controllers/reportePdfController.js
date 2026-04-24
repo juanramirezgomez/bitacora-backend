@@ -480,17 +480,17 @@ export const descargarReporteExcel = async (req, res) => {
 
       /* 🔥 nombres cortos */
       celda.value = c
-        .replace("Presión caldera", "Presion(bar)")
-        .replace("Vapor", "Vapor(T/h)")
-        .replace("Flujo alimentación caldera", "F.Alm(m3/h)")
-        .replace("Totalizador alimentación", "Tot.Alm(m3)")
-        .replace("Temperatura gases chimenea", "T°Gas(cº)")
-        .replace("Consumo diesel", "Cons(m3/h)")
+        .replace("Presión caldera", "Presion")
+        .replace("Vapor", "Vapor")
+        .replace("Flujo alimentación caldera", "F.Alm")
+        .replace("Totalizador alimentación", "Tot.Alm")
+        .replace("Temperatura gases chimenea", "T°Gas")
+        .replace("Consumo diesel", "Cons")
         .replace("% Diesel", "%D")
-        .replace("Flujo agua blanda", "F.Bland(m3/h)")
-        .replace("Totalizador agua blanda", "Tot.Bland(m3)")
-        .replace("Flujo BBA41", "BBA41(m3/h)")
-        .replace("Totalizador BBA41", "Tot.BBA41(m3)")
+        .replace("Flujo agua blanda", "F.Bland")
+        .replace("Totalizador agua blanda", "Tot.Bland")
+        .replace("Flujo BBA41", "BBA41")
+        .replace("Totalizador BBA41", "Tot.BBA41")
         .replace("Temperatura salida ITC", "T°ITC");
 
       celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azulClaro } };
