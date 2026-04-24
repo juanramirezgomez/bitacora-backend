@@ -364,7 +364,9 @@ export const descargarReporteExcel = async (req, res) => {
     const { bitacoraId } = req.params;
 
     const bitacora = await Bitacora.findById(bitacoraId);
-    if (!bitacora) return res.status(404).json({ error: "No encontrada" });
+    if (!bitacora) {
+      return res.status(404).json({ error: "No encontrada" });
+    }
 
     let [checklist, registros, cierre] = await Promise.all([
       ChecklistInicial.findOne({ bitacoraId }),
@@ -372,23 +374,20 @@ export const descargarReporteExcel = async (req, res) => {
       CierreTurno.findOne({ bitacoraId })
     ]);
 
-    registros = ordenarPorTurno(registros, bitacora.turno);
+    registros = ordenarPorTurno(registros || [], bitacora.turno);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Bitacora");
 
-    /* ===== CONFIGURACIÓN HOJA ===== */
+    /* ===== CONFIG ===== */
     sheet.pageSetup = {
-      orientation: 'landscape',
+      orientation: "landscape",
       fitToPage: true,
       fitToWidth: 1
     };
 
-    /* ===== COLORES ===== */
     const azul = "FF1F4E78";
     const azulClaro = "FFD9E1F2";
-    const verde = "FFC6EFCE";
-    const rojo = "FFFFC7CE";
 
     const borde = {
       top: { style: "thin" },
@@ -398,7 +397,6 @@ export const descargarReporteExcel = async (req, res) => {
     };
 
     const center = { horizontal: "center", vertical: "middle", wrapText: true };
-    const left = { horizontal: "left", vertical: "middle", wrapText: true };
 
     let rowIndex = 1;
 
@@ -423,92 +421,31 @@ export const descargarReporteExcel = async (req, res) => {
       const row = sheet.getRow(rowIndex++);
       row.getCell(1).value = d[0];
       row.getCell(2).value = d[1];
-
-      row.getCell(1).font = { bold: true };
-
-      row.eachCell(cell => {
-        cell.border = borde;
-        cell.alignment = left;
-      });
     });
 
-    rowIndex++;
+    rowIndex += 2;
 
-    /* ===== CHECKLIST ===== */
+    /* ===== REGISTRO ===== */
     sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
     let cell = sheet.getCell(`A${rowIndex}`);
-    cell.value = "I. CHECKLIST INICIAL";
+    cell.value = "REGISTRO DE OPERACIÓN";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
     cell.alignment = center;
 
     rowIndex++;
 
-    const headerRow = sheet.getRow(rowIndex++);
-    ["Equipo", "Estado"].forEach((t, i) => {
-      const c = headerRow.getCell(i + 1);
-      c.value = t;
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azulClaro } };
-      c.font = { bold: true };
-      c.border = borde;
-      c.alignment = center;
-    });
-
-    const filasChecklist = [
-      ["Caldera Hurst", checklist?.calderaHurst],
-      ["Bomba Alimentación Agua", checklist?.bombaAlimentacionAgua],
-      ["Bomba Petróleo", checklist?.bombaPetroleo],
-      ["Nivel Agua Tubo Nivel", checklist?.nivelAguaTuboNivel],
-      ["Purga Superficie", checklist?.purgaSuperficie],
-      ["Bomba Dosificadora Químicos", checklist?.bombaDosificadoraQuimicos],
-      ["Tren Gas", checklist?.trenGas],
-      ["Ablandadores", checklist?.ablandadores]
-    ];
-
-    filasChecklist.forEach(f => {
-      const row = sheet.getRow(rowIndex++);
-      const estado = (f[1] || "-").replace(/_/g, " ");
-
-      row.getCell(1).value = f[0];
-      row.getCell(2).value = estado;
-
-      row.eachCell(cell => {
-        cell.border = borde;
-        cell.alignment = left;
-      });
-
-      if (f[1] === "BAJO" || f[1] === "FUERA_DE_SERVICIO") {
-        row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: rojo } };
-      }
-
-      if (["NORMAL", "LLENO", "EN_SERVICIO"].includes(f[1])) {
-        row.getCell(2).fill = { type: "pattern", pattern: "solid", fgColor: { argb: verde } };
-      }
-    });
-
-    /* ===== REGISTRO ===== */
-    rowIndex += 2;
-
-    sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
-    cell = sheet.getCell(`A${rowIndex}`);
-    cell.value = "II. REGISTRO DE OPERACIÓN";
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
-    cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
-    cell.alignment = center;
-
-    rowIndex++;
-
     const columnas = [
-      "Hora","P (bar)","Vapor","F. Alim","Tot. Alim",
-      "T° Gases","% Diesel","F. Blanda","Tot. Blanda",
-      "BBA41","Tot. BBA41","Cons.","T° ITC"
+      "Hora","P","V","F.Al","Tot.Al",
+      "T.Gas","%D","F.Bl","Tot.Bl",
+      "B41","Tot41","Cons","T.ITC"
     ];
 
-    sheet.columns = columnas.map(() => ({ width: 11 }));
+    sheet.columns = columnas.map(() => ({ width: 10 }));
 
-    const header2 = sheet.getRow(rowIndex++);
+    const headerRow = sheet.getRow(rowIndex++);
     columnas.forEach((c, i) => {
-      const celda = header2.getCell(i + 1);
+      const celda = headerRow.getCell(i + 1);
       celda.value = c;
       celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azulClaro } };
       celda.font = { bold: true };
@@ -516,24 +453,29 @@ export const descargarReporteExcel = async (req, res) => {
       celda.alignment = center;
     });
 
+    /* ===== HELPER SEGURO ===== */
+    const getVal = (r, label) => {
+      const p = r.parametros?.find(x => x.label === label);
+      return p ? p.value : "-";
+    };
+
     registros.forEach(r => {
       const row = sheet.getRow(rowIndex++);
-      const get = label => r.parametros?.find(p => p.label === label);
 
       row.values = [
-       r.hora || "-",
-       getVal("Presión caldera"),
-       getVal("Vapor"),
-       getVal("Flujo alimentación caldera"),      // ✅ CORRECTO
-       getVal("Totalizador alimentación"),        // ✅ CORRECTO
-       getVal("Temperatura gases chimenea", "°C"),// ✅ CORRECTO
-       getVal("% Diesel"),
-       getVal("Flujo agua blanda"),               // ✅ CORRECTO
-       getVal("Totalizador agua blanda"),         // ✅ CORRECTO
-       getVal("Flujo BBA41"),                     // ✅ CORRECTO
-       getVal("Totalizador BBA41"),               // ✅ CORRECTO
-       getVal("Consumo diesel"),                  // ✅ CORRECTO
-       getVal("Temperatura salida ITC", "°C")     // ✅ CORRECTO
+        r.hora || "-",
+        getVal(r, "Presión caldera"),
+        getVal(r, "Vapor"),
+        getVal(r, "Flujo alimentación caldera"),
+        getVal(r, "Totalizador alimentación"),
+        getVal(r, "Temperatura gases chimenea"),
+        getVal(r, "% Diesel"),
+        getVal(r, "Flujo agua blanda"),
+        getVal(r, "Totalizador agua blanda"),
+        getVal(r, "Flujo BBA41"),
+        getVal(r, "Totalizador BBA41"),
+        getVal(r, "Consumo diesel"),
+        getVal(r, "Temperatura salida ITC")
       ];
 
       row.eachCell(cell => {
@@ -542,46 +484,22 @@ export const descargarReporteExcel = async (req, res) => {
       });
     });
 
-    /* ===== CIERRE ===== */
-    rowIndex += 3;
-
-    sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
-    cell = sheet.getCell(`A${rowIndex}`);
-    cell.value = "III. CIERRE DE TURNO";
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
-    cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
-    cell.alignment = center;
-
-    rowIndex++;
-
-    const cierreDatos = [
-      ["Recepción combustible", cierre?.recepcionCombustible],
-      ["Litros combustible", cierre?.litrosCombustible],
-      ["TK en servicio", cierre?.tk28EnServicio],
-      ["% TK agua blanda", cierre?.tk28Porcentaje]
-    ];
-
-    cierreDatos.forEach(d => {
-      const row = sheet.getRow(rowIndex++);
-      row.getCell(1).value = d[0];
-      row.getCell(2).value = d[1] ?? "-";
-
-      row.eachCell(cell => {
-        cell.border = borde;
-        cell.alignment = left;
-      });
-    });
-
     /* ===== EXPORT ===== */
     const buffer = await workbook.xlsx.writeBuffer();
 
-    res.setHeader("Content-Disposition", `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`);
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`
+    );
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
 
     res.send(buffer);
 
   } catch (error) {
-    console.error(error);
+    console.error("ERROR EXCEL:", error);
     res.status(500).json({ error: "Error generando Excel" });
   }
 };
