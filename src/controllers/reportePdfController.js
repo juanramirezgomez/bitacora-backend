@@ -364,9 +364,7 @@ export const descargarReporteExcel = async (req, res) => {
     const { bitacoraId } = req.params;
 
     const bitacora = await Bitacora.findById(bitacoraId);
-    if (!bitacora) {
-      return res.status(404).json({ error: "No encontrada" });
-    }
+    if (!bitacora) return res.status(404).json({ error: "No encontrada" });
 
     let [checklist, registros, cierre] = await Promise.all([
       ChecklistInicial.findOne({ bitacoraId }),
@@ -374,20 +372,22 @@ export const descargarReporteExcel = async (req, res) => {
       CierreTurno.findOne({ bitacoraId })
     ]);
 
-    registros = ordenarPorTurno(registros || [], bitacora.turno);
+    registros = ordenarPorTurno(registros, bitacora.turno);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Bitacora");
 
-    /* ===== CONFIG ===== */
+    /* ================= CONFIG HOJA ================= */
     sheet.pageSetup = {
       orientation: "landscape",
       fitToPage: true,
       fitToWidth: 1
     };
 
+    /* ================= COLORES ================= */
     const azul = "FF1F4E78";
     const azulClaro = "FFD9E1F2";
+    const gris = "FFF2F2F2";
 
     const borde = {
       top: { style: "thin" },
@@ -397,13 +397,14 @@ export const descargarReporteExcel = async (req, res) => {
     };
 
     const center = { horizontal: "center", vertical: "middle", wrapText: true };
+    const left = { horizontal: "left", vertical: "middle", wrapText: true };
 
     let rowIndex = 1;
 
-    /* ===== HEADER ===== */
+    /* ================= HEADER ================= */
     sheet.mergeCells("A1:N2");
     const header = sheet.getCell("A1");
-    header.value = "REPORTE OPERACIONAL - CALDERA HURST";
+    header.value = "REPORTE OPERACIONAL CALDERA";
     header.font = { size: 16, bold: true, color: { argb: "FFFFFFFF" } };
     header.alignment = center;
     header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
@@ -412,25 +413,70 @@ export const descargarReporteExcel = async (req, res) => {
 
     const { dia, mes, anioCompleto } = obtenerYYMMDD(bitacora.fechaInicio);
 
-    [
+    const info = [
       ["Operador", bitacora.operador],
-      ["Turno", bitacora.turno],
-      ["N° Turno", bitacora.turnoNumero],
+      ["Turno", `${bitacora.turno} - ${bitacora.turnoNumero}`],
       ["Fecha", `${dia}-${mes}-${anioCompleto}`]
-    ].forEach(d => {
+    ];
+
+    info.forEach(d => {
       const row = sheet.getRow(rowIndex++);
       row.getCell(1).value = d[0];
       row.getCell(2).value = d[1];
+
+      row.getCell(1).font = { bold: true };
+      row.eachCell(c => {
+        c.border = borde;
+        c.alignment = left;
+      });
+    });
+
+    rowIndex++;
+
+    /* ================= CHECKLIST ================= */
+    sheet.mergeCells(`A${rowIndex}:D${rowIndex}`);
+    let cell = sheet.getCell(`A${rowIndex}`);
+    cell.value = "CHECKLIST INICIAL";
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.alignment = center;
+
+    rowIndex++;
+
+    const checklistData = [
+      ["Caldera", checklist?.calderaHurst],
+      ["BBA Agua", checklist?.bombaAlimentacionAgua],
+      ["BBA Petróleo", checklist?.bombaPetroleo],
+      ["Nivel Agua", checklist?.nivelAguaTuboNivel],
+      ["Purga", checklist?.purgaSuperficie],
+      ["Dosificación", checklist?.bombaDosificadoraQuimicos],
+      ["Tren Gas", checklist?.trenGas],
+      ["Ablandadores", checklist?.ablandadores]
+    ];
+
+    checklistData.forEach((f, i) => {
+      const row = sheet.getRow(rowIndex++);
+      row.getCell(1).value = f[0];
+      row.getCell(2).value = (f[1] || "-").replace(/_/g, " ");
+
+      row.eachCell(c => {
+        c.border = borde;
+        c.alignment = left;
+      });
+
+      if (i % 2 === 0) {
+        row.eachCell(c => c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: gris } });
+      }
     });
 
     rowIndex += 2;
 
-    /* ===== REGISTRO ===== */
+    /* ================= REGISTRO ================= */
     sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
-    let cell = sheet.getCell(`A${rowIndex}`);
+    cell = sheet.getCell(`A${rowIndex}`);
     cell.value = "REGISTRO DE OPERACIÓN";
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
-    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
     cell.alignment = center;
 
     rowIndex++;
@@ -441,7 +487,7 @@ export const descargarReporteExcel = async (req, res) => {
       "B41","Tot41","Cons","T.ITC"
     ];
 
-    sheet.columns = columnas.map(() => ({ width: 10 }));
+    sheet.columns = columnas.map(() => ({ width: 11 }));
 
     const headerRow = sheet.getRow(rowIndex++);
     columnas.forEach((c, i) => {
@@ -453,48 +499,75 @@ export const descargarReporteExcel = async (req, res) => {
       celda.alignment = center;
     });
 
-    /* ===== HELPER SEGURO ===== */
     const getVal = (r, label) => {
       const p = r.parametros?.find(x => x.label === label);
       return p ? p.value : "-";
     };
 
-    registros.forEach(r => {
+    registros.forEach((r, idx) => {
       const row = sheet.getRow(rowIndex++);
 
       row.values = [
         r.hora || "-",
-        getVal(r, "Presión caldera"),
-        getVal(r, "Vapor"),
-        getVal(r, "Flujo alimentación caldera"),
-        getVal(r, "Totalizador alimentación"),
-        getVal(r, "Temperatura gases chimenea"),
-        getVal(r, "% Diesel"),
-        getVal(r, "Flujo agua blanda"),
-        getVal(r, "Totalizador agua blanda"),
-        getVal(r, "Flujo BBA41"),
-        getVal(r, "Totalizador BBA41"),
-        getVal(r, "Consumo diesel"),
-        getVal(r, "Temperatura salida ITC")
+        getVal(r,"Presión caldera"),
+        getVal(r,"Vapor"),
+        getVal(r,"Flujo alimentación caldera"),
+        getVal(r,"Totalizador alimentación"),
+        getVal(r,"Temperatura gases chimenea"),
+        getVal(r,"% Diesel"),
+        getVal(r,"Flujo agua blanda"),
+        getVal(r,"Totalizador agua blanda"),
+        getVal(r,"Flujo BBA41"),
+        getVal(r,"Totalizador BBA41"),
+        getVal(r,"Consumo diesel"),
+        getVal(r,"Temperatura salida ITC")
       ];
 
-      row.eachCell(cell => {
-        cell.border = borde;
-        cell.alignment = center;
+      row.eachCell(c => {
+        c.border = borde;
+        c.alignment = center;
+      });
+
+      if (idx % 2 === 0) {
+        row.eachCell(c => c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: gris } });
+      }
+    });
+
+    rowIndex += 2;
+
+    /* ================= CIERRE ================= */
+    sheet.mergeCells(`A${rowIndex}:D${rowIndex}`);
+    cell = sheet.getCell(`A${rowIndex}`);
+    cell.value = "CIERRE DE TURNO";
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
+    cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
+    cell.alignment = center;
+
+    rowIndex++;
+
+    const cierreData = [
+      ["Recepción combustible", cierre?.recepcionCombustible],
+      ["Litros", cierre?.litrosCombustible],
+      ["TK en servicio", cierre?.tk28EnServicio],
+      ["% TK", cierre?.tk28Porcentaje]
+    ];
+
+    cierreData.forEach(d => {
+      const row = sheet.getRow(rowIndex++);
+      row.getCell(1).value = d[0];
+      row.getCell(2).value = d[1] ?? "-";
+
+      row.eachCell(c => {
+        c.border = borde;
+        c.alignment = left;
       });
     });
 
-    /* ===== EXPORT ===== */
+    /* ================= EXPORT ================= */
     const buffer = await workbook.xlsx.writeBuffer();
 
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`
-    );
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
+    res.setHeader("Content-Disposition", `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
     res.send(buffer);
 
