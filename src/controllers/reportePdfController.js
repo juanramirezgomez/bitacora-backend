@@ -406,7 +406,7 @@ export const descargarReporteExcel = async (req, res) => {
 
     sheet.mergeCells("A1:O2");
     const header = sheet.getCell("A1");
-    header.value = "REPORTE OPERACIONAL - CALDERA";
+    header.value = "REPORTE OPERACIONAL - CALDERA HURST";
     header.font = { size: 16, bold: true, color: { argb: "FFFFFFFF" } };
     header.alignment = center;
     header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
