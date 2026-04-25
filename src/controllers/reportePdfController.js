@@ -503,6 +503,17 @@ filasChecklist.forEach(f => {
 
 rowIndex += 2;
 
+/* ================= 🔥 TITULO REGISTRO ================= */
+
+    sheet.mergeCells(`A${rowIndex}:O${rowIndex}`);
+    cell = sheet.getCell(`A${rowIndex}`);
+    cell.value = "II. REGISTRO DE OPERACIÓN";
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.alignment = center;
+
+    rowIndex++;
+
     /* ================= 🔥 COLUMNAS DINÁMICAS ================= */
 
     const columnasSet = new Set();
@@ -657,8 +668,7 @@ async function obtenerRegistrosPorRango(desde, hasta) {
 
   const inicio = new Date(desde);
   const fin = new Date(hasta);
-
-  fin.setHours(23,59,59,999);
+  fin.setHours(23, 59, 59, 999);
 
   const bitacoras = await Bitacora.find({
     estado: "CERRADA",
@@ -679,11 +689,17 @@ async function obtenerRegistrosPorRango(desde, hasta) {
 
     registros.forEach(r => {
 
+      const parametrosLimpios = (r.parametros || []).map(p => ({
+        label: p.label?.trim(),
+        value: p.value ?? "",
+        unidad: p.unidad ?? ""
+      }));
+
       todosRegistros.push({
         fecha: `${fecha.dia}-${fecha.mes}-${fecha.anioCompleto}`,
-        hora: r.hora,
-        parametros: r.parametros,
-        purgaDeFondo: r.purgaDeFondo
+        hora: r.hora || "-",
+        parametros: parametrosLimpios,
+        purgaDeFondo: r.purgaDeFondo || "NO"
       });
 
     });
@@ -697,7 +713,6 @@ export const descargarExcelRango = async (req, res) => {
   try {
 
     const { desde, hasta } = req.query;
-
     const registros = await obtenerRegistrosPorRango(desde, hasta);
 
     if (!registros.length) {
@@ -705,9 +720,9 @@ export const descargarExcelRango = async (req, res) => {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Rango");
+    const sheet = workbook.addWorksheet("Reporte");
 
-    /* ===== COLORES ===== */
+    /* ===== ESTILOS ===== */
     const azul = "FF1F4E78";
     const azulClaro = "FFD9E1F2";
 
@@ -724,26 +739,22 @@ export const descargarExcelRango = async (req, res) => {
     const columnasSet = new Set();
 
     registros.forEach(r =>
-      r.parametros?.forEach(p => columnasSet.add(p.label))
+      r.parametros.forEach(p => columnasSet.add(p.label))
     );
 
     const columnas = [
       "Fecha",
       "Hora",
       ...Array.from(columnasSet),
-      "Purga de fondo"
+      "Purga"
     ];
 
     /* ===== HEADER ===== */
     const header = sheet.addRow(columnas);
 
     header.eachCell(cell => {
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: azul }
-      };
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
       cell.alignment = center;
       cell.border = borde;
     });
@@ -757,11 +768,11 @@ export const descargarExcelRango = async (req, res) => {
       fila.push(r.hora);
 
       columnas.slice(2, -1).forEach(col => {
-        const p = r.parametros?.find(x => x.label === col);
+        const p = r.parametros.find(x => x.label === col);
         fila.push(p ? `${p.value} ${p.unidad}` : "-");
       });
 
-      fila.push(r.purgaDeFondo || "-");
+      fila.push(r.purgaDeFondo);
 
       const row = sheet.addRow(fila);
 
@@ -772,8 +783,10 @@ export const descargarExcelRango = async (req, res) => {
 
     });
 
-    /* AUTO WIDTH */
-    sheet.columns.forEach(col => col.width = 18);
+    /* ===== AUTO AJUSTE ===== */
+    sheet.columns.forEach(col => {
+      col.width = 18;
+    });
 
     const buffer = await workbook.xlsx.writeBuffer();
 
@@ -792,7 +805,6 @@ export const descargarPdfRango = async (req, res) => {
   try {
 
     const { desde, hasta } = req.query;
-
     const registros = await obtenerRegistrosPorRango(desde, hasta);
 
     if (!registros.length) {
@@ -816,11 +828,11 @@ export const descargarPdfRango = async (req, res) => {
       .text(`Hasta: ${hasta}`)
       .moveDown();
 
-    /* ===== COLUMNAS DINÁMICAS ===== */
+    /* ===== COLUMNAS ===== */
     const columnasSet = new Set();
 
     registros.forEach(r =>
-      r.parametros?.forEach(p => columnasSet.add(p.label))
+      r.parametros.forEach(p => columnasSet.add(p.label))
     );
 
     const columnas = [
@@ -832,7 +844,7 @@ export const descargarPdfRango = async (req, res) => {
 
     const tableWidth = doc.page.width - 80;
     const colWidth = tableWidth / columnas.length;
-    const rowHeight = 20;
+    const rowHeight = 18;
 
     let y = doc.y;
 
@@ -843,7 +855,7 @@ export const descargarPdfRango = async (req, res) => {
       doc.rect(40 + i * colWidth, y, colWidth, rowHeight)
         .fillAndStroke("#1F4E78", "#000");
 
-      doc.fillColor("white").text(col, 40 + i * colWidth + 2, y + 6, {
+      doc.fillColor("white").text(col, 40 + i * colWidth + 2, y + 5, {
         width: colWidth - 4,
         align: "center"
       });
@@ -864,7 +876,7 @@ export const descargarPdfRango = async (req, res) => {
         else if (col === "Hora") val = r.hora;
         else if (col === "Purga") val = r.purgaDeFondo;
         else {
-          const p = r.parametros?.find(x => x.label === col);
+          const p = r.parametros.find(x => x.label === col);
           if (p) val = `${p.value} ${p.unidad}`;
         }
 
@@ -872,7 +884,7 @@ export const descargarPdfRango = async (req, res) => {
 
         doc.rect(40 + i * colWidth, y, colWidth, rowHeight).stroke();
 
-        doc.text(val, 40 + i * colWidth + 2, y + 6, {
+        doc.text(val, 40 + i * colWidth + 2, y + 5, {
           width: colWidth - 4,
           align: "center"
         });
