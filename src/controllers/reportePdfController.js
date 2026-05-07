@@ -452,176 +452,19 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   );
 
   /* =====================================================
-     REGISTROS
+     REGISTROS NUEVO DISEÑO
   ===================================================== */
 
   sectionTitle(
-    "II. REGISTRO DE OPERACIÓN (LECTURAS)",
+    "II. REGISTRO DE OPERACIÓN",
     checkY + 100
   );
 
-  let tableY = checkY + 155;
+  let regY = checkY + 155;
 
-  /* =====================================================
-     COLUMNAS
-  ===================================================== */
+  registros.forEach((reg, index) => {
 
-  const columnas = ["Hora"];
-
-  const labelsSet = new Set();
-
-  registros.forEach(reg => {
-
-    reg.parametros?.forEach(p => {
-
-      labelsSet.add(p.label);
-
-    });
-
-  });
-
-  columnas.push(...Array.from(labelsSet));
-
-  columnas.push("Purga");
-
-  const startX = 10;
-
-  const tableWidth = 970;
-
-  const colWidth =
-  tableWidth / columnas.length;
-
-  /* =====================================================
-     HEADER TABLA FINAL
-  ===================================================== */
-
-  let x = startX;
-
-  columnas.forEach(col => {
-
-    doc.rect(
-      x,
-      tableY,
-      colWidth,
-      24
-    )
-    .fillAndStroke(
-      COLORS.violet,
-      "#ffffff"
-    );
-
-    let titulo = col;
-
-    titulo = titulo
-      .replace("Presión", "P.")
-      .replace("Temperatura", "T.")
-      .replace("alimentación", "Alim.")
-      .replace("caldera", "Cald.")
-      .replace("agua", "Ag.")
-      .replace("diesel", "Dsl.")
-      .replace("Flujo", "Fl.")
-      .replace("Purga", "Pg.");
-
-    while (
-      doc.widthOfString(titulo, {
-        font: "Helvetica-Bold",
-        size: 5
-      }) > (colWidth - 4)
-    ) {
-
-      titulo = titulo.slice(0, -1);
-
-    }
-
-    doc.fillColor("#ffffff")
-    .font("Helvetica-Bold")
-    .fontSize(5)
-    .text(
-      titulo,
-      x + 2,
-      tableY + 8,
-      {
-        width: colWidth - 4,
-        align: "center"
-      }
-    );
-
-    x += colWidth;
-  });
-
-  tableY += 24;
-
-  /* =====================================================
-     FILAS
-  ===================================================== */
-
-  registros.forEach((reg, rowIndex) => {
-
-    x = startX;
-
-    columnas.forEach(col => {
-
-      let valor = "-";
-
-      if (col === "Hora") {
-
-        valor = reg.hora || "-";
-
-      } else if (col === "Purga") {
-
-        valor = reg.purgaDeFondo || "-";
-
-      } else {
-
-        const found =
-        reg.parametros?.find(
-          p => p.label === col
-        );
-
-        if (found)
-          valor = `${found.value}`;
-      }
-
-      doc.rect(
-        x,
-        tableY,
-        colWidth,
-        22
-      )
-      .fillAndStroke(
-        rowIndex % 2 === 0
-          ? "#ffffff"
-          : "#f8faff",
-        COLORS.border
-      );
-
-      let color = COLORS.dark;
-
-      if (valor === "SI")
-        color = COLORS.green;
-
-      if (valor === "NO")
-        color = COLORS.red;
-
-      doc.fillColor(color)
-      .font("Helvetica")
-      .fontSize(5.5)
-      .text(
-        String(valor),
-        x + 1,
-        tableY + 7,
-        {
-          width: colWidth - 2,
-          align: "center"
-        }
-      );
-
-      x += colWidth;
-    });
-
-    tableY += 22;
-
-    if (tableY > 520) {
+    if (regY > 500) {
 
       drawFooter();
 
@@ -629,65 +472,118 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       drawHeader();
 
-      tableY = 150;
-
-      let rx = startX;
-
-      columnas.forEach(col => {
-
-        doc.rect(
-          rx,
-          tableY,
-          colWidth,
-          24
-        )
-        .fillAndStroke(
-          COLORS.violet,
-          "#ffffff"
-        );
-
-        let titulo = col;
-
-        titulo = titulo
-          .replace("Presión", "P.")
-          .replace("Temperatura", "T.")
-          .replace("alimentación", "Alim.")
-          .replace("caldera", "Cald.")
-          .replace("agua", "Ag.")
-          .replace("diesel", "Dsl.")
-          .replace("Flujo", "Fl.")
-          .replace("Purga", "Pg.");
-
-        while (
-          doc.widthOfString(titulo, {
-            font: "Helvetica-Bold",
-            size: 5
-          }) > (colWidth - 4)
-        ) {
-
-          titulo = titulo.slice(0, -1);
-
-        }
-
-        doc.fillColor("#ffffff")
-        .font("Helvetica-Bold")
-        .fontSize(5)
-        .text(
-          titulo,
-          rx + 2,
-          tableY + 8,
-          {
-            width: colWidth - 4,
-            align: "center"
-          }
-        );
-
-        rx += colWidth;
-      });
-
-      tableY += 24;
+      regY = 140;
     }
 
+    /* CARD REGISTRO */
+
+    doc.roundedRect(
+      20,
+      regY,
+      968,
+      140,
+      10
+    )
+    .fillAndStroke(
+      "#ffffff",
+      COLORS.border
+    );
+
+    /* HEADER */
+
+    doc.roundedRect(
+      20,
+      regY,
+      968,
+      32,
+      10
+    )
+    .fill(
+      index % 2 === 0
+        ? COLORS.violet
+        : COLORS.blue
+    );
+
+    doc.fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .fontSize(12)
+    .text(
+      `REGISTRO ${reg.hora}`,
+      40,
+      regY + 10
+    );
+
+    let px = 40;
+    let py = regY + 50;
+
+    const parametros =
+    reg.parametros || [];
+
+    parametros.forEach((p, i) => {
+
+      const col =
+      i % 3;
+
+      const row =
+      Math.floor(i / 3);
+
+      px = 40 + (col * 305);
+
+      py = regY + 50 + (row * 28);
+
+      doc.fillColor(COLORS.gray)
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .text(
+        p.label,
+        px,
+        py
+      );
+
+      doc.fillColor(COLORS.dark)
+      .font("Helvetica")
+      .fontSize(8)
+      .text(
+        `${p.value} ${p.unidad || ""}`,
+        px + 150,
+        py
+      );
+
+    });
+
+    /* PURGA */
+
+    doc.roundedRect(
+      720,
+      regY + 100,
+      220,
+      26,
+      6
+    )
+    .fill(
+      reg.purgaDeFondo === "SI"
+        ? "#dcfce7"
+        : "#fee2e2"
+    );
+
+    doc.fillColor(
+      reg.purgaDeFondo === "SI"
+        ? COLORS.green
+        : COLORS.red
+    )
+    .font("Helvetica-Bold")
+    .fontSize(9)
+    .text(
+      `PURGA: ${reg.purgaDeFondo}`,
+      790,
+      regY + 109,
+      {
+        align: "center",
+        width: 80
+      }
+    );
+
+    regY += 160;
   });
 
   drawFooter();
