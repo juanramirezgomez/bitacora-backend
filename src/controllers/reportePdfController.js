@@ -133,10 +133,18 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     try { fs.unlinkSync(filePath); } catch {}
   }
 
+  /* =====================================================
+     PDF LANDSCAPE LEGAL
+  ===================================================== */
+
   const doc = new PDFDocument({
-    size: "A4",
+
+    size: "LEGAL",
+    layout: "landscape",
+
     margin: 0,
     bufferPages: true
+
   });
 
   const stream =
@@ -154,7 +162,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     blue: "#7177EC",
 
     dark: "#111827",
-    gray: "#6b7280",
+    gray: "#64748b",
 
     light: "#f8fafc",
     border: "#dbe4ee",
@@ -169,17 +177,11 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   const drawHeader = () => {
 
-    doc.rect(0, 0, 595, 110)
+    doc.rect(0, 0, 1008, 105)
     .fill("#ffffff");
 
-    doc.rect(0, 108, 595, 4)
+    doc.rect(0, 101, 1008, 4)
     .fill(COLORS.violet);
-
-    doc.rect(460, 0, 135, 110)
-    .fill(COLORS.violet);
-
-    doc.rect(520, 0, 75, 110)
-    .fill(COLORS.blue);
 
     /* LOGO */
 
@@ -189,19 +191,17 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         process.cwd(),
         "src",
         "assets",
-        "logo-novandino5.png"
+        "logo-final.png"
       );
-
-      console.log("LOGO:", logoPath);
 
       if (fs.existsSync(logoPath)) {
 
         doc.image(
           logoPath,
-          25,
+          30,
           20,
           {
-            width: 120
+            width: 130
           }
         );
       }
@@ -215,32 +215,20 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     doc.fillColor(COLORS.dark)
     .font("Helvetica-Bold")
-    .fontSize(22)
+    .fontSize(28)
     .text(
       "BITÁCORA DIGITAL DE OPERACIÓN",
-      170,
-      35
+      210,
+      34
     );
 
-    doc.fillColor("#475569")
+    doc.fillColor(COLORS.gray)
     .font("Helvetica")
-    .fontSize(10)
+    .fontSize(11)
     .text(
-      "SISTEMA DIGITAL DE CONTROL Y MONITOREO DE CALDERA",
-      170,
-      68
-    );
-
-    doc.fillColor("#ffffff")
-    .font("Helvetica-Bold")
-    .fontSize(12)
-    .text(
-      "BITÁCORA\nCERRADA",
-      490,
-      38,
-      {
-        align: "center"
-      }
+      "Sistema digital de control y monitoreo de caldera",
+      212,
+      72
     );
   };
 
@@ -253,16 +241,20 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     doc.roundedRect(
       20,
       y,
-      555,
-      32,
-      6
+      968,
+      34,
+      8
     )
     .fill(color);
 
     doc.fillColor("#ffffff")
     .font("Helvetica-Bold")
-    .fontSize(13)
-    .text(title, 35, y + 9);
+    .fontSize(14)
+    .text(
+      title,
+      38,
+      y + 10
+    );
   };
 
   const card = (
@@ -278,7 +270,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       y,
       w,
       h,
-      8
+      10
     )
     .fillAndStroke(
       fill,
@@ -287,7 +279,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   };
 
   /* =====================================================
-     PAGE 1
+     HEADER
   ===================================================== */
 
   drawHeader();
@@ -296,61 +288,61 @@ export const generarReportePdfInterno = async (bitacoraId) => {
      INFO
   ===================================================== */
 
-  card(20, 130, 555, 70);
+  card(20, 130, 968, 72);
 
   doc.fillColor(COLORS.violet)
   .font("Helvetica-Bold")
-  .fontSize(9)
-  .text("OPERADOR", 45, 148);
+  .fontSize(10)
+  .text("OPERADOR", 50, 148);
 
   doc.fillColor(COLORS.dark)
-  .fontSize(13)
-  .text(bitacora.operador, 45, 166);
+  .fontSize(15)
+  .text(bitacora.operador, 50, 168);
 
   doc.fillColor(COLORS.violet)
-  .fontSize(9)
-  .text("TURNO", 210, 148);
+  .fontSize(10)
+  .text("TURNO", 320, 148);
 
   doc.fillColor(COLORS.dark)
-  .fontSize(13)
+  .fontSize(15)
   .text(
     `${bitacora.turno} - ${bitacora.turnoNumero}`,
-    210,
-    166
+    320,
+    168
   );
 
   doc.fillColor(COLORS.violet)
-  .fontSize(9)
-  .text("FECHA", 360, 148);
+  .fontSize(10)
+  .text("FECHA", 600, 148);
 
   doc.fillColor(COLORS.dark)
-  .fontSize(13)
+  .fontSize(15)
   .text(
     `${dia}/${mes}/${anioCompleto}`,
-    360,
-    166
+    600,
+    168
   );
 
   doc.fillColor(COLORS.violet)
-  .fontSize(9)
-  .text("ESTADO", 500, 148);
+  .fontSize(10)
+  .text("ESTADO", 840, 148);
 
   doc.roundedRect(
-    490,
+    830,
     165,
-    65,
-    22,
+    95,
+    24,
     6
   )
   .fill(COLORS.green);
 
   doc.fillColor("#ffffff")
   .font("Helvetica-Bold")
-  .fontSize(9)
+  .fontSize(10)
   .text(
     "CERRADA",
-    499,
-    172
+    848,
+    173
   );
 
   /* =====================================================
@@ -359,10 +351,10 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   sectionTitle(
     "I. CHECKLIST INICIAL",
-    220
+    230
   );
 
-  let checkY = 265;
+  let checkY = 285;
 
   const labelsChecklist = {
 
@@ -400,43 +392,40 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     const x =
       index % 2 === 0
         ? 20
-        : 300;
+        : 505;
 
     if (index % 2 === 0 && index !== 0)
-      checkY += 38;
+      checkY += 42;
 
     card(
       x,
       checkY,
-      275,
-      30,
+      465,
+      34,
       "#ffffff"
     );
 
     doc.fillColor(COLORS.dark)
     .font("Helvetica")
-    .fontSize(9)
+    .fontSize(10)
     .text(
       label,
-      x + 12,
-      checkY + 10,
-      {
-        width: 150
-      }
+      x + 15,
+      checkY + 12
     );
 
     doc.fillColor(COLORS.green)
     .font("Helvetica-Bold")
-    .fontSize(9)
+    .fontSize(10)
     .text(
       String(value).replace(/_/g, " "),
-      x + 180,
-      checkY + 10
+      x + 300,
+      checkY + 12
     );
 
   });
 
-  checkY += 55;
+  checkY += 60;
 
   /* =====================================================
      OBSERVACIONES
@@ -445,42 +434,44 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   card(
     20,
     checkY,
-    555,
-    65,
+    968,
+    70,
     "#f8f7ff"
   );
 
   doc.fillColor(COLORS.violet)
   .font("Helvetica-Bold")
-  .fontSize(10)
+  .fontSize(11)
   .text(
     "OBSERVACIONES INICIALES",
-    35,
-    checkY + 12
+    40,
+    checkY + 15
   );
 
   doc.fillColor(COLORS.dark)
   .font("Helvetica")
-  .fontSize(9)
+  .fontSize(10)
   .text(
     checklist?.observacionesIniciales || "-",
-    35,
-    checkY + 32,
+    40,
+    checkY + 38,
     {
-      width: 510
+      width: 900
     }
   );
 
   /* =====================================================
-     REGISTROS
+     REGISTROS TABLA
   ===================================================== */
 
   sectionTitle(
     "II. REGISTRO DE OPERACIÓN (LECTURAS)",
-    checkY + 90
+    checkY + 100
   );
 
-  let tableY = checkY + 140;
+  let tableY = checkY + 155;
+
+  /* COLUMNAS */
 
   const columnas = ["Hora"];
 
@@ -500,17 +491,17 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   columnas.push("Purga");
 
-  const totalWidth = 555;
+  /* CONFIG */
+
+  const startX = 10;
+  const tableWidth = 988;
 
   const colWidth =
-  Math.max(
-    70,
-    totalWidth / columnas.length
-  );
+  tableWidth / columnas.length;
 
-  /* HEADER TABLA */
+  /* HEADER */
 
-  let x = 20;
+  let x = startX;
 
   columnas.forEach(col => {
 
@@ -518,17 +509,31 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       x,
       tableY,
       colWidth,
-      30
+      42
     )
     .fill(COLORS.violet);
 
     doc.fillColor("#ffffff")
     .font("Helvetica-Bold")
-    .fontSize(7)
-    .text(
-      col,
+    .fontSize(6);
+
+    let titulo = col;
+
+    titulo = titulo
+      .replace("alimentación", "alim.")
+      .replace("Temperatura", "Temp.")
+      .replace("Presión", "Pres.")
+      .replace("agua/blanda", "agua")
+      .replace("Flujo", "Fl.")
+      .replace("caldera", "cald.")
+      .replace("alimentacion", "alim.")
+      .replace("diesel", "dsl")
+      .replace("Purga", "P.");
+
+    doc.text(
+      titulo,
       x + 2,
-      tableY + 10,
+      tableY + 13,
       {
         width: colWidth - 4,
         align: "center"
@@ -538,13 +543,13 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     x += colWidth;
   });
 
-  tableY += 30;
+  tableY += 42;
 
   /* FILAS */
 
   registros.forEach((reg, rowIndex) => {
 
-    x = 20;
+    x = startX;
 
     columnas.forEach(col => {
 
@@ -566,15 +571,14 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         );
 
         if (found)
-          valor =
-          `${found.value}`;
+          valor = `${found.value}`;
       }
 
       doc.rect(
         x,
         tableY,
         colWidth,
-        26
+        28
       )
       .fillAndStroke(
         rowIndex % 2 === 0
@@ -583,22 +587,23 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         COLORS.border
       );
 
-      doc.fillColor(
-        valor === "SI"
-          ? COLORS.green
-          : valor === "NO"
-          ? COLORS.red
-          : COLORS.dark
-      );
+      let color = COLORS.dark;
 
-      doc.font("Helvetica")
-      .fontSize(7)
+      if (valor === "SI")
+        color = COLORS.green;
+
+      if (valor === "NO")
+        color = COLORS.red;
+
+      doc.fillColor(color)
+      .font("Helvetica")
+      .fontSize(6.5)
       .text(
         String(valor),
-        x + 2,
-        tableY + 9,
+        x + 1,
+        tableY + 10,
         {
-          width: colWidth - 4,
+          width: colWidth - 2,
           align: "center"
         }
       );
@@ -606,28 +611,67 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       x += colWidth;
     });
 
-    tableY += 26;
+    tableY += 28;
+
+    /* NUEVA PAGINA */
+
+    if (tableY > 520) {
+
+      doc.addPage();
+
+      drawHeader();
+
+      tableY = 150;
+
+      let rx = startX;
+
+      columnas.forEach(col => {
+
+        doc.rect(
+          rx,
+          tableY,
+          colWidth,
+          42
+        )
+        .fill(COLORS.violet);
+
+        doc.fillColor("#ffffff")
+        .font("Helvetica-Bold")
+        .fontSize(6);
+
+        let titulo = col;
+
+        titulo = titulo
+          .replace("alimentación", "alim.")
+          .replace("Temperatura", "Temp.")
+          .replace("Presión", "Pres.")
+          .replace("agua/blanda", "agua")
+          .replace("Flujo", "Fl.")
+          .replace("caldera", "cald.")
+          .replace("alimentacion", "alim.")
+          .replace("diesel", "dsl")
+          .replace("Purga", "P.");
+
+        doc.text(
+          titulo,
+          rx + 2,
+          tableY + 13,
+          {
+            width: colWidth - 4,
+            align: "center"
+          }
+        );
+
+        rx += colWidth;
+      });
+
+      tableY += 42;
+    }
 
   });
 
   /* =====================================================
-     FOOTER PAGE 1
-  ===================================================== */
-
-  doc.rect(0, 810, 595, 32)
-  .fill(COLORS.violet);
-
-  doc.fillColor("#ffffff")
-  .font("Helvetica-Bold")
-  .fontSize(10)
-  .text(
-    "Página 1 de 2",
-    500,
-    822
-  );
-
-  /* =====================================================
-     PAGE 2
+     PAGE CIERRE
   ===================================================== */
 
   doc.addPage();
@@ -636,82 +680,83 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   sectionTitle(
     "III. CIERRE Y FIRMA",
-    140
+    140,
+    COLORS.blue
   );
 
   /* RECEPCION */
 
-  card(25, 190, 270, 95);
+  card(25, 205, 460, 100);
 
   doc.fillColor(COLORS.violet)
   .font("Helvetica-Bold")
-  .fontSize(10)
+  .fontSize(11)
   .text(
     "RECEPCIÓN COMBUSTIBLE",
-    45,
-    210
+    50,
+    225
   );
 
   doc.fillColor(COLORS.dark)
   .font("Helvetica")
-  .fontSize(10)
+  .fontSize(11)
   .text(
     `Recepción combustible: ${cierre?.recepcionCombustible || "-"}`,
-    45,
-    240
+    50,
+    255
   );
 
   doc.text(
     `Litros combustible: ${cierre?.litrosCombustible || "-"}`,
-    45,
-    262
+    50,
+    280
   );
 
   /* TK */
 
-  card(305, 190, 270, 95);
+  card(525, 205, 460, 100);
 
   doc.fillColor(COLORS.blue)
   .font("Helvetica-Bold")
-  .fontSize(10)
+  .fontSize(11)
   .text(
     "TK AGUA BLANDA",
-    325,
-    210
+    550,
+    225
   );
 
   doc.fillColor(COLORS.dark)
   .font("Helvetica")
-  .fontSize(10)
+  .fontSize(11)
   .text(
     `TK28 en servicio: ${cierre?.tk28EnServicio || "-"}`,
-    325,
-    240
+    550,
+    255
   );
 
   doc.text(
     `% TK agua blanda: ${cierre?.tk28Porcentaje || "-"}`,
-    325,
-    262
+    550,
+    280
   );
 
   /* OBSERVACIONES */
 
   card(
     25,
-    305,
-    550,
-    120,
+    340,
+    960,
+    130,
     "#fafaff"
   );
 
   doc.fillColor(COLORS.violet)
   .font("Helvetica-Bold")
-  .fontSize(10)
+  .fontSize(11)
   .text(
     "OBSERVACIONES FINALES",
-    45,
-    325
+    50,
+    360
   );
 
   doc.fillColor(COLORS.dark)
@@ -719,30 +764,30 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   .fontSize(10)
   .text(
     cierre?.comentariosFinales || "-",
-    45,
-    355,
+    50,
+    390,
     {
-      width: 500
+      width: 900
     }
   );
 
   /* FIRMA */
 
   card(
-    140,
-    470,
-    320,
+    330,
+    520,
+    340,
     220,
     "#ffffff"
   );
 
   doc.fillColor(COLORS.violet)
   .font("Helvetica-Bold")
-  .fontSize(11)
+  .fontSize(12)
   .text(
     "FIRMA OPERADOR",
-    245,
-    490
+    430,
+    545
   );
 
   if (cierre?.firmaBase64) {
@@ -760,8 +805,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       doc.image(
         buffer,
-        190,
-        525,
+        390,
+        585,
         {
           fit: [220, 90]
         }
@@ -770,50 +815,92 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     } catch {}
   }
 
-  doc.moveTo(200, 635)
-  .lineTo(400, 635)
+  doc.moveTo(410, 695)
+  .lineTo(590, 695)
   .strokeColor("#9ca3af")
   .stroke();
 
   doc.fillColor(COLORS.dark)
   .font("Helvetica-Bold")
-  .fontSize(11)
+  .fontSize(12)
   .text(
     bitacora.operador,
-    140,
-    648,
+    330,
+    708,
     {
-      width: 320,
+      width: 340,
       align: "center"
     }
   );
 
-  doc.fillColor("#64748b")
+  doc.fillColor(COLORS.gray)
   .font("Helvetica")
-  .fontSize(9)
-  .text(
-    "Firma digital operador",
-    140,
-    668,
-    {
-      width: 320,
-      align: "center"
-    }
-  );
-
-  /* FOOTER */
-
-  doc.rect(0, 810, 595, 32)
-  .fill(COLORS.violet);
-
-  doc.fillColor("#ffffff")
-  .font("Helvetica-Bold")
   .fontSize(10)
   .text(
-    "Página 2 de 2",
-    500,
-    822
+    "Firma digital operador",
+    330,
+    730,
+    {
+      width: 340,
+      align: "center"
+    }
   );
+
+  /* =====================================================
+     LOGO FOOTER
+  ===================================================== */
+
+  try {
+
+    const logoFooter = path.join(
+      process.cwd(),
+      "src",
+      "assets",
+      "logo-final.png"
+    );
+
+    if (fs.existsSync(logoFooter)) {
+
+      doc.image(
+        logoFooter,
+        40,
+        735,
+        {
+          width: 140,
+          opacity: 0.18
+        }
+      );
+    }
+
+  } catch {}
+
+  /* =====================================================
+     FOOTERS
+  ===================================================== */
+
+  const pages =
+  doc.bufferedPageRange();
+
+  for (let i = 0; i < pages.count; i++) {
+
+    doc.switchToPage(i);
+
+    doc.rect(0, 585, 1008, 28)
+    .fill(COLORS.violet);
+
+    doc.fillColor("#ffffff")
+    .font("Helvetica")
+    .fontSize(9)
+    .text(
+      `Novandino Litio • Bitácora Digital • Página ${i + 1}`,
+      0,
+      595,
+      {
+        align: "center",
+        width: 1008
+      }
+    );
+  }
 
   doc.end();
 
