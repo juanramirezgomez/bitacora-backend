@@ -141,7 +141,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     size: "LEGAL",
     layout: "landscape",
-    margin: 0
+    margin: 0,
+    bufferPages: true
 
   });
 
@@ -451,7 +452,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   );
 
   /* =====================================================
-     REGISTROS TABLA FINAL PRO
+     REGISTRO OPERACIÓN
   ===================================================== */
 
   sectionTitle(
@@ -459,34 +460,81 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     checkY + 100
   );
 
-  let regY = checkY + 155;
+  let tableY = checkY + 155;
+
+  const columnas = [
+
+    { key: "hora", label: "Hora", width: 70 },
+
+    { key: "Presión caldera", label: "Pres.", width: 62 },
+
+    { key: "Vapor", label: "Vapor", width: 68 },
+
+    { key: "F alimentacion", label: "F alim.", width: 70 },
+
+    { key: "T alimentación", label: "T alim.", width: 68 },
+
+    { key: "Temperatura gases chimenea", label: "T° gases", width: 70 },
+
+    { key: "C diesel", label: "C diesel", width: 68 },
+
+    { key: "% Diesel", label: "% Diesel", width: 65 },
+
+    { key: "F agua/blanda", label: "F agua", width: 70 },
+
+    { key: "T agua/blanda", label: "T agua", width: 68 },
+
+    { key: "Flujo BBA41", label: "FI.BBA41", width: 70 },
+
+    { key: "T BBA41", label: "T BBA41", width: 68 },
+
+    { key: "Tº ITC", label: "T° ITC", width: 65 },
+
+    { key: "purga", label: "P.", width: 60 }
+
+  ];
+
+  const rowHeight = 28;
+
+  const tableX = 18;
+
+  /* HEADER TABLA */
+
+  let hx = tableX;
+
+  columnas.forEach(col => {
+
+    doc.rect(
+      hx,
+      tableY,
+      col.width,
+      rowHeight
+    )
+    .fill(COLORS.violet);
+
+    doc.fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .fontSize(7)
+    .text(
+      col.label,
+      hx,
+      tableY + 10,
+      {
+        width: col.width,
+        align: "center"
+      }
+    );
+
+    hx += col.width;
+  });
+
+  tableY += rowHeight;
+
+  /* FILAS */
 
   registros.forEach((reg, index) => {
 
-    const parametros =
-    reg.parametros || [];
-
-    const mitad =
-    Math.ceil(parametros.length / 2);
-
-    const izquierda =
-    parametros.slice(0, mitad);
-
-    const derecha =
-    parametros.slice(mitad);
-
-    const filas =
-    Math.max(
-      izquierda.length,
-      derecha.length
-    );
-
-    const alturaTabla =
-    40 + (filas * 24) + 45;
-
-    /* SALTO PAGINA */
-
-    if (regY + alturaTabla > 540) {
+    if (tableY > 520) {
 
       drawFooter();
 
@@ -494,220 +542,106 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       drawHeader();
 
-      regY = 140;
+      tableY = 140;
+
+      let rx = tableX;
+
+      columnas.forEach(col => {
+
+        doc.rect(
+          rx,
+          tableY,
+          col.width,
+          rowHeight
+        )
+        .fill(COLORS.violet);
+
+        doc.fillColor("#ffffff")
+        .font("Helvetica-Bold")
+        .fontSize(7)
+        .text(
+          col.label,
+          rx,
+          tableY + 10,
+          {
+            width: col.width,
+            align: "center"
+          }
+        );
+
+        rx += col.width;
+      });
+
+      tableY += rowHeight;
     }
 
-    /* CARD */
+    let x = tableX;
 
-    doc.roundedRect(
-      20,
-      regY,
-      968,
-      alturaTabla,
-      10
-    )
-    .fillAndStroke(
-      "#ffffff",
-      COLORS.border
-    );
+    columnas.forEach(col => {
 
-    /* HEADER */
+      let value = "-";
 
-    doc.roundedRect(
-      20,
-      regY,
-      968,
-      32,
-      10
-    )
-    .fill(
-      index % 2 === 0
-        ? COLORS.violet
-        : COLORS.blue
-    );
+      if (col.key === "hora") {
 
-    doc.fillColor("#ffffff")
-    .font("Helvetica-Bold")
-    .fontSize(12)
-    .text(
-      `REGISTRO ${reg.hora}`,
-      40,
-      regY + 10
-    );
+        value = reg.hora;
 
-    /* =====================================================
-       TABLA
-    ===================================================== */
+      } else if (col.key === "purga") {
 
-    const tableX = 40;
-    const tableY = regY + 50;
+        value = reg.purgaDeFondo;
 
-    const widths = [
+      } else {
 
-      250,
-      90,
+        const param =
+        reg.parametros?.find(
+          p => p.label === col.key
+        );
 
-      250,
-      90
-    ];
-
-    const rowHeight = 24;
-
-    /* HEADER TABLA */
-
-    let hx = tableX;
-
-    [
-      "PARÁMETRO",
-      "VALOR",
-      "PARÁMETRO",
-      "VALOR"
-    ].forEach((t, i) => {
+        if (param)
+          value = param.value;
+      }
 
       doc.rect(
-        hx,
+        x,
         tableY,
-        widths[i],
+        col.width,
         rowHeight
       )
       .fillAndStroke(
-        "#ede9fe",
+        index % 2 === 0
+          ? "#f8fafc"
+          : "#eef2ff",
         COLORS.border
       );
 
-      doc.fillColor(COLORS.violet)
-      .font("Helvetica-Bold")
-      .fontSize(8)
+      doc.fillColor(
+        col.key === "purga"
+          ? (value === "SI"
+              ? COLORS.green
+              : COLORS.red)
+          : COLORS.dark
+      );
+
+      doc.font(
+        col.key === "purga"
+          ? "Helvetica-Bold"
+          : "Helvetica"
+      );
+
+      doc.fontSize(7)
       .text(
-        t,
-        hx,
-        tableY + 8,
+        String(value),
+        x,
+        tableY + 10,
         {
-          width: widths[i],
+          width: col.width,
           align: "center"
         }
       );
 
-      hx += widths[i];
+      x += col.width;
     });
 
-    /* FILAS */
-
-    for (let i = 0; i < filas; i++) {
-
-      const y =
-      tableY + rowHeight + (i * rowHeight);
-
-      let x = tableX;
-
-      widths.forEach(w => {
-
-        doc.rect(
-          x,
-          y,
-          w,
-          rowHeight
-        )
-        .stroke(COLORS.border);
-
-        x += w;
-      });
-
-      /* IZQUIERDA */
-
-      if (izquierda[i]) {
-
-        doc.fillColor(COLORS.dark)
-        .font("Helvetica")
-        .fontSize(8)
-        .text(
-          izquierda[i].label,
-          tableX + 8,
-          y + 8,
-          {
-            width: 230,
-            align: "left"
-          }
-        );
-
-        doc.font("Helvetica-Bold")
-        .text(
-          `${izquierda[i].value} ${izquierda[i].unidad || ""}`,
-          tableX + 250,
-          y + 8,
-          {
-            width: 90,
-            align: "center"
-          }
-        );
-      }
-
-      /* DERECHA */
-
-      if (derecha[i]) {
-
-        doc.fillColor(COLORS.dark)
-        .font("Helvetica")
-        .fontSize(8)
-        .text(
-          derecha[i].label,
-          tableX + 340 + 8,
-          y + 8,
-          {
-            width: 230,
-            align: "left"
-          }
-        );
-
-        doc.font("Helvetica-Bold")
-        .text(
-          `${derecha[i].value} ${derecha[i].unidad || ""}`,
-          tableX + 590,
-          y + 8,
-          {
-            width: 90,
-            align: "center"
-          }
-        );
-      }
-    }
-
-    /* PURGA */
-
-    const py =
-    tableY + rowHeight + (filas * rowHeight) + 14;
-
-    doc.roundedRect(
-      720,
-      py,
-      220,
-      24,
-      6
-    )
-    .fill(
-      reg.purgaDeFondo === "SI"
-        ? "#dcfce7"
-        : "#fee2e2"
-    );
-
-    doc.fillColor(
-      reg.purgaDeFondo === "SI"
-        ? COLORS.green
-        : COLORS.red
-    )
-    .font("Helvetica-Bold")
-    .fontSize(9)
-    .text(
-      `PURGA DE FONDO: ${reg.purgaDeFondo}`,
-      720,
-      py + 7,
-      {
-        width: 220,
-        align: "center"
-      }
-    );
-
-    regY += alturaTabla + 18;
+    tableY += rowHeight;
   });
 
   drawFooter();
@@ -815,7 +749,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     330,
     520,
     340,
-    220,
+    180,
     "#ffffff"
   );
 
@@ -844,27 +778,27 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       doc.image(
         buffer,
         390,
-        585,
+        580,
         {
-          fit: [220, 90]
+          fit: [220, 80]
         }
       );
 
     } catch {}
   }
 
-  doc.moveTo(410, 695)
-  .lineTo(590, 695)
+  doc.moveTo(410, 665)
+  .lineTo(590, 665)
   .strokeColor("#9ca3af")
   .stroke();
 
   doc.fillColor(COLORS.dark)
   .font("Helvetica-Bold")
-  .fontSize(12)
+  .fontSize(11)
   .text(
     bitacora.operador,
     330,
-    708,
+    675,
     {
       width: 340,
       align: "center"
