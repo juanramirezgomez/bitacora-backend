@@ -1109,14 +1109,14 @@ export const descargarReportePdf = async (req, res) => {
 
 };
 
-/* =====================================================
-   DESCARGAR EXCEL PROFESIONAL
-===================================================== */
-
 const normalizar = (txt) =>
   txt?.toLowerCase()
     .replace(/\s+/g, "")
     .replace(/[^a-z0-9]/g, "");
+
+/* =====================================================
+   DESCARGAR EXCEL
+===================================================== */
 
 export const descargarReporteExcel = async (req, res) => {
 
@@ -1134,14 +1134,12 @@ export const descargarReporteExcel = async (req, res) => {
       });
     }
 
-    let [checklist, registros, cierre] =
+    let [checklist, registros] =
       await Promise.all([
 
         ChecklistInicial.findOne({ bitacoraId }),
 
-        RegistroOperacion.find({ bitacoraId }),
-
-        CierreTurno.findOne({ bitacoraId })
+        RegistroOperacion.find({ bitacoraId })
 
       ]);
 
@@ -1168,9 +1166,7 @@ export const descargarReporteExcel = async (req, res) => {
       "Bitácora Digital";
 
     const sheet =
-      workbook.addWorksheet(
-        "Bitácora"
-      );
+      workbook.addWorksheet("Bitácora");
 
     sheet.views = [{
       state: "frozen",
@@ -1472,8 +1468,6 @@ export const descargarReporteExcel = async (req, res) => {
       cell.border = border;
     });
 
-    rowIndex = 11;
-
     /* =====================================================
        CHECKLIST
     ===================================================== */
@@ -1481,9 +1475,9 @@ export const descargarReporteExcel = async (req, res) => {
     sheet.getColumn(17).width = 42;
     sheet.getColumn(18).width = 28;
 
-    sheet.mergeCells(
-      `Q${rowIndex}:R${rowIndex}`
-    );
+    rowIndex = 11;
+
+    sheet.mergeCells(`Q${rowIndex}:R${rowIndex}`);
 
     let cell =
       sheet.getCell(`Q${rowIndex}`);
@@ -1545,8 +1539,6 @@ export const descargarReporteExcel = async (req, res) => {
 
           bold: true,
 
-          size: 10,
-
           color: {
             argb: COLORS.white
           }
@@ -1596,14 +1588,14 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
-        size: 11
+        size: 10
       };
 
       equipoCell.alignment = left;
 
       equipoCell.border = border;
 
-      equipeoCellFill =
+      const equipoCellFill =
         idx % 2 === 0
           ? COLORS.row1
           : COLORS.row2;
@@ -1615,7 +1607,7 @@ export const descargarReporteExcel = async (req, res) => {
         pattern: "solid",
 
         fgColor: {
-          argb: equipeoCellFill
+          argb: equipoCellFill
         }
       };
 
@@ -1677,9 +1669,7 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex = 11;
 
-    sheet.mergeCells(
-      `A${rowIndex}:N${rowIndex}`
-    );
+    sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
 
     cell =
       sheet.getCell(`A${rowIndex}`);
@@ -1790,14 +1780,8 @@ export const descargarReporteExcel = async (req, res) => {
       const column =
         sheet.getColumn(i + 1);
 
-      if (i === 0) {
-
-        column.width = 10;
-
-      } else {
-
-        column.width = 14;
-      }
+      column.width =
+        i === 0 ? 10 : 14;
     });
 
     const nombres = {
@@ -1929,230 +1913,6 @@ export const descargarReporteExcel = async (req, res) => {
         };
       });
     });
-
-    /* =====================================================
-       REFERENCIAS
-    ===================================================== */
-
-    rowIndex += 3;
-
-    sheet.getColumn(17).width = 18;
-    sheet.getColumn(18).width = 48;
-
-    sheet.mergeCells(
-      `Q${rowIndex}:R${rowIndex}`
-    );
-
-    const refTitle =
-      sheet.getCell(`Q${rowIndex}`);
-
-    refTitle.value =
-      "III. REFERENCIA DE PARÁMETROS";
-
-    refTitle.fill = {
-
-      type: "pattern",
-
-      pattern: "solid",
-
-      fgColor: {
-        argb: COLORS.primary
-      }
-    };
-
-    refTitle.font = {
-
-      bold: true,
-
-      size: 11,
-
-      color: {
-        argb: COLORS.white
-      }
-    };
-
-    refTitle.alignment = center;
-
-    refTitle.border = border;
-
-    rowIndex++;
-
-    const refHeader =
-      sheet.getRow(rowIndex++);
-
-    ["SIGLA", "DESCRIPCIÓN"]
-      .forEach((h, i) => {
-
-        const c =
-          refHeader.getCell(i + 17);
-
-        c.value = h;
-
-        c.fill = {
-
-          type: "pattern",
-
-          pattern: "solid",
-
-          fgColor: {
-            argb: COLORS.secondary
-          }
-        };
-
-        c.font = {
-
-          bold: true,
-
-          color: {
-            argb: COLORS.white
-          }
-        };
-
-        c.alignment = center;
-
-        c.border = border;
-      });
-
-    const referencias = [
-
-      ["P.cal", "Presión de caldera"],
-
-      ["Vapor", "Toneladas de vapor"],
-
-      ["%D", "Porcentaje de combustible"],
-
-      ["Fl41", "Flujo bomba 41"],
-
-      ["F.al", "Flujo alimentación agua caldera"],
-
-      ["T.al", "Totalizador alimentación"],
-
-      ["T.g", "Temperatura gases chimenea"],
-
-      ["C.d", "Consumo diesel"],
-
-      ["F.a", "Flujo agua blanda"],
-
-      ["T.a", "Totalizador agua blanda"],
-
-      ["TB41", "Totalizador bomba 41"],
-
-      ["ITC", "Temperatura salida ITC"],
-
-      ["P", "Purga de fondo"]
-    ];
-
-    referencias.forEach((r, idx) => {
-
-      const row =
-        sheet.getRow(rowIndex++);
-
-      const siglaCell =
-        row.getCell(17);
-
-      siglaCell.value = r[0];
-
-      siglaCell.font = {
-
-        bold: true,
-
-        size: 10
-      };
-
-      siglaCell.alignment = center;
-
-      siglaCell.border = border;
-
-      siglaCell.fill = {
-
-        type: "pattern",
-
-        pattern: "solid",
-
-        fgColor: {
-
-          argb:
-
-            idx % 2 === 0
-
-              ? COLORS.row1
-
-              : COLORS.row2
-        }
-      };
-
-      const descCell =
-        row.getCell(18);
-
-      descCell.value = r[1];
-
-      descCell.font = {
-
-        size: 10
-      };
-
-      descCell.alignment = left;
-
-      descCell.border = border;
-
-      descCell.fill = {
-
-        type: "pattern",
-
-        pattern: "solid",
-
-        fgColor: {
-
-          argb:
-
-            idx % 2 === 0
-
-              ? COLORS.row1
-
-              : COLORS.row2
-        }
-      };
-    });
-
-    /* =====================================================
-       FOOTER
-    ===================================================== */
-
-    rowIndex += 3;
-
-    sheet.mergeCells(
-      `A${rowIndex}:N${rowIndex}`
-    );
-
-    const footer =
-      sheet.getCell(`A${rowIndex}`);
-
-    footer.value =
-      "Novandino Litio • Bitácora Digital";
-
-    footer.font = {
-
-      italic: true,
-
-      bold: true,
-
-      color: {
-        argb: COLORS.white
-      }
-    };
-
-    footer.alignment = center;
-
-    footer.fill = {
-
-      type: "pattern",
-
-      pattern: "solid",
-
-      fgColor: {
-        argb: COLORS.primary
-      }
-    };
 
     /* =====================================================
        EXPORT
