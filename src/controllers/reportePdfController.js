@@ -1252,6 +1252,15 @@ export const descargarReporteExcel = async (req, res) => {
     };
 
     /* =====================================================
+       COLUMNAS BASE
+    ===================================================== */
+
+    for (let i = 1; i <= 20; i++) {
+
+      sheet.getColumn(i).width = 14;
+    }
+
+    /* =====================================================
        LOGO
     ===================================================== */
 
@@ -1339,8 +1348,6 @@ export const descargarReporteExcel = async (req, res) => {
     };
 
     subtitle.alignment = center;
-
-    /* LINEA */
 
     for (let i = 1; i <= 14; i++) {
 
@@ -1471,15 +1478,15 @@ export const descargarReporteExcel = async (req, res) => {
        CHECKLIST
     ===================================================== */
 
-    sheet.getColumn(1).width = 42;
-    sheet.getColumn(2).width = 28;
+    sheet.getColumn(17).width = 42;
+    sheet.getColumn(18).width = 28;
 
     sheet.mergeCells(
-      `A${rowIndex}:F${rowIndex}`
+      `Q${rowIndex}:R${rowIndex}`
     );
 
     let cell =
-      sheet.getCell(`A${rowIndex}`);
+      sheet.getCell(`Q${rowIndex}`);
 
     cell.value =
       "I. CHECKLIST INICIAL";
@@ -1510,20 +1517,16 @@ export const descargarReporteExcel = async (req, res) => {
 
     cell.border = border;
 
-    sheet.getRow(rowIndex).height = 28;
-
     rowIndex++;
 
     const headerChecklist =
       sheet.getRow(rowIndex++);
 
-    headerChecklist.height = 26;
-
     ["EQUIPO", "ESTADO"]
       .forEach((h, i) => {
 
         const c =
-          headerChecklist.getCell(i + 1);
+          headerChecklist.getCell(i + 17);
 
         c.value = h;
 
@@ -1578,18 +1581,14 @@ export const descargarReporteExcel = async (req, res) => {
       const row =
         sheet.getRow(rowIndex++);
 
-      row.height = 30;
-
       const estadoRaw =
         f[1] || "-";
 
       const estado =
         estadoRaw.replace(/_/g, " ");
 
-      /* EQUIPO */
-
       const equipoCell =
-        row.getCell(1);
+        row.getCell(17);
 
       equipoCell.value = f[0];
 
@@ -1597,23 +1596,17 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
-        size: 11,
-
-        color: {
-          argb: COLORS.dark
-        }
+        size: 11
       };
 
-      equipoCell.alignment = {
-
-        horizontal: "left",
-
-        vertical: "middle",
-
-        wrapText: true
-      };
+      equipoCell.alignment = left;
 
       equipoCell.border = border;
+
+      equipeoCellFill =
+        idx % 2 === 0
+          ? COLORS.row1
+          : COLORS.row2;
 
       equipoCell.fill = {
 
@@ -1622,21 +1615,12 @@ export const descargarReporteExcel = async (req, res) => {
         pattern: "solid",
 
         fgColor: {
-
-          argb:
-
-            idx % 2 === 0
-
-              ? COLORS.row1
-
-              : COLORS.row2
+          argb: equipeoCellFill
         }
       };
 
-      /* ESTADO */
-
       const estadoCell =
-        row.getCell(2);
+        row.getCell(18);
 
       estadoCell.value = estado;
 
@@ -1644,7 +1628,7 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
-        size: 11
+        size: 10
       };
 
       estadoCell.alignment = center;
@@ -1672,13 +1656,7 @@ export const descargarReporteExcel = async (req, res) => {
           }
         };
 
-      } else if (
-
-        estado.includes("FUERA") ||
-
-        estado.includes("BAJO")
-
-      ) {
+      } else {
 
         estadoCell.fill = {
 
@@ -1690,27 +1668,14 @@ export const descargarReporteExcel = async (req, res) => {
             argb: COLORS.danger
           }
         };
-
-      } else {
-
-        estadoCell.fill = {
-
-          type: "pattern",
-
-          pattern: "solid",
-
-          fgColor: {
-            argb: COLORS.row1
-          }
-        };
       }
     });
-
-    rowIndex += 2;
 
     /* =====================================================
        REGISTRO OPERACIÓN
     ===================================================== */
+
+    rowIndex = 11;
 
     sheet.mergeCells(
       `A${rowIndex}:N${rowIndex}`
@@ -1820,8 +1785,6 @@ export const descargarReporteExcel = async (req, res) => {
       "P"
     ];
 
-    /* SOLO REGISTRO OPERACIÓN */
-
     columnas.forEach((_, i) => {
 
       const column =
@@ -1867,8 +1830,6 @@ export const descargarReporteExcel = async (req, res) => {
     const headerRow =
       sheet.getRow(rowIndex++);
 
-    headerRow.height = 28;
-
     columnas.forEach((c, i) => {
 
       const celda =
@@ -1908,8 +1869,6 @@ export const descargarReporteExcel = async (req, res) => {
 
       const row =
         sheet.getRow(rowIndex++);
-
-      row.height = 24;
 
       const fila = [
         r.hora || "-"
@@ -1972,22 +1931,20 @@ export const descargarReporteExcel = async (req, res) => {
     });
 
     /* =====================================================
-       REFERENCIA PARÁMETROS
+       REFERENCIAS
     ===================================================== */
 
-    rowIndex += 2;
+    rowIndex += 3;
 
-    /* RESET COLUMNAS */
-
-    sheet.getColumn(1).width = 18;
-    sheet.getColumn(2).width = 48;
+    sheet.getColumn(17).width = 18;
+    sheet.getColumn(18).width = 48;
 
     sheet.mergeCells(
-      `A${rowIndex}:F${rowIndex}`
+      `Q${rowIndex}:R${rowIndex}`
     );
 
     const refTitle =
-      sheet.getCell(`A${rowIndex}`);
+      sheet.getCell(`Q${rowIndex}`);
 
     refTitle.value =
       "III. REFERENCIA DE PARÁMETROS";
@@ -2018,8 +1975,6 @@ export const descargarReporteExcel = async (req, res) => {
 
     refTitle.border = border;
 
-    sheet.getRow(rowIndex).height = 26;
-
     rowIndex++;
 
     const refHeader =
@@ -2029,7 +1984,7 @@ export const descargarReporteExcel = async (req, res) => {
       .forEach((h, i) => {
 
         const c =
-          refHeader.getCell(i + 1);
+          refHeader.getCell(i + 17);
 
         c.value = h;
 
@@ -2092,12 +2047,8 @@ export const descargarReporteExcel = async (req, res) => {
       const row =
         sheet.getRow(rowIndex++);
 
-      row.height = 28;
-
-      /* SIGLA */
-
       const siglaCell =
-        row.getCell(1);
+        row.getCell(17);
 
       siglaCell.value = r[0];
 
@@ -2105,11 +2056,7 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
-        size: 10,
-
-        color: {
-          argb: COLORS.dark
-        }
+        size: 10
       };
 
       siglaCell.alignment = center;
@@ -2134,30 +2081,17 @@ export const descargarReporteExcel = async (req, res) => {
         }
       };
 
-      /* DESCRIPCIÓN */
-
       const descCell =
-        row.getCell(2);
+        row.getCell(18);
 
       descCell.value = r[1];
 
       descCell.font = {
 
-        size: 10,
-
-        color: {
-          argb: COLORS.dark
-        }
+        size: 10
       };
 
-      descCell.alignment = {
-
-        horizontal: "left",
-
-        vertical: "middle",
-
-        wrapText: true
-      };
+      descCell.alignment = left;
 
       descCell.border = border;
 
