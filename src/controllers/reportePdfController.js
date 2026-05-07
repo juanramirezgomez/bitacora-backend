@@ -96,40 +96,757 @@ function generarInfoArchivo(bitacora, extension) {
 }
 
 /* =====================================================
-   GENERAR PDF PREMIUM PROFESIONAL
+   PDF PREMIUM NOVANDINO
+   DISEÑO CORPORATIVO
 ===================================================== */
 
+export const generarReportePdfInterno = async (bitacoraId) => {
 
-/* =====================================================
-   LOGO
-===================================================== */
+  const bitacora =
+  await Bitacora.findById(bitacoraId);
 
-try {
+  if (!bitacora ||
+      bitacora.estado !== "CERRADA")
+    return null;
 
-  const logoPath = path.resolve(
-    "assets/logo-novandino.png"
+  const { dia, mes, anioCompleto } =
+  obtenerYYMMDD(bitacora.fechaInicio);
+
+  let [checklist, registros, cierre] =
+  await Promise.all([
+
+    ChecklistInicial.findOne({ bitacoraId }),
+
+    RegistroOperacion.find({ bitacoraId }),
+
+    CierreTurno.findOne({ bitacoraId })
+
+  ]);
+
+  registros =
+  ordenarPorTurno(registros, bitacora.turno);
+
+  const { filePath } =
+  generarInfoArchivo(bitacora, "pdf");
+
+  if (fs.existsSync(filePath)) {
+    try { fs.unlinkSync(filePath); } catch {}
+  }
+
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: 0,
+    bufferPages: true
+  });
+
+  const stream =
+  fs.createWriteStream(filePath);
+
+  doc.pipe(stream);
+
+  /* =====================================================
+     COLORS
+  ===================================================== */
+
+  const COLORS = {
+
+    violet: "#461D77",
+    blue: "#7177EC",
+
+    dark: "#111827",
+    gray: "#6b7280",
+
+    light: "#f8fafc",
+    border: "#dbe4ee",
+
+    green: "#16a34a",
+    red: "#dc2626",
+
+    softBlue: "#eef2ff",
+    softGreen: "#ecfdf5",
+    softRed: "#fef2f2"
+  };
+
+  /* =====================================================
+     HELPERS
+  ===================================================== */
+
+  const drawGradientHeader = () => {
+
+    doc.rect(0, 0, 595, 110)
+    .fill(COLORS.light);
+
+    doc.rect(0, 108, 595, 4)
+    .fill(COLORS.violet);
+
+    doc.rect(460, 0, 135, 110)
+    .fill(COLORS.violet);
+
+    doc.rect(520, 0, 75, 110)
+    .fill(COLORS.blue);
+  };
+
+  const drawLogo = () => {
+
+    try {
+
+      const logoPath = path.resolve(
+        "assets/logo-novandino.png"
+      );
+
+      if (fs.existsSync(logoPath)) {
+
+        doc.image(
+          logoPath,
+          30,
+          22,
+          {
+            width: 120
+          }
+        );
+      }
+
+    } catch {}
+  };
+
+  const sectionTitle = (
+    title,
+    y,
+    color = COLORS.violet
+  ) => {
+
+    doc.roundedRect(
+      20,
+      y,
+      555,
+      32,
+      6
+    )
+    .fill(color);
+
+    doc.fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .fontSize(13)
+    .text(title, 35, y + 9);
+  };
+
+  const card = (
+    x,
+    y,
+    w,
+    h,
+    fill = "#ffffff"
+  ) => {
+
+    doc.roundedRect(
+      x,
+      y,
+      w,
+      h,
+      8
+    )
+    .fillAndStroke(
+      fill,
+      COLORS.border
+    );
+  };
+
+  /* =====================================================
+     PAGE 1
+  ===================================================== */
+
+  drawGradientHeader();
+
+  drawLogo();
+
+  doc.fillColor(COLORS.dark)
+  .font("Helvetica-Bold")
+  .fontSize(22)
+  .text(
+    "BITÁCORA DIGITAL DE OPERACIÓN",
+    170,
+    35
   );
 
-  if (fs.existsSync(logoPath)) {
+  doc.fillColor("#475569")
+  .font("Helvetica")
+  .fontSize(10)
+  .text(
+    "SISTEMA DIGITAL DE CONTROL Y MONITOREO DE CALDERA",
+    170,
+    68
+  );
 
-    doc.image(
-      logoPath,
-      40,
-      30,
+  doc.fillColor("#ffffff")
+  .font("Helvetica-Bold")
+  .fontSize(12)
+  .text(
+    "BITÁCORA\nCERRADA",
+    490,
+    38,
+    {
+      align: "center"
+    }
+  );
+
+  /* =====================================================
+     INFO BOX
+  ===================================================== */
+
+  card(20, 130, 555, 70);
+
+  doc.fillColor(COLORS.violet);
+
+  doc.font("Helvetica-Bold")
+  .fontSize(9)
+  .text("OPERADOR", 45, 148);
+
+  doc.fillColor(COLORS.dark)
+  .fontSize(13)
+  .text(bitacora.operador, 45, 166);
+
+  doc.fillColor(COLORS.violet)
+  .fontSize(9)
+  .text("TURNO", 210, 148);
+
+  doc.fillColor(COLORS.dark)
+  .fontSize(13)
+  .text(
+    `${bitacora.turno} - ${bitacora.turnoNumero}`,
+    210,
+    166
+  );
+
+  doc.fillColor(COLORS.violet)
+  .fontSize(9)
+  .text("FECHA", 360, 148);
+
+  doc.fillColor(COLORS.dark)
+  .fontSize(13)
+  .text(
+    `${dia}/${mes}/${anioCompleto}`,
+    360,
+    166
+  );
+
+  doc.fillColor(COLORS.violet)
+  .fontSize(9)
+  .text("ESTADO", 500, 148);
+
+  doc.roundedRect(490, 165, 65, 22, 6)
+  .fill(COLORS.green);
+
+  doc.fillColor("#ffffff")
+  .font("Helvetica-Bold")
+  .fontSize(9)
+  .text("CERRADA", 499, 172);
+
+  /* =====================================================
+     CHECKLIST
+  ===================================================== */
+
+  sectionTitle(
+    "I. CHECKLIST INICIAL",
+    220
+  );
+
+  let currentY = 265;
+
+  const labelsChecklist = {
+
+    calderaHurst:
+    "Caldera Hurst",
+
+    bombaAlimentacionAgua:
+    "Bomba Alimentación Agua",
+
+    bombaPetroleo:
+    "Bomba Petróleo",
+
+    nivelAguaTuboNivel:
+    "Nivel Agua Tubo Nivel",
+
+    purgaSuperficie:
+    "Purga Superficie",
+
+    bombaDosificadoraQuimicos:
+    "Bomba Dosificadora",
+
+    trenGas:
+    "Tren Gas",
+
+    ablandadores:
+    "Ablandadores"
+  };
+
+  Object.entries(labelsChecklist)
+  .forEach(([key, label], index) => {
+
+    const value =
+    checklist?.[key] || "-";
+
+    const left =
+    index % 2 === 0;
+
+    const x =
+    left ? 20 : 300;
+
+    if (!left)
+      currentY -= 34;
+
+    card(
+      x,
+      currentY,
+      275,
+      28,
+      "#ffffff"
+    );
+
+    doc.fillColor(COLORS.dark)
+    .font("Helvetica")
+    .fontSize(9)
+    .text(label, x + 14, currentY + 9);
+
+    doc.fillColor(COLORS.green)
+    .font("Helvetica-Bold")
+    .text(
+      String(value).replace(/_/g, " "),
+      x + 180,
+      currentY + 9
+    );
+
+    if (!left)
+      currentY += 38;
+  });
+
+  currentY += 10;
+
+  /* =====================================================
+     OBSERVACIONES
+  ===================================================== */
+
+  card(
+    20,
+    currentY,
+    555,
+    65,
+    "#f8f7ff"
+  );
+
+  doc.fillColor(COLORS.violet)
+  .font("Helvetica-Bold")
+  .fontSize(10)
+  .text(
+    "OBSERVACIONES INICIALES",
+    35,
+    currentY + 12
+  );
+
+  doc.fillColor(COLORS.dark)
+  .font("Helvetica")
+  .fontSize(9)
+  .text(
+    checklist?.observacionesIniciales || "-",
+    35,
+    currentY + 32,
+    {
+      width: 510
+    }
+  );
+
+  currentY += 90;
+
+  /* =====================================================
+     REGISTROS
+  ===================================================== */
+
+  sectionTitle(
+    "II. REGISTRO DE OPERACIÓN (LECTURAS)",
+    currentY
+  );
+
+  currentY += 50;
+
+  const headers = [
+    "HORA",
+    "PRESIÓN",
+    "VAPOR",
+    "TEMP",
+    "DIESEL",
+    "PURGA"
+  ];
+
+  const colWidths = [
+    70,
+    90,
+    80,
+    80,
+    90,
+    80
+  ];
+
+  let x = 20;
+
+  headers.forEach((h, i) => {
+
+    doc.rect(
+      x,
+      currentY,
+      colWidths[i],
+      28
+    )
+    .fill(COLORS.blue);
+
+    doc.fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .fontSize(8)
+    .text(
+      h,
+      x,
+      currentY + 10,
       {
-        width: 170
+        width: colWidths[i],
+        align: "center"
       }
     );
 
-  } else {
+    x += colWidths[i];
+  });
 
-    console.log("Logo NO encontrado:", logoPath);
+  currentY += 28;
+
+  registros.forEach((reg, index) => {
+
+    x = 20;
+
+    const presion =
+      reg.parametros?.find(p =>
+        p.label.includes("Presión")
+      );
+
+    const vapor =
+      reg.parametros?.find(p =>
+        p.label.includes("Vapor")
+      );
+
+    const temp =
+      reg.parametros?.find(p =>
+        p.label.includes("Temperatura")
+      );
+
+    const diesel =
+      reg.parametros?.find(p =>
+        p.label.includes("Diesel")
+      );
+
+    const row = [
+
+      reg.hora || "-",
+
+      presion
+        ? `${presion.value}`
+        : "-",
+
+      vapor
+        ? `${vapor.value}`
+        : "-",
+
+      temp
+        ? `${temp.value}`
+        : "-",
+
+      diesel
+        ? `${diesel.value}`
+        : "-",
+
+      reg.purgaDeFondo || "-"
+    ];
+
+    row.forEach((value, i) => {
+
+      doc.rect(
+        x,
+        currentY,
+        colWidths[i],
+        26
+      )
+      .fillAndStroke(
+        index % 2 === 0
+          ? "#ffffff"
+          : "#f8faff",
+        COLORS.border
+      );
+
+      doc.fillColor(
+        value === "SI"
+          ? COLORS.green
+          : value === "NO"
+          ? COLORS.red
+          : COLORS.dark
+      );
+
+      doc.font("Helvetica")
+      .fontSize(8)
+      .text(
+        String(value),
+        x,
+        currentY + 9,
+        {
+          width: colWidths[i],
+          align: "center"
+        }
+      );
+
+      x += colWidths[i];
+    });
+
+    currentY += 26;
+
+  });
+
+  /* =====================================================
+     FOOTER PAGE 1
+  ===================================================== */
+
+  doc.rect(0, 810, 595, 32)
+  .fill(COLORS.violet);
+
+  doc.fillColor("#ffffff")
+  .font("Helvetica-Bold")
+  .fontSize(10)
+  .text(
+    "Página 1 de 2",
+    500,
+    822
+  );
+
+  /* =====================================================
+     PAGE 2
+  ===================================================== */
+
+  doc.addPage();
+
+  drawGradientHeader();
+
+  drawLogo();
+
+  doc.fillColor(COLORS.dark)
+  .font("Helvetica-Bold")
+  .fontSize(18)
+  .text(
+    "BITÁCORA DIGITAL DE OPERACIÓN",
+    180,
+    38
+  );
+
+  doc.fillColor("#475569")
+  .font("Helvetica")
+  .fontSize(10)
+  .text(
+    "SISTEMA DIGITAL DE CONTROL Y MONITOREO DE CALDERA",
+    180,
+    65
+  );
+
+  sectionTitle(
+    "III. CIERRE Y FIRMA",
+    140
+  );
+
+  /* =====================================================
+     RECEPCION
+  ===================================================== */
+
+  card(25, 190, 270, 95);
+
+  doc.fillColor(COLORS.violet)
+  .font("Helvetica-Bold")
+  .fontSize(10)
+  .text(
+    "RECEPCIÓN COMBUSTIBLE",
+    45,
+    210
+  );
+
+  doc.fillColor(COLORS.dark)
+  .font("Helvetica")
+  .fontSize(10)
+  .text(
+    `Recepción combustible: ${cierre?.recepcionCombustible || "-"}`,
+    45,
+    240
+  );
+
+  doc.text(
+    `Litros combustible: ${cierre?.litrosCombustible || "-"}`,
+    45,
+    262
+  );
+
+  /* =====================================================
+     TK
+  ===================================================== */
+
+  card(305, 190, 270, 95);
+
+  doc.fillColor(COLORS.blue)
+  .font("Helvetica-Bold")
+  .fontSize(10)
+  .text(
+    "TK AGUA BLANDA",
+    325,
+    210
+  );
+
+  doc.fillColor(COLORS.dark)
+  .font("Helvetica")
+  .fontSize(10)
+  .text(
+    `TK28 en servicio: ${cierre?.tk28EnServicio || "-"}`,
+    325,
+    240
+  );
+
+  doc.text(
+    `% TK agua blanda: ${cierre?.tk28Porcentaje || "-"}`,
+    325,
+    262
+  );
+
+  /* =====================================================
+     OBSERVACIONES
+  ===================================================== */
+
+  card(
+    25,
+    305,
+    550,
+    120,
+    "#fafaff"
+  );
+
+  doc.fillColor(COLORS.violet)
+  .font("Helvetica-Bold")
+  .fontSize(10)
+  .text(
+    "OBSERVACIONES FINALES",
+    45,
+    325
+  );
+
+  doc.fillColor(COLORS.dark)
+  .font("Helvetica")
+  .fontSize(10)
+  .text(
+    cierre?.comentariosFinales || "-",
+    45,
+    355,
+    {
+      width: 500
+    }
+  );
+
+  /* =====================================================
+     FIRMA
+  ===================================================== */
+
+  card(
+    140,
+    470,
+    320,
+    220,
+    "#ffffff"
+  );
+
+  doc.fillColor(COLORS.violet)
+  .font("Helvetica-Bold")
+  .fontSize(11)
+  .text(
+    "FIRMA OPERADOR",
+    245,
+    490
+  );
+
+  if (cierre?.firmaBase64) {
+
+    try {
+
+      const firma =
+      cierre.firmaBase64.replace(
+        /^data:image\/png;base64,/,
+        ""
+      );
+
+      const buffer =
+      Buffer.from(firma, "base64");
+
+      doc.image(
+        buffer,
+        190,
+        525,
+        {
+          fit: [220, 90]
+        }
+      );
+
+    } catch {}
   }
 
-} catch (e) {
+  doc.moveTo(200, 635)
+  .lineTo(400, 635)
+  .strokeColor("#9ca3af")
+  .stroke();
 
-  console.log("Error logo:", e);
-}
+  doc.fillColor(COLORS.dark)
+  .font("Helvetica-Bold")
+  .fontSize(11)
+  .text(
+    bitacora.operador,
+    140,
+    648,
+    {
+      width: 320,
+      align: "center"
+    }
+  );
+
+  doc.fillColor("#64748b")
+  .font("Helvetica")
+  .fontSize(9)
+  .text(
+    "Firma digital operador",
+    140,
+    668,
+    {
+      width: 320,
+      align: "center"
+    }
+  );
+
+  /* =====================================================
+     FOOTER PAGE 2
+  ===================================================== */
+
+  doc.rect(0, 810, 595, 32)
+  .fill(COLORS.violet);
+
+  doc.fillColor("#ffffff")
+  .font("Helvetica-Bold")
+  .fontSize(10)
+  .text(
+    "Página 2 de 2",
+    500,
+    822
+  );
+
+  doc.end();
+
+  await new Promise(resolve =>
+    stream.on("finish", resolve)
+  );
+
+  return filePath;
+};
 
 /* =====================================================
    DESCARGAR PDF
