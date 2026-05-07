@@ -96,8 +96,7 @@ function generarInfoArchivo(bitacora, extension) {
 }
 
 /* =====================================================
-   PDF PREMIUM NOVANDINO
-   DISEÑO CORPORATIVO
+   GENERAR PDF PROFESIONAL
 ===================================================== */
 
 export const generarReportePdfInterno = async (bitacoraId) => {
@@ -541,8 +540,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     if (tableY > 520) {
 
-      drawFooter();
-
       doc.addPage();
 
       drawHeader();
@@ -802,6 +799,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   return filePath;
 };
+
+
 
 /* =====================================================
    DESCARGAR PDF
