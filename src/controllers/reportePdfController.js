@@ -464,73 +464,74 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   const columnas = [
 
-    { key: "hora", label: "Hora", width: 70 },
+    { key: "hora", label: "Hora", width: 48 },
 
-    { key: "Presión caldera", label: "Pres.", width: 62 },
+    { key: "Presión caldera", label: "P.cal", width: 55 },
 
-    { key: "Vapor", label: "Vapor", width: 68 },
+    { key: "Vapor", label: "Vapor", width: 52 },
 
-    { key: "F alimentacion", label: "F alim.", width: 70 },
+    { key: "F alimentacion", label: "F.al", width: 55 },
 
-    { key: "T alimentación", label: "T alim.", width: 68 },
+    { key: "T alimentación", label: "T.al", width: 55 },
 
-    { key: "Temperatura gases chimenea", label: "T° gases", width: 70 },
+    { key: "Temperatura gases chimenea", label: "T.gas", width: 58 },
 
-    { key: "C diesel", label: "C diesel", width: 68 },
+    { key: "C diesel", label: "C.d", width: 52 },
 
-    { key: "% Diesel", label: "% Diesel", width: 65 },
+    { key: "% Diesel", label: "%D", width: 45 },
 
-    { key: "F agua/blanda", label: "F agua", width: 70 },
+    { key: "F agua/blanda", label: "F.agua", width: 58 },
 
-    { key: "T agua/blanda", label: "T agua", width: 68 },
+    { key: "T agua/blanda", label: "T.agua", width: 58 },
 
-    { key: "Flujo BBA41", label: "FI.BBA41", width: 70 },
+    { key: "Flujo BBA41", label: "FI41", width: 52 },
 
-    { key: "T BBA41", label: "T BBA41", width: 68 },
+    { key: "T BBA41", label: "TB41", width: 52 },
 
-    { key: "Tº ITC", label: "T° ITC", width: 65 },
+    { key: "Tº ITC", label: "ITC", width: 48 },
 
-    { key: "purga", label: "P.", width: 60 }
+    { key: "purga", label: "P", width: 38 }
 
   ];
 
-  const rowHeight = 28;
+  const rowHeight = 24;
 
-  const tableX = 18;
+  const tableX = 14;
 
-  /* HEADER TABLA */
+  const drawTableHeader = () => {
 
-  let hx = tableX;
+    let hx = tableX;
 
-  columnas.forEach(col => {
+    columnas.forEach(col => {
 
-    doc.rect(
-      hx,
-      tableY,
-      col.width,
-      rowHeight
-    )
-    .fill(COLORS.violet);
+      doc.rect(
+        hx,
+        tableY,
+        col.width,
+        rowHeight
+      )
+      .fill(COLORS.violet);
 
-    doc.fillColor("#ffffff")
-    .font("Helvetica-Bold")
-    .fontSize(7)
-    .text(
-      col.label,
-      hx,
-      tableY + 10,
-      {
-        width: col.width,
-        align: "center"
-      }
-    );
+      doc.fillColor("#ffffff")
+      .font("Helvetica-Bold")
+      .fontSize(6.5)
+      .text(
+        col.label,
+        hx,
+        tableY + 9,
+        {
+          width: col.width,
+          align: "center"
+        }
+      );
 
-    hx += col.width;
-  });
+      hx += col.width;
+    });
 
-  tableY += rowHeight;
+    tableY += rowHeight;
+  };
 
-  /* FILAS */
+  drawTableHeader();
 
   registros.forEach((reg, index) => {
 
@@ -544,35 +545,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       tableY = 140;
 
-      let rx = tableX;
-
-      columnas.forEach(col => {
-
-        doc.rect(
-          rx,
-          tableY,
-          col.width,
-          rowHeight
-        )
-        .fill(COLORS.violet);
-
-        doc.fillColor("#ffffff")
-        .font("Helvetica-Bold")
-        .fontSize(7)
-        .text(
-          col.label,
-          rx,
-          tableY + 10,
-          {
-            width: col.width,
-            align: "center"
-          }
-        );
-
-        rx += col.width;
-      });
-
-      tableY += rowHeight;
+      drawTableHeader();
     }
 
     let x = tableX;
@@ -596,8 +569,15 @@ export const generarReportePdfInterno = async (bitacoraId) => {
           p => p.label === col.key
         );
 
-        if (param)
-          value = param.value;
+        if (param) {
+
+          value =
+          `${param.value}${
+            param.unidad
+              ? " " + param.unidad
+              : ""
+          }`;
+        }
       }
 
       doc.rect(
@@ -615,9 +595,11 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       doc.fillColor(
         col.key === "purga"
-          ? (value === "SI"
-              ? COLORS.green
-              : COLORS.red)
+          ? (
+              value === "SI"
+                ? COLORS.green
+                : COLORS.red
+            )
           : COLORS.dark
       );
 
@@ -627,14 +609,15 @@ export const generarReportePdfInterno = async (bitacoraId) => {
           : "Helvetica"
       );
 
-      doc.fontSize(7)
+      doc.fontSize(6.2)
       .text(
         String(value),
-        x,
-        tableY + 10,
+        x + 1,
+        tableY + 8,
         {
-          width: col.width,
-          align: "center"
+          width: col.width - 2,
+          align: "center",
+          ellipsis: true
         }
       );
 
