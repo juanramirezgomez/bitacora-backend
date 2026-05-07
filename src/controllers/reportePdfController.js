@@ -1110,7 +1110,7 @@ export const descargarReportePdf = async (req, res) => {
 };
 
 /* =====================================================
-   DESCARGAR EXCEL PREMIUM LIMPIO
+   DESCARGAR EXCEL PROFESIONAL
 ===================================================== */
 
 const normalizar = (txt) =>
@@ -1130,7 +1130,7 @@ export const descargarReporteExcel = async (req, res) => {
     if (!bitacora) {
 
       return res.status(404).json({
-        error: "No encontrada"
+        error: "Bitácora no encontrada"
       });
     }
 
@@ -1161,6 +1161,12 @@ export const descargarReporteExcel = async (req, res) => {
     workbook.creator =
     "Novandino Litio";
 
+    workbook.company =
+    "Novandino Litio";
+
+    workbook.subject =
+    "Bitácora Digital";
+
     const sheet =
     workbook.addWorksheet(
       "Bitácora"
@@ -1168,7 +1174,7 @@ export const descargarReporteExcel = async (req, res) => {
 
     sheet.views = [{
       state: "frozen",
-      ySplit: 12
+      ySplit: 14
     }];
 
     /* =====================================================
@@ -1193,11 +1199,11 @@ export const descargarReporteExcel = async (req, res) => {
 
       row2: "FFF3F4F6",
 
+      border: "FFD1D5DB",
+
       success: "FFDCFCE7",
 
-      danger: "FFFEE2E2",
-
-      border: "FFD1D5DB"
+      danger: "FFFEE2E2"
     };
 
     /* =====================================================
@@ -1249,23 +1255,12 @@ export const descargarReporteExcel = async (req, res) => {
        COLUMNAS
     ===================================================== */
 
-    sheet.columns = [
+    for (let i = 1; i <= 20; i++) {
 
-      { width: 18 },
-      { width: 18 },
-      { width: 16 },
-      { width: 16 },
-      { width: 14 },
-      { width: 14 },
-      { width: 14 },
-      { width: 14 },
-      { width: 14 },
-      { width: 14 },
-      { width: 14 },
-      { width: 14 },
-      { width: 14 },
-      { width: 12 }
-    ];
+      sheet.getColumn(i).width = 16;
+    }
+
+    sheet.getColumn(1).width = 24;
 
     /* =====================================================
        LOGO
@@ -1273,12 +1268,19 @@ export const descargarReporteExcel = async (req, res) => {
 
     try {
 
-      const logoPath =
-      path.resolve(
-        "assets/logo-novandino5.png"
+      const logoPath = path.join(
+        process.cwd(),
+        "src",
+        "assets",
+        "logo-novandino5.png"
       );
 
       console.log("LOGO:", logoPath);
+
+      console.log(
+        "EXISTE:",
+        fs.existsSync(logoPath)
+      );
 
       if (fs.existsSync(logoPath)) {
 
@@ -1313,7 +1315,7 @@ export const descargarReporteExcel = async (req, res) => {
     }
 
     /* =====================================================
-       TITULO
+       HEADER
     ===================================================== */
 
     sheet.mergeCells("D2:N2");
@@ -1437,7 +1439,9 @@ export const descargarReporteExcel = async (req, res) => {
        CHECKLIST
     ===================================================== */
 
-    sheet.mergeCells(`A${rowIndex}:D${rowIndex}`);
+    sheet.mergeCells(
+      `A${rowIndex}:D${rowIndex}`
+    );
 
     let cell =
     sheet.getCell(`A${rowIndex}`);
@@ -1569,7 +1573,9 @@ export const descargarReporteExcel = async (req, res) => {
       }
     });
 
-    /* OBSERVACIONES */
+    /* =====================================================
+       OBSERVACIONES
+    ===================================================== */
 
     if (checklist?.observacionesIniciales) {
 
@@ -1643,7 +1649,9 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
-    /* COLUMNAS DINÁMICAS */
+    /* =====================================================
+       COLUMNAS DINÁMICAS
+    ===================================================== */
 
     const columnasSet =
     new Set();
@@ -1656,6 +1664,82 @@ export const descargarReporteExcel = async (req, res) => {
 
     const columnasDB =
     Array.from(columnasSet);
+
+    const ordenPreferido = [
+
+      "presioncaldera",
+
+      "vapor",
+
+      "flujoalimentacioncaldera",
+
+      "totalizadoralimentacion",
+
+      "temperaturagaseschimenea",
+
+      "consumodiesel",
+
+      "diesel",
+
+      "flujoaguablanda",
+
+      "totalizadoraguablanda",
+
+      "flujobba41",
+
+      "totalizadorbba41",
+
+      "temperaturasalidaitc"
+    ];
+
+    columnasDB.sort((a, b) => {
+
+      const na = normalizar(a);
+
+      const nb = normalizar(b);
+
+      return (
+
+        (
+          ordenPreferido.indexOf(na) === -1
+          ? 999
+          : ordenPreferido.indexOf(na)
+        )
+
+        -
+
+        (
+          ordenPreferido.indexOf(nb) === -1
+          ? 999
+          : ordenPreferido.indexOf(nb)
+        )
+      );
+    });
+
+    const columnas = [
+
+      "Hora",
+
+      ...columnasDB,
+
+      "P"
+    ];
+
+    /* ANCHOS */
+
+    sheet.columns =
+    columnas.map((_, i) => ({
+
+      width:
+
+      i === 0
+      ? 10
+      : 14
+    }));
+
+    /* =====================================================
+       HEADER TABLA
+    ===================================================== */
 
     const nombres = {
 
@@ -1684,18 +1768,10 @@ export const descargarReporteExcel = async (req, res) => {
       "Temperatura salida ITC": "ITC"
     };
 
-    const columnas = [
-      "Hora",
-      ...columnasDB,
-      "P"
-    ];
-
-    /* HEADER TABLA */
-
     const headerRow =
     sheet.getRow(rowIndex++);
 
-    headerRow.height = 26;
+    headerRow.height = 28;
 
     columnas.forEach((c, i) => {
 
@@ -1720,11 +1796,11 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
+        size: 9,
+
         color: {
           argb: COLORS.white
-        },
-
-        size: 9
+        }
       };
 
       celda.border = border;
@@ -1732,7 +1808,9 @@ export const descargarReporteExcel = async (req, res) => {
       celda.alignment = center;
     });
 
-    /* FILAS */
+    /* =====================================================
+       FILAS TABLA
+    ===================================================== */
 
     registros.forEach((r, idx) => {
 
@@ -1755,9 +1833,10 @@ export const descargarReporteExcel = async (req, res) => {
         );
 
         fila.push(
+
           p
-            ? `${p.value}${p.unidad ? " " + p.unidad : ""}`
-            : "-"
+          ? `${p.value}${p.unidad ? " " + p.unidad : ""}`
+          : "-"
         );
       });
 
@@ -1765,29 +1844,36 @@ export const descargarReporteExcel = async (req, res) => {
         r.purgaDeFondo || "-"
       );
 
-      row.values = fila;
+      fila.forEach((v, i) => {
 
-      row.eachCell(c => {
+        const cell =
+        row.getCell(i + 1);
 
-        c.border = border;
+        cell.value = v;
 
-        c.alignment = center;
+        cell.border = border;
 
-        c.font = {
+        cell.alignment = center;
+
+        cell.font = {
           size: 9
         };
 
-        c.fill = {
+        cell.fill = {
 
           type: "pattern",
 
           pattern: "solid",
 
           fgColor: {
+
             argb:
-              idx % 2 === 0
-              ? COLORS.row1
-              : COLORS.row2
+
+            idx % 2 === 0
+
+            ? COLORS.row1
+
+            : COLORS.row2
           }
         };
       });
@@ -1837,11 +1923,11 @@ export const descargarReporteExcel = async (req, res) => {
 
       ["P.cal", "Presión de caldera"],
 
-      ["F.al", "Flujo alimentación"],
+      ["F.al", "Flujo alimentación agua"],
 
       ["T.al", "Totalizador alimentación"],
 
-      ["T.g", "Temperatura gases"],
+      ["T.g", "Temperatura gases chimenea"],
 
       ["C.d", "Consumo diesel"],
 
@@ -1895,9 +1981,9 @@ export const descargarReporteExcel = async (req, res) => {
 
     footer.font = {
 
-      bold: true,
-
       italic: true,
+
+      bold: true,
 
       color: {
         argb: COLORS.white
