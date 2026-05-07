@@ -96,13 +96,15 @@ function generarInfoArchivo(bitacora, extension) {
 }
 
 /* =====================================================
-   GENERAR PDF COMPLETO
+   GENERAR PDF PREMIUM PROFESIONAL
 ===================================================== */
 
 export const generarReportePdfInterno = async (bitacoraId) => {
 
   const bitacora = await Bitacora.findById(bitacoraId);
-  if (!bitacora || bitacora.estado !== "CERRADA") return null;
+
+  if (!bitacora || bitacora.estado !== "CERRADA")
+    return null;
 
   const { dia, mes, anioCompleto } =
   obtenerYYMMDD(bitacora.fechaInicio);
@@ -113,118 +115,383 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     CierreTurno.findOne({ bitacoraId })
   ]);
 
-  registros = ordenarPorTurno(registros, bitacora.turno);
+  registros = ordenarPorTurno(
+    registros,
+    bitacora.turno
+  );
 
-  const { filePath } = generarInfoArchivo(bitacora, "pdf");
+  const { filePath } =
+  generarInfoArchivo(bitacora, "pdf");
 
   if (fs.existsSync(filePath)) {
     try { fs.unlinkSync(filePath); } catch {}
   }
 
-  const doc = new PDFDocument({ size: "A4", margin: 40 });
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: 40,
+    bufferPages: true
+  });
 
-  const stream = fs.createWriteStream(filePath);
+  const stream =
+  fs.createWriteStream(filePath);
+
   doc.pipe(stream);
 
-  /* HEADER */
+  /* =====================================================
+     COLORES
+  ===================================================== */
 
-  doc.fontSize(18)
-  .text("BITÁCORA DE CONTROL DE CALDERA", { align: "center" })
-  .moveDown();
+  const COLORS = {
 
-  doc.fontSize(10)
-  .text(`Operador: ${bitacora.operador}`)
-  .text(`Turno: ${bitacora.turno} - ${bitacora.turnoNumero}`)
-  .text(`Fecha: ${dia}-${mes}-${anioCompleto}`)
-  .moveDown(1);
+    primary: "#2563eb",
+    secondary: "#6f3df4",
+    success: "#22c55e",
+    danger: "#ef4444",
 
-  /* CHECKLIST */
+    dark: "#111827",
+    gray: "#6b7280",
+
+    light: "#f8fafc",
+    border: "#d1d5db",
+
+    row1: "#f8fafc",
+    row2: "#eef2ff"
+  };
+
+  /* =====================================================
+     LOGO
+  ===================================================== */
+
+  try {
+
+    const logoPath = path.join(
+      process.cwd(),
+      "assets",
+      "logo-novandino.png"
+    );
+
+    doc.image(logoPath, 40, 28, {
+      width: 150
+    });
+
+  } catch (e) {
+
+    console.log("Logo no encontrado");
+  }
+
+  /* =====================================================
+     HEADER
+  ===================================================== */
+
+  doc
+    .moveTo(40, 92)
+    .lineTo(555, 92)
+    .lineWidth(2)
+    .strokeColor("#23c6d9")
+    .stroke();
+
+  doc
+    .fillColor(COLORS.dark)
+    .font("Helvetica-Bold")
+    .fontSize(22)
+    .text(
+      "BITÁCORA DIGITAL DE OPERACIÓN",
+      40,
+      110,
+      {
+        align: "center"
+      }
+    );
+
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .fillColor(COLORS.gray)
+    .text(
+      "Sistema digital de control y monitoreo de caldera",
+      {
+        align: "center"
+      }
+    );
+
+  /* =====================================================
+     CARD INFO
+  ===================================================== */
+
+  doc
+    .roundedRect(40, 170, 515, 75, 12)
+    .fillAndStroke(
+      COLORS.light,
+      COLORS.border
+    );
+
+  doc.fillColor(COLORS.dark);
+
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(10)
+    .text("OPERADOR", 60, 188);
+
+  doc
+    .font("Helvetica")
+    .text(bitacora.operador, 60, 205);
+
+  doc
+    .font("Helvetica-Bold")
+    .text("TURNO", 240, 188);
+
+  doc
+    .font("Helvetica")
+    .text(
+      `${bitacora.turno} - ${bitacora.turnoNumero}`,
+      240,
+      205
+    );
+
+  doc
+    .font("Helvetica-Bold")
+    .text("FECHA", 410, 188);
+
+  doc
+    .font("Helvetica")
+    .text(
+      `${dia}-${mes}-${anioCompleto}`,
+      410,
+      205
+    );
+
+  doc.y = 280;
+
+  /* =====================================================
+     CHECKLIST
+  ===================================================== */
 
   if (checklist) {
 
-    doc.fontSize(13)
-    .text("I. CHECKLIST INICIAL", { underline: true })
-    .moveDown(0.5);
+    doc
+      .roundedRect(40, doc.y, 515, 30, 8)
+      .fill(COLORS.primary);
+
+    doc
+      .fillColor("#ffffff")
+      .font("Helvetica-Bold")
+      .fontSize(13)
+      .text(
+        "I. CHECKLIST INICIAL",
+        50,
+        doc.y + 8
+      );
+
+    doc.moveDown(2);
 
     const labelsChecklist = {
-      calderaHurst: "Caldera Hurst",
-      bombaAlimentacionAgua: "Bomba Alimentacion Agua",
-      bombaPetroleo: "Bomba Petroleo",
-      nivelAguaTuboNivel: "Nivel Agua Tubo Nivel",
-      purgaSuperficie: "Purga Superficie",
-      bombaDosificadoraQuimicos: "Bomba Dosificadora Quimicos",
-      trenGas: "Tren Gas",
-      ablandadores: "Ablandadores"
+
+      calderaHurst:
+      "Caldera Hurst",
+
+      bombaAlimentacionAgua:
+      "Bomba Alimentacion Agua",
+
+      bombaPetroleo:
+      "Bomba Petroleo",
+
+      nivelAguaTuboNivel:
+      "Nivel Agua Tubo Nivel",
+
+      purgaSuperficie:
+      "Purga Superficie",
+
+      bombaDosificadoraQuimicos:
+      "Bomba Dosificadora Quimicos",
+
+      trenGas:
+      "Tren Gas",
+
+      ablandadores:
+      "Ablandadores"
     };
 
-    Object.entries(labelsChecklist).forEach(([key, label]) => {
+    Object.entries(labelsChecklist)
+    .forEach(([key, label]) => {
 
-      let value = checklist[key] ?? "-";
+      let value =
+      checklist[key] ?? "-";
 
       if (typeof value === "string")
         value = value.replace(/_/g, " ");
 
-      doc.fontSize(10)
-      .text(`${label}: ${value}`);
+      const ok =
+        value === "EN SERVICIO" ||
+        value === "NORMAL" ||
+        value === "SI";
 
+      doc
+        .roundedRect(
+          40,
+          doc.y,
+          515,
+          24,
+          6
+        )
+        .fill(
+          ok
+            ? "#ecfdf5"
+            : "#fef2f2"
+        );
+
+      doc.fillColor(COLORS.dark);
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(9)
+        .text(
+          label,
+          50,
+          doc.y + 7
+        );
+
+      doc
+        .font("Helvetica")
+        .text(
+          String(value),
+          350,
+          doc.y + 7
+        );
+
+      doc.moveDown(1.2);
     });
 
     if (checklist.observacionesIniciales) {
-      doc.moveDown(0.5);
-      doc.text(`Observaciones: ${checklist.observacionesIniciales}`);
+
+      doc.moveDown();
+
+      doc
+        .roundedRect(
+          40,
+          doc.y,
+          515,
+          80,
+          8
+        )
+        .fill("#f8fafc");
+
+      doc.fillColor(COLORS.dark);
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(10)
+        .text(
+          "OBSERVACIONES INICIALES",
+          50,
+          doc.y + 10
+        );
+
+      doc
+        .font("Helvetica")
+        .fontSize(9)
+        .text(
+          checklist.observacionesIniciales,
+          50,
+          doc.y + 28,
+          {
+            width: 490
+          }
+        );
+
+      doc.moveDown(5);
     }
 
-    doc.moveDown(1);
   }
 
-  /* REGISTRO OPERACION */
+  /* =====================================================
+     REGISTRO OPERACION
+  ===================================================== */
 
-  doc.fontSize(13)
-  .text("II. REGISTRO DE OPERACIÓN (LECTURAS)", { underline: true })
-  .moveDown();
+  doc.moveDown();
+
+  doc
+    .roundedRect(40, doc.y, 515, 30, 8)
+    .fill(COLORS.primary);
+
+  doc
+    .fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .fontSize(13)
+    .text(
+      "II. REGISTRO DE OPERACIÓN",
+      50,
+      doc.y + 8
+    );
+
+  doc.moveDown(2);
 
   if (registros.length > 0) {
 
-    const columnasDinamicas = new Set();
+    const columnasDinamicas =
+    new Set();
 
     registros.forEach(reg =>
-      reg.parametros?.forEach(p => columnasDinamicas.add(p.label))
+      reg.parametros?.forEach(p =>
+        columnasDinamicas.add(p.label)
+      )
     );
 
-    const columnas = ["hora", ...Array.from(columnasDinamicas), "purgaDeFondo"];
+    const columnas = [
+      "hora",
+      ...Array.from(columnasDinamicas),
+      "purgaDeFondo"
+    ];
 
-    const nombreVisualColumnas = {
-      "Temperatura gases chimenea": "Tº gases"
-    };
+    const tableWidth = 515;
+    const colWidth =
+    tableWidth / columnas.length;
 
-    const tableWidth = doc.page.width - 80;
-    const colWidth = tableWidth / columnas.length;
-    const rowHeight = 25;
+    const rowHeight = 28;
 
     let y = doc.y;
     let x = 40;
 
-    doc.font("Helvetica-Bold").fontSize(8);
+    /* HEADER TABLA */
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(7);
 
     columnas.forEach(col => {
 
-      const tituloColumna = nombreVisualColumnas[col] || col;
+      doc
+        .rect(
+          x,
+          y,
+          colWidth,
+          rowHeight
+        )
+        .fillAndStroke(
+          COLORS.primary,
+          "#dbeafe"
+        );
 
-      doc.rect(x, y, colWidth, rowHeight).stroke();
+      doc.fillColor("#ffffff");
 
-      doc.text(tituloColumna, x + 3, y + 8, {
-        width: colWidth - 6,
-        align: "center"
-      });
+      doc.text(
+        col,
+        x + 3,
+        y + 9,
+        {
+          width: colWidth - 6,
+          align: "center"
+        }
+      );
 
       x += colWidth;
     });
 
     y += rowHeight;
 
-    doc.font("Helvetica");
+    /* FILAS */
 
-    registros.forEach(reg => {
+    registros.forEach((reg, index) => {
 
       x = 40;
 
@@ -232,89 +499,300 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
         let valor = "-";
 
-        if (col === "hora") valor = reg.hora;
-        else if (col === "purgaDeFondo") valor = reg.purgaDeFondo;
+        if (col === "hora")
+          valor = reg.hora;
+
+        else if (col === "purgaDeFondo")
+          valor = reg.purgaDeFondo;
+
         else {
 
-          const param = reg.parametros?.find(p => p.label === col);
+          const param =
+          reg.parametros?.find(
+            p => p.label === col
+          );
 
-          if (param) valor = `${param.value} ${param.unidad}`;
+          if (param)
+            valor =
+            `${param.value} ${param.unidad}`;
         }
 
-        doc.rect(x, y, colWidth, rowHeight).stroke();
+        doc
+          .rect(
+            x,
+            y,
+            colWidth,
+            rowHeight
+          )
+          .fillAndStroke(
+            index % 2 === 0
+              ? COLORS.row1
+              : COLORS.row2,
+            "#e5e7eb"
+          );
 
-        doc.text(String(valor), x + 3, y + 8, {
-          width: colWidth - 6,
-          align: "center"
-        });
+        doc.fillColor(COLORS.dark);
+
+        doc
+          .font("Helvetica")
+          .fontSize(7)
+          .text(
+            String(valor),
+            x + 2,
+            y + 9,
+            {
+              width: colWidth - 4,
+              align: "center"
+            }
+          );
 
         x += colWidth;
       });
 
       y += rowHeight;
 
-      if (y > 750) {
+      if (y > 720) {
+
         doc.addPage();
-        y = 50;
+
+        y = 60;
       }
 
     });
 
+    doc.y = y + 20;
   }
 
-  /* CIERRE + FIRMA */
+  /* =====================================================
+     CIERRE
+  ===================================================== */
 
   if (cierre) {
 
     doc.addPage();
 
-    doc.fontSize(13)
-    .text("III. CIERRE Y FIRMA", { underline: true })
-    .moveDown();
+    doc
+      .roundedRect(40, 50, 515, 30, 8)
+      .fill(COLORS.secondary);
 
-    doc.fontSize(10)
-    .text(`Recepción combustible: ${cierre.recepcionCombustible ?? "-"}`)
-    .text(`Litros combustible: ${cierre.litrosCombustible ?? "-"}`)
-    .text(`TK28 en servicio: ${cierre.tk28EnServicio ?? "-"}`)
-    .text(`% TK de agua blanda: ${cierre.tk28Porcentaje ?? "-"}`)
-    .moveDown(2);
+    doc
+      .fillColor("#ffffff")
+      .font("Helvetica-Bold")
+      .fontSize(13)
+      .text(
+        "III. CIERRE Y FIRMA",
+        50,
+        58
+      );
 
-    if (cierre.comentariosFinales) {
-      doc.text(`Observaciones: ${cierre.comentariosFinales}`);
-    }
+    doc.y = 110;
+
+    doc
+      .roundedRect(40, doc.y, 250, 90, 10)
+      .fill("#f8fafc");
+
+    doc.fillColor(COLORS.dark);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .text(
+        "RECEPCIÓN COMBUSTIBLE",
+        55,
+        doc.y + 12
+      );
+
+    doc
+      .font("Helvetica")
+      .fontSize(9)
+      .text(
+        `Recepción combustible: ${cierre.recepcionCombustible ?? "-"}`,
+        55,
+        doc.y + 35
+      );
+
+    doc.text(
+      `Litros combustible: ${cierre.litrosCombustible ?? "-"}`,
+      55,
+      doc.y + 55
+    );
+
+    /* TK */
+
+    doc
+      .roundedRect(305, 110, 250, 90, 10)
+      .fill("#ecfdf5");
+
+    doc.fillColor(COLORS.dark);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .text(
+        "TK AGUA BLANDA",
+        320,
+        122
+      );
+
+    doc
+      .font("Helvetica")
+      .fontSize(9)
+      .text(
+        `TK28 en servicio: ${cierre.tk28EnServicio ?? "-"}`,
+        320,
+        145
+      );
+
+    doc.text(
+      `% TK agua blanda: ${cierre.tk28Porcentaje ?? "-"}`,
+      320,
+      165
+    );
+
+    /* OBSERVACIONES */
+
+    doc
+      .roundedRect(40, 230, 515, 130, 10)
+      .fill("#f8fafc");
+
+    doc.fillColor(COLORS.dark);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .text(
+        "OBSERVACIONES FINALES",
+        55,
+        245
+      );
+
+    doc
+      .font("Helvetica")
+      .fontSize(9)
+      .text(
+        cierre.comentariosFinales || "-",
+        55,
+        270,
+        {
+          width: 480
+        }
+      );
+
+    /* FIRMA */
 
     if (cierre.firmaBase64) {
 
       try {
 
         const firmaBase64 =
-        cierre.firmaBase64.replace(/^data:image\/png;base64,/, "");
+        cierre.firmaBase64.replace(
+          /^data:image\/png;base64,/,
+          ""
+        );
 
         const firmaBuffer =
-        Buffer.from(firmaBase64, "base64");
+        Buffer.from(
+          firmaBase64,
+          "base64"
+        );
 
-        doc.image(firmaBuffer, {
-          fit: [250, 120],
-          align: "center"
-        });
+        doc
+          .roundedRect(
+            150,
+            420,
+            280,
+            170,
+            12
+          )
+          .fill("#ffffff");
 
-        doc.moveDown();
-        doc.text("Firma operador", { align: "center" });
+        doc.image(
+          firmaBuffer,
+          180,
+          450,
+          {
+            fit: [220, 90],
+            align: "center"
+          }
+        );
+
+        doc
+          .strokeColor("#9ca3af")
+          .moveTo(190, 550)
+          .lineTo(390, 550)
+          .stroke();
+
+        doc
+          .fillColor(COLORS.dark)
+          .font("Helvetica-Bold")
+          .fontSize(11)
+          .text(
+            bitacora.operador,
+            150,
+            565,
+            {
+              width: 280,
+              align: "center"
+            }
+          );
+
+        doc
+          .font("Helvetica")
+          .fontSize(9)
+          .fillColor(COLORS.gray)
+          .text(
+            "Firma digital operador",
+            150,
+            582,
+            {
+              width: 280,
+              align: "center"
+            }
+          );
 
       } catch (err) {
-        console.log("Error firma:", err);
-      }
 
+        console.log(
+          "Error firma:",
+          err
+        );
+      }
     }
 
   }
 
+  /* =====================================================
+     FOOTER
+  ===================================================== */
+
+  const pages =
+  doc.bufferedPageRange();
+
+  for (let i = 0; i < pages.count; i++) {
+
+    doc.switchToPage(i);
+
+    doc
+      .fontSize(8)
+      .fillColor("#9ca3af")
+      .text(
+        `Novandino Litio • Bitácora Digital • Página ${i + 1}`,
+        40,
+        810,
+        {
+          align: "center",
+          width: 515
+        }
+      );
+  }
+
   doc.end();
 
-  await new Promise(resolve => stream.on("finish", resolve));
+  await new Promise(resolve =>
+    stream.on("finish", resolve)
+  );
 
   return filePath;
-
 };
 
 /* =====================================================
