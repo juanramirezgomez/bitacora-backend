@@ -195,9 +195,9 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         doc.image(
           logoPath,
           30,
-          20,
+          18,
           {
-            width: 130
+            width: 140
           }
         );
       }
@@ -452,7 +452,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   );
 
   /* =====================================================
-     REGISTROS NUEVO DISEÑO
+     REGISTROS EN TABLA PROFESIONAL
   ===================================================== */
 
   sectionTitle(
@@ -464,7 +464,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   registros.forEach((reg, index) => {
 
-    if (regY > 500) {
+    if (regY > 470) {
 
       drawFooter();
 
@@ -475,13 +475,13 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       regY = 140;
     }
 
-    /* CARD REGISTRO */
+    /* CARD */
 
     doc.roundedRect(
       20,
       regY,
       968,
-      140,
+      170,
       10
     )
     .fillAndStroke(
@@ -495,7 +495,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       20,
       regY,
       968,
-      32,
+      34,
       10
     )
     .fill(
@@ -506,58 +506,137 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     doc.fillColor("#ffffff")
     .font("Helvetica-Bold")
-    .fontSize(12)
+    .fontSize(13)
     .text(
       `REGISTRO ${reg.hora}`,
       40,
-      regY + 10
+      regY + 11
     );
 
-    let px = 40;
-    let py = regY + 50;
+    /* =====================================================
+       TABLA
+    ===================================================== */
+
+    const startX = 40;
+    const startY = regY + 55;
+
+    const colWidths = [220, 100, 220, 100];
+
+    const rowHeight = 24;
 
     const parametros =
     reg.parametros || [];
 
-    parametros.forEach((p, i) => {
+    const mitad =
+    Math.ceil(parametros.length / 2);
 
-      const col =
-      i % 3;
+    const izquierda =
+    parametros.slice(0, mitad);
 
-      const row =
-      Math.floor(i / 3);
+    const derecha =
+    parametros.slice(mitad);
 
-      px = 40 + (col * 305);
+    const filas =
+    Math.max(
+      izquierda.length,
+      derecha.length
+    );
 
-      py = regY + 50 + (row * 28);
+    for (let i = 0; i < filas; i++) {
 
-      doc.fillColor(COLORS.gray)
-      .font("Helvetica-Bold")
-      .fontSize(8)
-      .text(
-        p.label,
-        px,
-        py
-      );
+      const y =
+      startY + (i * rowHeight);
 
-      doc.fillColor(COLORS.dark)
-      .font("Helvetica")
-      .fontSize(8)
-      .text(
-        `${p.value} ${p.unidad || ""}`,
-        px + 150,
-        py
-      );
+      let x = startX;
 
-    });
+      colWidths.forEach(w => {
 
-    /* PURGA */
+        doc.rect(
+          x,
+          y,
+          w,
+          rowHeight
+        )
+        .stroke(COLORS.border);
+
+        x += w;
+      });
+
+      /* IZQUIERDA */
+
+      if (izquierda[i]) {
+
+        doc.fillColor(COLORS.gray)
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(
+          izquierda[i].label,
+          startX + 8,
+          y + 8,
+          {
+            width: 200,
+            align: "left"
+          }
+        );
+
+        doc.fillColor(COLORS.dark)
+        .font("Helvetica")
+        .fontSize(8)
+        .text(
+          `${izquierda[i].value} ${izquierda[i].unidad || ""}`,
+          startX + 220,
+          y + 8,
+          {
+            width: 100,
+            align: "center"
+          }
+        );
+      }
+
+      /* DERECHA */
+
+      if (derecha[i]) {
+
+        doc.fillColor(COLORS.gray)
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(
+          derecha[i].label,
+          startX + 320 + 8,
+          y + 8,
+          {
+            width: 200,
+            align: "left"
+          }
+        );
+
+        doc.fillColor(COLORS.dark)
+        .font("Helvetica")
+        .fontSize(8)
+        .text(
+          `${derecha[i].value} ${derecha[i].unidad || ""}`,
+          startX + 540,
+          y + 8,
+          {
+            width: 100,
+            align: "center"
+          }
+        );
+      }
+    }
+
+    /* =====================================================
+       PURGA
+    ===================================================== */
+
+    const finalY =
+    startY + (filas * rowHeight) + 15;
 
     doc.roundedRect(
       720,
-      regY + 100,
+      finalY,
       220,
-      26,
+      28,
       6
     )
     .fill(
@@ -572,18 +651,19 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         : COLORS.red
     )
     .font("Helvetica-Bold")
-    .fontSize(9)
+    .fontSize(10)
     .text(
-      `PURGA: ${reg.purgaDeFondo}`,
-      790,
-      regY + 109,
+      `PURGA DE FONDO: ${reg.purgaDeFondo}`,
+      720,
+      finalY + 9,
       {
         align: "center",
-        width: 80
+        width: 220
       }
     );
 
-    regY += 160;
+    regY =
+    finalY + 55;
   });
 
   drawFooter();
