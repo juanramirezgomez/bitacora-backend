@@ -1264,8 +1264,6 @@ export const descargarReporteExcel = async (req, res) => {
       sheet.getColumn(i).width = 16;
     }
 
-    sheet.getColumn(1).width = 24;
-
     /* =====================================================
        LOGO
     ===================================================== */
@@ -1531,8 +1529,8 @@ export const descargarReporteExcel = async (req, res) => {
 
     headerChecklist.height = 26;
 
-    sheet.getColumn(1).width = 38;
-    sheet.getColumn(2).width = 24;
+    sheet.getColumn(1).width = 42;
+    sheet.getColumn(2).width = 28;
 
     ["EQUIPO", "ESTADO"]
     .forEach((h, i) => {
@@ -1593,7 +1591,7 @@ export const descargarReporteExcel = async (req, res) => {
       const row =
       sheet.getRow(rowIndex++);
 
-      row.height = 24;
+      row.height = 30;
 
       const estadoRaw =
       f[1] || "-";
@@ -1612,7 +1610,7 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
-        size: 10,
+        size: 11,
 
         color: {
           argb: COLORS.dark
@@ -1623,7 +1621,9 @@ export const descargarReporteExcel = async (req, res) => {
 
         horizontal: "left",
 
-        vertical: "middle"
+        vertical: "middle",
+
+        wrapText: true
       };
 
       equipoCell.border = border;
@@ -1657,7 +1657,7 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
-        size: 10
+        size: 11
       };
 
       estadoCell.alignment = center;
@@ -2026,6 +2026,9 @@ export const descargarReporteExcel = async (req, res) => {
     const refHeader =
     sheet.getRow(rowIndex++);
 
+    sheet.getColumn(1).width = 18;
+    sheet.getColumn(2).width = 48;
+
     ["SIGLA", "DESCRIPCIÓN"]
     .forEach((h, i) => {
 
@@ -2093,38 +2096,91 @@ export const descargarReporteExcel = async (req, res) => {
       const row =
       sheet.getRow(rowIndex++);
 
-      row.height = 22;
+      row.height = 28;
 
-      row.getCell(1).value = r[0];
-      row.getCell(2).value = r[1];
+      /* SIGLA */
 
-      row.eachCell(c => {
+      const siglaCell =
+      row.getCell(1);
 
-        c.border = border;
+      siglaCell.value = r[0];
 
-        c.alignment = left;
+      siglaCell.font = {
 
-        c.fill = {
+        bold: true,
 
-          type: "pattern",
+        size: 10,
 
-          pattern: "solid",
+        color: {
+          argb: COLORS.dark
+        }
+      };
 
-          fgColor: {
+      siglaCell.alignment = center;
 
-            argb:
+      siglaCell.border = border;
 
-            idx % 2 === 0
+      siglaCell.fill = {
 
-            ? COLORS.row1
+        type: "pattern",
 
-            : COLORS.row2
-          }
-        };
-      });
+        pattern: "solid",
 
-      row.getCell(1).font = {
-        bold: true
+        fgColor: {
+
+          argb:
+
+          idx % 2 === 0
+
+          ? COLORS.row1
+
+          : COLORS.row2
+        }
+      };
+
+      /* DESCRIPCIÓN */
+
+      const descCell =
+      row.getCell(2);
+
+      descCell.value = r[1];
+
+      descCell.font = {
+
+        size: 10,
+
+        color: {
+          argb: COLORS.dark
+        }
+      };
+
+      descCell.alignment = {
+
+        horizontal: "left",
+
+        vertical: "middle",
+
+        wrapText: true
+      };
+
+      descCell.border = border;
+
+      descCell.fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+
+          argb:
+
+          idx % 2 === 0
+
+          ? COLORS.row1
+
+          : COLORS.row2
+        }
       };
     });
 
