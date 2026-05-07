@@ -180,6 +180,16 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   };
 
   /* =====================================================
+     NORMALIZAR
+  ===================================================== */
+
+  const normalizar = (txt) =>
+    txt
+      ?.toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[^a-z0-9]/g, "");
+
+  /* =====================================================
      HELPERS
   ===================================================== */
 
@@ -511,51 +521,75 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     { key: "hora", label: "Hora", width: 40 },
 
-    { key: "Presión caldera", label: "P.cal", width: 48 },
+    { key: "presioncaldera", label: "P.cal", width: 48 },
 
-    { key: "Vapor", label: "Vapor", width: 42 },
-
-    { key: "F alimentacion", label: "F.al", width: 42 },
-
-    { key: "T alimentación", label: "T.al", width: 42 },
+    { key: "vapor", label: "Vapor", width: 42 },
 
     {
-      key: "Temperatura gases chimenea",
+      key: "flujoalimentacioncaldera",
+      label: "F.al",
+      width: 42
+    },
+
+    {
+      key: "totalizadoralimentacion",
+      label: "T.al",
+      width: 42
+    },
+
+    {
+      key: "temperaturagaseschimenea",
       label: "T.g",
       width: 42
     },
 
-    { key: "C diesel", label: "C.d", width: 40 },
-
-    { key: "% Diesel", label: "%D", width: 34 },
+    {
+      key: "consumodiesel",
+      label: "C.d",
+      width: 40
+    },
 
     {
-      key: "F agua/blanda",
+      key: "diesel",
+      label: "%D",
+      width: 34
+    },
+
+    {
+      key: "flujoaguablanda",
       label: "F.a",
       width: 42
     },
 
     {
-      key: "T agua/blanda",
+      key: "totalizadoraguablanda",
       label: "T.a",
       width: 42
     },
 
     {
-      key: "Flujo BBA41",
+      key: "flujobba41",
       label: "FI41",
       width: 42
     },
 
     {
-      key: "T BBA41",
+      key: "totalizadorbba41",
       label: "TB41",
       width: 42
     },
 
-    { key: "Tº ITC", label: "ITC", width: 36 },
+    {
+      key: "temperaturasalidaitc",
+      label: "ITC",
+      width: 36
+    },
 
-    { key: "purga", label: "P", width: 28 }
+    {
+      key: "purga",
+      label: "P",
+      width: 28
+    }
 
   ];
 
@@ -632,53 +666,9 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         const param =
         reg.parametros?.find(p => {
 
-          const label =
-          String(p.label || "")
-          .trim()
-          .toLowerCase();
-
-          if (
-            col.key ===
-            "Temperatura gases chimenea"
-          ) {
-
-            return (
-
-              label.includes(
-                "temperatura gases"
-              ) ||
-
-              label.includes(
-                "temp gases"
-              ) ||
-
-              label.includes(
-                "t gases"
-              ) ||
-
-              label.includes(
-                "t° gases"
-              ) ||
-
-              label.includes(
-                "tgases"
-              ) ||
-
-              label.includes(
-                "gases chimenea"
-              ) ||
-
-              label.includes(
-                "chimenea"
-              )
-            );
-          }
-
           return (
-            label ===
-            String(col.key)
-            .trim()
-            .toLowerCase()
+            normalizar(p.label) ===
+            normalizar(col.key)
           );
         });
 
@@ -940,7 +930,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   return filePath;
 };
-
 
 
 /* =====================================================
