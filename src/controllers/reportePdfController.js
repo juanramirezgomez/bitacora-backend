@@ -2204,201 +2204,925 @@ async function obtenerRegistrosPorRango(desde, hasta) {
   return todosRegistros;
 }
 
+/* ================= EXCEL RANGO ================= */
+
 export const descargarExcelRango = async (req, res) => {
+
   try {
 
     const { desde, hasta } = req.query;
-    const registros = await obtenerRegistrosPorRango(desde, hasta);
+
+    const registros =
+      await obtenerRegistrosPorRango(desde, hasta);
 
     if (!registros.length) {
-      return res.status(404).json({ error: "Sin datos en ese rango" });
+
+      return res.status(404).json({
+        error: "Sin datos en ese rango"
+      });
     }
 
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Reporte");
+    const workbook =
+      new ExcelJS.Workbook();
 
-    /* ===== ESTILOS ===== */
-    const azul = "FF1F4E78";
-    const azulClaro = "FFD9E1F2";
+    workbook.creator =
+      "Novandino Litio";
 
-    const borde = {
-      top: { style: "thin" },
-      left: { style: "thin" },
-      bottom: { style: "thin" },
-      right: { style: "thin" }
+    const sheet =
+      workbook.addWorksheet("Reporte");
+
+    sheet.views = [{
+      state: "frozen",
+      ySplit: 6
+    }];
+
+    /* =====================================================
+       COLORES
+    ===================================================== */
+
+    const COLORS = {
+
+      primary: "FF461D77",
+
+      secondary: "FF7177EC",
+
+      white: "FFFFFFFF",
+
+      dark: "FF111827",
+
+      gray: "FF6B7280",
+
+      row1: "FFFFFFFF",
+
+      row2: "FFF3F4F6",
+
+      border: "FFD1D5DB"
     };
 
-    const center = { horizontal: "center", vertical: "middle", wrapText: true };
+    const border = {
 
-    /* ===== COLUMNAS DINÁMICAS ===== */
-    const columnasSet = new Set();
+      top: {
+        style: "thin",
+        color: { argb: COLORS.border }
+      },
+
+      left: {
+        style: "thin",
+        color: { argb: COLORS.border }
+      },
+
+      bottom: {
+        style: "thin",
+        color: { argb: COLORS.border }
+      },
+
+      right: {
+        style: "thin",
+        color: { argb: COLORS.border }
+      }
+    };
+
+    const center = {
+
+      horizontal: "center",
+
+      vertical: "middle",
+
+      wrapText: true
+    };
+
+    /* =====================================================
+       LOGO
+    ===================================================== */
+
+    try {
+
+      const logoPath = path.join(
+        process.cwd(),
+        "src",
+        "assets",
+        "logo-novandino5.png"
+      );
+
+      if (fs.existsSync(logoPath)) {
+
+        const imageId =
+          workbook.addImage({
+
+            filename: logoPath,
+
+            extension: "png"
+          });
+
+        sheet.addImage(imageId, {
+
+          tl: {
+            col: 0.3,
+            row: 0.4
+          },
+
+          ext: {
+            width: 220,
+            height: 75
+          }
+        });
+      }
+
+    } catch (err) {
+
+      console.log(err);
+    }
+
+    /* =====================================================
+       TITULO
+    ===================================================== */
+
+    sheet.mergeCells("D2:N2");
+
+    const title =
+      sheet.getCell("D2");
+
+    title.value =
+      "REPORTE OPERACIONAL POR RANGO";
+
+    title.font = {
+
+      size: 22,
+
+      bold: true,
+
+      color: {
+        argb: COLORS.dark
+      }
+    };
+
+    title.alignment = center;
+
+    sheet.mergeCells("D3:N3");
+
+    const subtitle =
+      sheet.getCell("D3");
+
+    subtitle.value =
+      `Desde ${desde} hasta ${hasta}`;
+
+    subtitle.font = {
+
+      size: 11,
+
+      color: {
+        argb: COLORS.gray
+      }
+    };
+
+    subtitle.alignment = center;
+
+    for (let i = 1; i <= 14; i++) {
+
+      sheet.getCell(5, i).fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+          argb: COLORS.primary
+        }
+      };
+    }
+
+    /* =====================================================
+       COLUMNAS
+    ===================================================== */
+
+    const columnasSet =
+      new Set();
 
     registros.forEach(r =>
-      r.parametros.forEach(p => columnasSet.add(p.label))
+      r.parametros.forEach(p =>
+        columnasSet.add(p.label)
+      )
     );
 
+    const columnasDB =
+      Array.from(columnasSet);
+
     const columnas = [
+
       "Fecha",
+
       "Hora",
-      ...Array.from(columnasSet),
+
+      ...columnasDB,
+
       "Purga"
     ];
 
-    /* ===== HEADER ===== */
-    const header = sheet.addRow(columnas);
+    const nombres = {
 
-    header.eachCell(cell => {
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: azul } };
-      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+      "Presión caldera": "P.cal",
+
+      "Vapor": "Vapor",
+
+      "Flujo alimentación caldera": "F.al",
+
+      "Totalizador alimentación": "T.al",
+
+      "Temperatura gases chimenea": "T.g",
+
+      "Consumo diesel": "C.d",
+
+      "% Diesel": "%D",
+
+      "Flujo agua blanda": "F.a",
+
+      "Totalizador agua blanda": "T.a",
+
+      "Flujo BBA41": "Fl41",
+
+      "Totalizador BBA41": "TB41",
+
+      "Temperatura salida ITC": "ITC"
+    };
+
+    let rowIndex = 7;
+
+    /* =====================================================
+       HEADER TABLA
+    ===================================================== */
+
+    const headerRow =
+      sheet.getRow(rowIndex++);
+
+    headerRow.height = 28;
+
+    columnas.forEach((c, i) => {
+
+      const cell =
+        headerRow.getCell(i + 1);
+
+      cell.value =
+        nombres[c] || c;
+
+      cell.fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+          argb: COLORS.secondary
+        }
+      };
+
+      cell.font = {
+
+        bold: true,
+
+        size: 9,
+
+        color: {
+          argb: COLORS.white
+        }
+      };
+
       cell.alignment = center;
-      cell.border = borde;
+
+      cell.border = border;
+
+      sheet.getColumn(i + 1).width =
+        i <= 1 ? 14 : 15;
     });
 
-    /* ===== FILAS ===== */
-    registros.forEach(r => {
+    /* =====================================================
+       FILAS
+    ===================================================== */
+
+    registros.forEach((r, idx) => {
+
+      const row =
+        sheet.getRow(rowIndex++);
+
+      row.height = 24;
 
       const fila = [];
 
       fila.push(r.fecha);
       fila.push(r.hora);
 
-      columnas.slice(2, -1).forEach(col => {
-        const p = r.parametros.find(x => x.label === col);
-        fila.push(p ? `${p.value} ${p.unidad}` : "-");
+      columnasDB.forEach(col => {
+
+        const p =
+          r.parametros.find(
+            x => x.label === col
+          );
+
+        fila.push(
+          p
+            ? `${p.value} ${p.unidad || ""}`
+            : "-"
+        );
       });
 
       fila.push(r.purgaDeFondo);
 
-      const row = sheet.addRow(fila);
+      fila.forEach((v, i) => {
 
-      row.eachCell(cell => {
-        cell.border = borde;
+        const cell =
+          row.getCell(i + 1);
+
+        cell.value = v;
+
+        cell.font = {
+          size: 9
+        };
+
         cell.alignment = center;
+
+        cell.border = border;
+
+        cell.fill = {
+
+          type: "pattern",
+
+          pattern: "solid",
+
+          fgColor: {
+
+            argb:
+
+              idx % 2 === 0
+
+                ? COLORS.row1
+
+                : COLORS.row2
+          }
+        };
       });
-
     });
 
-    /* ===== AUTO AJUSTE ===== */
-    sheet.columns.forEach(col => {
-      col.width = 18;
-    });
+    /* =====================================================
+       EXPORT
+    ===================================================== */
 
-    const buffer = await workbook.xlsx.writeBuffer();
+    const buffer =
+      await workbook.xlsx.writeBuffer();
 
-    res.setHeader("Content-Disposition", `attachment; filename=reporte_rango.xlsx`);
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=reporte_rango.xlsx"
+    );
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
 
     res.send(buffer);
 
   } catch (error) {
+
     console.error(error);
-    res.status(500).json({ error: "Error generando Excel rango" });
+
+    res.status(500).json({
+      error: "Error generando Excel rango"
+    });
   }
 };
 
+/* =====================================================
+       PDF RANGO
+    ===================================================== */
+
 export const descargarPdfRango = async (req, res) => {
+
   try {
 
     const { desde, hasta } = req.query;
-    const registros = await obtenerRegistrosPorRango(desde, hasta);
+
+    const registros =
+      await obtenerRegistrosPorRango(desde, hasta);
 
     if (!registros.length) {
-      return res.status(404).json({ error: "Sin datos en ese rango" });
+
+      return res.status(404).json({
+        error: "Sin datos en ese rango"
+      });
     }
 
-    const doc = new PDFDocument({ size: "A4", margin: 40 });
+    /* =====================================================
+       PDF
+    ===================================================== */
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "inline; filename=reporte_rango.pdf");
+    const doc =
+      new PDFDocument({
+
+        size: "A4",
+
+        layout: "landscape",
+
+        margin: 30
+      });
+
+    res.setHeader(
+      "Content-Type",
+      "application/pdf"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      "inline; filename=reporte_rango.pdf"
+    );
 
     doc.pipe(res);
 
-    /* ===== TITULO ===== */
-    doc.fontSize(16)
-      .text("REPORTE DE OPERACIÓN POR RANGO", { align: "center" })
-      .moveDown();
+    /* =====================================================
+       COLORES
+    ===================================================== */
 
-    doc.fontSize(10)
-      .text(`Desde: ${desde}`)
-      .text(`Hasta: ${hasta}`)
-      .moveDown();
+    const COLORS = {
 
-    /* ===== COLUMNAS ===== */
-    const columnasSet = new Set();
+      primary: "#461D77",
+
+      secondary: "#7177EC",
+
+      dark: "#111827",
+
+      gray: "#6B7280",
+
+      row1: "#FFFFFF",
+
+      row2: "#F3F4F6",
+
+      border: "#D1D5DB"
+    };
+
+    /* =====================================================
+       LOGO
+    ===================================================== */
+
+    try {
+
+      const logoPath = path.join(
+        process.cwd(),
+        "src",
+        "assets",
+        "logo-novandino5.png"
+      );
+
+      if (fs.existsSync(logoPath)) {
+
+        doc.image(
+          logoPath,
+          35,
+          25,
+          {
+            width: 170
+          }
+        );
+      }
+
+    } catch (err) {
+
+      console.log(
+        "ERROR LOGO PDF:",
+        err
+      );
+    }
+
+    /* =====================================================
+       TITULO
+    ===================================================== */
+
+    doc
+      .fillColor(COLORS.dark)
+      .font("Helvetica-Bold")
+      .fontSize(22)
+      .text(
+        "REPORTE OPERACIONAL POR RANGO",
+        0,
+        35,
+        {
+          align: "center"
+        }
+      );
+
+    doc
+      .fillColor(COLORS.gray)
+      .font("Helvetica")
+      .fontSize(10)
+      .text(
+        `Desde ${desde} hasta ${hasta}`,
+        {
+          align: "center"
+        }
+      );
+
+    /* =====================================================
+       BARRA
+    ===================================================== */
+
+    doc
+      .rect(
+        30,
+        95,
+        doc.page.width - 60,
+        8
+      )
+      .fill(COLORS.primary);
+
+    /* =====================================================
+       COLUMNAS
+    ===================================================== */
+
+    const columnasSet =
+      new Set();
 
     registros.forEach(r =>
-      r.parametros.forEach(p => columnasSet.add(p.label))
+      r.parametros.forEach(p =>
+        columnasSet.add(p.label)
+      )
     );
 
+    const columnasDB =
+      Array.from(columnasSet);
+
+    const nombres = {
+
+      "Presión caldera": "P.cal",
+
+      "Vapor": "Vapor",
+
+      "Flujo alimentación caldera": "F.al",
+
+      "Totalizador alimentación": "T.al",
+
+      "Temperatura gases chimenea": "T.g",
+
+      "Consumo diesel": "C.d",
+
+      "% Diesel": "%D",
+
+      "Flujo agua blanda": "F.a",
+
+      "Totalizador agua blanda": "T.a",
+
+      "Flujo BBA41": "Fl41",
+
+      "Totalizador BBA41": "TB41",
+
+      "Temperatura salida ITC": "ITC"
+    };
+
     const columnas = [
+
       "Fecha",
+
       "Hora",
-      ...Array.from(columnasSet),
-      "Purga"
+
+      ...columnasDB,
+
+      "P"
     ];
 
-    const tableWidth = doc.page.width - 80;
-    const colWidth = tableWidth / columnas.length;
-    const rowHeight = 18;
+    /* =====================================================
+       TABLA
+    ===================================================== */
 
-    let y = doc.y;
+    const marginX = 30;
 
-    /* ===== HEADER ===== */
-    doc.font("Helvetica-Bold").fontSize(7);
+    const tableWidth =
+      doc.page.width - 60;
+
+    const colWidth =
+      tableWidth / columnas.length;
+
+    const rowHeight = 20;
+
+    let y = 120;
+
+    /* =====================================================
+       HEADER
+    ===================================================== */
 
     columnas.forEach((col, i) => {
-      doc.rect(40 + i * colWidth, y, colWidth, rowHeight)
-        .fillAndStroke("#1F4E78", "#000");
 
-      doc.fillColor("white").text(col, 40 + i * colWidth + 2, y + 5, {
-        width: colWidth - 4,
-        align: "center"
-      });
+      const x =
+        marginX + (i * colWidth);
+
+      doc
+        .rect(
+          x,
+          y,
+          colWidth,
+          rowHeight
+        )
+        .fillAndStroke(
+          COLORS.secondary,
+          COLORS.border
+        );
+
+      doc
+        .fillColor("#FFFFFF")
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(
+
+          nombres[col] || col,
+
+          x + 2,
+
+          y + 6,
+
+          {
+
+            width: colWidth - 4,
+
+            align: "center"
+          }
+        );
     });
 
     y += rowHeight;
 
-    /* ===== FILAS ===== */
-    doc.font("Helvetica").fontSize(7);
+    /* =====================================================
+       FILAS
+    ===================================================== */
 
-    registros.forEach(r => {
+    registros.forEach((r, idx) => {
+
+      /* NUEVA PAGINA */
+
+      if (y > 520) {
+
+        doc.addPage({
+
+          layout: "landscape"
+        });
+
+        y = 40;
+
+        /* HEADER NUEVO */
+
+        columnas.forEach((col, i) => {
+
+          const x =
+            marginX + (i * colWidth);
+
+          doc
+            .rect(
+              x,
+              y,
+              colWidth,
+              rowHeight
+            )
+            .fillAndStroke(
+              COLORS.secondary,
+              COLORS.border
+            );
+
+          doc
+            .fillColor("#FFFFFF")
+            .font("Helvetica-Bold")
+            .fontSize(8)
+            .text(
+
+              nombres[col] || col,
+
+              x + 2,
+
+              y + 6,
+
+              {
+
+                width: colWidth - 4,
+
+                align: "center"
+              }
+            );
+        });
+
+        y += rowHeight;
+      }
+
+      /* COLOR FILA */
+
+      const bgColor =
+        idx % 2 === 0
+          ? COLORS.row1
+          : COLORS.row2;
 
       columnas.forEach((col, i) => {
 
+        const x =
+          marginX + (i * colWidth);
+
         let val = "-";
 
-        if (col === "Fecha") val = r.fecha;
-        else if (col === "Hora") val = r.hora;
-        else if (col === "Purga") val = r.purgaDeFondo;
-        else {
-          const p = r.parametros.find(x => x.label === col);
-          if (p) val = `${p.value} ${p.unidad}`;
+        if (col === "Fecha") {
+
+          val = r.fecha;
+
+        } else if (col === "Hora") {
+
+          val = r.hora;
+
+        } else if (col === "P") {
+
+          val = r.purgaDeFondo;
+
+        } else {
+
+          const p =
+            r.parametros.find(
+              x => x.label === col
+            );
+
+          if (p) {
+
+            val =
+              `${p.value} ${p.unidad || ""}`;
+          }
         }
 
-        doc.fillColor("black");
+        /* CELDA */
 
-        doc.rect(40 + i * colWidth, y, colWidth, rowHeight).stroke();
+        doc
+          .rect(
+            x,
+            y,
+            colWidth,
+            rowHeight
+          )
+          .fillAndStroke(
+            bgColor,
+            COLORS.border
+          );
 
-        doc.text(val, 40 + i * colWidth + 2, y + 5, {
-          width: colWidth - 4,
-          align: "center"
-        });
+        /* TEXTO */
 
+        doc
+          .fillColor(COLORS.dark)
+          .font("Helvetica")
+          .fontSize(7)
+          .text(
+
+            val,
+
+            x + 2,
+
+            y + 6,
+
+            {
+
+              width: colWidth - 4,
+
+              align: "center"
+            }
+          );
       });
 
       y += rowHeight;
+    });
 
-      if (y > 750) {
-        doc.addPage();
-        y = 50;
-      }
+    /* =====================================================
+       REFERENCIAS
+    ===================================================== */
 
+    y += 25;
+
+    if (y > 470) {
+
+      doc.addPage({
+        layout: "landscape"
+      });
+
+      y = 40;
+    }
+
+    /* TITULO */
+
+    doc
+      .rect(
+        30,
+        y,
+        260,
+        20
+      )
+      .fill(COLORS.primary);
+
+    doc
+      .fillColor("#FFFFFF")
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .text(
+        "REFERENCIA PARÁMETROS",
+        35,
+        y + 6
+      );
+
+    y += 20;
+
+    const referencias = [
+
+      ["P.cal", "Presión de caldera"],
+
+      ["Vapor", "Toneladas de vapor"],
+
+      ["%D", "Porcentaje combustible"],
+
+      ["Fl41", "Flujo bomba 41"],
+
+      ["F.al", "Flujo alimentación agua"],
+
+      ["T.al", "Totalizador alimentación"],
+
+      ["T.g", "Temperatura gases"],
+
+      ["C.d", "Consumo diesel"],
+
+      ["F.a", "Flujo agua blanda"],
+
+      ["T.a", "Totalizador agua blanda"],
+
+      ["TB41", "Totalizador bomba 41"],
+
+      ["ITC", "Temperatura salida ITC"],
+
+      ["P", "Purga fondo"]
+    ];
+
+    referencias.forEach((r, idx) => {
+
+      const bg =
+        idx % 2 === 0
+          ? COLORS.row1
+          : COLORS.row2;
+
+      /* SIGLA */
+
+      doc
+        .rect(
+          30,
+          y,
+          80,
+          18
+        )
+        .fillAndStroke(
+          bg,
+          COLORS.border
+        );
+
+      doc
+        .fillColor(COLORS.dark)
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(
+          r[0],
+          30,
+          y + 5,
+          {
+            width: 80,
+            align: "center"
+          }
+        );
+
+      /* DESC */
+
+      doc
+        .rect(
+          110,
+          y,
+          220,
+          18
+        )
+        .fillAndStroke(
+          bg,
+          COLORS.border
+        );
+
+      doc
+        .fillColor(COLORS.dark)
+        .font("Helvetica")
+        .fontSize(8)
+        .text(
+          r[1],
+          115,
+          y + 5
+        );
+
+      y += 18;
     });
 
     doc.end();
 
   } catch (error) {
+
     console.error(error);
-    res.status(500).json({ error: "Error generando PDF rango" });
+
+    res.status(500).json({
+      error: "Error generando PDF rango"
+    });
   }
 };
+
