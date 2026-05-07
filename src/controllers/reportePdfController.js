@@ -99,6 +99,10 @@ function generarInfoArchivo(bitacora, extension) {
    GENERAR PDF PREMIUM PROFESIONAL
 ===================================================== */
 
+/* =====================================================
+   GENERAR PDF PREMIUM PROFESIONAL
+===================================================== */
+
 export const generarReportePdfInterno = async (bitacoraId) => {
 
   const bitacora = await Bitacora.findById(bitacoraId);
@@ -115,10 +119,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     CierreTurno.findOne({ bitacoraId })
   ]);
 
-  registros = ordenarPorTurno(
-    registros,
-    bitacora.turno
-  );
+  registros =
+  ordenarPorTurno(registros, bitacora.turno);
 
   const { filePath } =
   generarInfoArchivo(bitacora, "pdf");
@@ -146,17 +148,12 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     primary: "#2563eb",
     secondary: "#6f3df4",
-    success: "#22c55e",
-    danger: "#ef4444",
 
     dark: "#111827",
     gray: "#6b7280",
 
     light: "#f8fafc",
-    border: "#d1d5db",
-
-    row1: "#f8fafc",
-    row2: "#eef2ff"
+    border: "#d1d5db"
   };
 
   /* =====================================================
@@ -426,141 +423,128 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   doc.moveDown(2);
 
+  /* =====================================================
+     REGISTROS PREMIUM
+  ===================================================== */
+
   if (registros.length > 0) {
-
-    const columnasDinamicas =
-    new Set();
-
-    registros.forEach(reg =>
-      reg.parametros?.forEach(p =>
-        columnasDinamicas.add(p.label)
-      )
-    );
-
-    const columnas = [
-      "hora",
-      ...Array.from(columnasDinamicas),
-      "purgaDeFondo"
-    ];
-
-    const tableWidth = 515;
-    const colWidth =
-    tableWidth / columnas.length;
-
-    const rowHeight = 28;
-
-    let y = doc.y;
-    let x = 40;
-
-    /* HEADER TABLA */
-
-    doc
-      .font("Helvetica-Bold")
-      .fontSize(7);
-
-    columnas.forEach(col => {
-
-      doc
-        .rect(
-          x,
-          y,
-          colWidth,
-          rowHeight
-        )
-        .fillAndStroke(
-          COLORS.primary,
-          "#dbeafe"
-        );
-
-      doc.fillColor("#ffffff");
-
-      doc.text(
-        col,
-        x + 3,
-        y + 9,
-        {
-          width: colWidth - 6,
-          align: "center"
-        }
-      );
-
-      x += colWidth;
-    });
-
-    y += rowHeight;
-
-    /* FILAS */
 
     registros.forEach((reg, index) => {
 
-      x = 40;
-
-      columnas.forEach(col => {
-
-        let valor = "-";
-
-        if (col === "hora")
-          valor = reg.hora;
-
-        else if (col === "purgaDeFondo")
-          valor = reg.purgaDeFondo;
-
-        else {
-
-          const param =
-          reg.parametros?.find(
-            p => p.label === col
-          );
-
-          if (param)
-            valor =
-            `${param.value} ${param.unidad}`;
-        }
-
-        doc
-          .rect(
-            x,
-            y,
-            colWidth,
-            rowHeight
-          )
-          .fillAndStroke(
-            index % 2 === 0
-              ? COLORS.row1
-              : COLORS.row2,
-            "#e5e7eb"
-          );
-
-        doc.fillColor(COLORS.dark);
-
-        doc
-          .font("Helvetica")
-          .fontSize(7)
-          .text(
-            String(valor),
-            x + 2,
-            y + 9,
-            {
-              width: colWidth - 4,
-              align: "center"
-            }
-          );
-
-        x += colWidth;
-      });
-
-      y += rowHeight;
-
-      if (y > 720) {
+      if (doc.y > 650) {
 
         doc.addPage();
 
-        y = 60;
+        doc.y = 60;
       }
+
+      /* HEADER REGISTRO */
+
+      doc
+        .roundedRect(
+          40,
+          doc.y,
+          515,
+          30,
+          8
+        )
+        .fill(
+          index % 2 === 0
+            ? COLORS.primary
+            : COLORS.secondary
+        );
+
+      doc
+        .fillColor("#ffffff")
+        .font("Helvetica-Bold")
+        .fontSize(12)
+        .text(
+          `REGISTRO ${reg.hora}`,
+          55,
+          doc.y + 8
+        );
+
+      doc.moveDown(2);
+
+      let posY = doc.y;
+
+      /* PARAMETROS */
+
+      reg.parametros?.forEach((p, i) => {
+
+        const left =
+        i % 2 === 0;
+
+        const x =
+        left ? 50 : 300;
+
+        if (!left)
+          posY -= 26;
+
+        doc
+          .roundedRect(
+            x,
+            posY,
+            220,
+            24,
+            6
+          )
+          .fill("#f8fafc");
+
+        doc.fillColor("#111827");
+
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(8)
+          .text(
+            p.label,
+            x + 10,
+            posY + 7
+          );
+
+        doc
+          .font("Helvetica")
+          .text(
+            `${p.value} ${p.unidad}`,
+            x + 140,
+            posY + 7
+          );
+
+        if (!left)
+          posY += 34;
+      });
+
+      /* PURGA */
+
+      doc
+        .roundedRect(
+          50,
+          posY + 10,
+          470,
+          26,
+          6
+        )
+        .fill(
+          reg.purgaDeFondo === "SI"
+            ? "#ecfdf5"
+            : "#fef2f2"
+        );
+
+      doc.fillColor("#111827");
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(9)
+        .text(
+          `Purga de fondo: ${reg.purgaDeFondo}`,
+          65,
+          posY + 18
+        );
+
+      doc.y = posY + 60;
 
     });
 
-    doc.y = y + 20;
   }
 
   /* =====================================================
@@ -586,6 +570,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       );
 
     doc.y = 110;
+
+    /* RECEPCION */
 
     doc
       .roundedRect(40, doc.y, 250, 90, 10)
