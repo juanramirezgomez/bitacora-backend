@@ -1195,11 +1195,7 @@ export const descargarReporteExcel = async (req, res) => {
 
       row2: "FFF3F4F6",
 
-      border: "FFD1D5DB",
-
-      success: "FFDCFCE7",
-
-      danger: "FFFEE2E2"
+      border: "FFD1D5DB"
     };
 
     /* =====================================================
@@ -1469,23 +1465,23 @@ export const descargarReporteExcel = async (req, res) => {
     });
 
     /* =====================================================
-       CHECKLIST
+       CHECKLIST INICIAL
     ===================================================== */
 
-    sheet.getColumn(17).width = 42;
-    sheet.getColumn(18).width = 28;
+    sheet.getColumn(17).width = 38; // Q
+    sheet.getColumn(18).width = 24; // R
 
-    rowIndex = 11;
+    let checklistRow = 11;
 
-    sheet.mergeCells(`Q${rowIndex}:R${rowIndex}`);
+    sheet.mergeCells(`Q${checklistRow}:R${checklistRow}`);
 
-    let cell =
-      sheet.getCell(`Q${rowIndex}`);
+    const checklistTitle =
+      sheet.getCell(`Q${checklistRow}`);
 
-    cell.value =
-      "I. CHECKLIST INICIAL";
+    checklistTitle.value =
+      "CHECKLIST INICIAL";
 
-    cell.fill = {
+    checklistTitle.fill = {
 
       type: "pattern",
 
@@ -1496,31 +1492,31 @@ export const descargarReporteExcel = async (req, res) => {
       }
     };
 
-    cell.font = {
+    checklistTitle.font = {
 
       bold: true,
 
-      size: 12,
+      size: 11,
 
       color: {
         argb: COLORS.white
       }
     };
 
-    cell.alignment = center;
+    checklistTitle.alignment = center;
 
-    cell.border = border;
+    checklistTitle.border = border;
 
-    rowIndex++;
+    checklistRow++;
 
-    const headerChecklist =
-      sheet.getRow(rowIndex++);
+    const checklistHeader =
+      sheet.getRow(checklistRow++);
 
     ["EQUIPO", "ESTADO"]
       .forEach((h, i) => {
 
         const c =
-          headerChecklist.getCell(i + 17);
+          checklistHeader.getCell(i + 17);
 
         c.value = h;
 
@@ -1571,13 +1567,15 @@ export const descargarReporteExcel = async (req, res) => {
     checklistRows.forEach((f, idx) => {
 
       const row =
-        sheet.getRow(rowIndex++);
+        sheet.getRow(checklistRow++);
 
-      const estadoRaw =
-        f[1] || "-";
+      row.height = 22;
 
       const estado =
-        estadoRaw.replace(/_/g, " ");
+        (f[1] || "-")
+        .replace(/_/g, " ");
+
+      /* EQUIPO */
 
       const equipoCell =
         row.getCell(17);
@@ -1588,17 +1586,12 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
-        size: 10
+        size: 9
       };
 
       equipoCell.alignment = left;
 
       equipoCell.border = border;
-
-      const equipoCellFill =
-        idx % 2 === 0
-          ? COLORS.row1
-          : COLORS.row2;
 
       equipoCell.fill = {
 
@@ -1607,9 +1600,18 @@ export const descargarReporteExcel = async (req, res) => {
         pattern: "solid",
 
         fgColor: {
-          argb: equipoCellFill
+
+          argb:
+
+            idx % 2 === 0
+
+              ? COLORS.row1
+
+              : COLORS.row2
         }
       };
+
+      /* ESTADO */
 
       const estadoCell =
         row.getCell(18);
@@ -1620,62 +1622,47 @@ export const descargarReporteExcel = async (req, res) => {
 
         bold: true,
 
-        size: 10
+        size: 9
       };
 
       estadoCell.alignment = center;
 
       estadoCell.border = border;
 
-      if (
+      estadoCell.fill = {
 
-        estado.includes("EN SERVICIO") ||
+        type: "pattern",
 
-        estado.includes("NORMAL") ||
+        pattern: "solid",
 
-        estado.includes("LLENO")
+        fgColor: {
 
-      ) {
+          argb:
 
-        estadoCell.fill = {
+            estado.includes("EN SERVICIO") ||
+            estado.includes("NORMAL") ||
+            estado.includes("LLENO")
 
-          type: "pattern",
+              ? "FFDCFCE7"
 
-          pattern: "solid",
-
-          fgColor: {
-            argb: COLORS.success
-          }
-        };
-
-      } else {
-
-        estadoCell.fill = {
-
-          type: "pattern",
-
-          pattern: "solid",
-
-          fgColor: {
-            argb: COLORS.danger
-          }
-        };
-      }
+              : "FFFEE2E2"
+        }
+      };
     });
 
     /* =====================================================
        REGISTRO OPERACIÓN
     ===================================================== */
 
-    rowIndex = 11;
+    rowIndex = 12;
 
     sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
 
-    cell =
+    let cell =
       sheet.getCell(`A${rowIndex}`);
 
     cell.value =
-      "II. REGISTRO DE OPERACIÓN";
+      "REGISTRO DE OPERACIÓN";
 
     cell.fill = {
 
@@ -1775,6 +1762,8 @@ export const descargarReporteExcel = async (req, res) => {
       "P"
     ];
 
+    /* NO TOCAR REGISTRO */
+
     columnas.forEach((_, i) => {
 
       const column =
@@ -1813,6 +1802,8 @@ export const descargarReporteExcel = async (req, res) => {
 
     const headerRow =
       sheet.getRow(rowIndex++);
+
+    headerRow.height = 28;
 
     columnas.forEach((c, i) => {
 
@@ -1853,6 +1844,8 @@ export const descargarReporteExcel = async (req, res) => {
 
       const row =
         sheet.getRow(rowIndex++);
+
+      row.height = 24;
 
       const fila = [
         r.hora || "-"
@@ -1912,6 +1905,193 @@ export const descargarReporteExcel = async (req, res) => {
           }
         };
       });
+    });
+
+    /* =====================================================
+       REFERENCIA PARÁMETROS
+    ===================================================== */
+
+    const refStartRow = rowIndex + 3;
+
+    sheet.getColumn(17).width = 18;
+    sheet.getColumn(18).width = 42;
+
+    sheet.mergeCells(`Q${refStartRow}:R${refStartRow}`);
+
+    const refTitle =
+      sheet.getCell(`Q${refStartRow}`);
+
+    refTitle.value =
+      "REFERENCIA PARÁMETROS";
+
+    refTitle.fill = {
+
+      type: "pattern",
+
+      pattern: "solid",
+
+      fgColor: {
+        argb: COLORS.primary
+      }
+    };
+
+    refTitle.font = {
+
+      bold: true,
+
+      size: 11,
+
+      color: {
+        argb: COLORS.white
+      }
+    };
+
+    refTitle.alignment = center;
+
+    refTitle.border = border;
+
+    /* HEADER */
+
+    const refHeader =
+      sheet.getRow(refStartRow + 1);
+
+    ["SIGLA", "DESCRIPCIÓN"]
+      .forEach((h, i) => {
+
+        const c =
+          refHeader.getCell(i + 17);
+
+        c.value = h;
+
+        c.fill = {
+
+          type: "pattern",
+
+          pattern: "solid",
+
+          fgColor: {
+            argb: COLORS.secondary
+          }
+        };
+
+        c.font = {
+
+          bold: true,
+
+          color: {
+            argb: COLORS.white
+          }
+        };
+
+        c.alignment = center;
+
+        c.border = border;
+      });
+
+    const referencias = [
+
+      ["P.cal", "Presión de caldera"],
+
+      ["Vapor", "Toneladas de vapor"],
+
+      ["%D", "Porcentaje combustible"],
+
+      ["Fl41", "Flujo bomba 41"],
+
+      ["F.al", "Flujo alimentación agua"],
+
+      ["T.al", "Totalizador alimentación"],
+
+      ["T.g", "Temperatura gases"],
+
+      ["C.d", "Consumo diesel"],
+
+      ["F.a", "Flujo agua blanda"],
+
+      ["T.a", "Totalizador agua blanda"],
+
+      ["TB41", "Totalizador bomba 41"],
+
+      ["ITC", "Temperatura salida ITC"],
+
+      ["P", "Purga fondo"]
+    ];
+
+    referencias.forEach((r, idx) => {
+
+      const row =
+        sheet.getRow(refStartRow + 2 + idx);
+
+      row.height = 22;
+
+      /* SIGLA */
+
+      const siglaCell =
+        row.getCell(17);
+
+      siglaCell.value = r[0];
+
+      siglaCell.font = {
+
+        bold: true,
+
+        size: 9
+      };
+
+      siglaCell.alignment = center;
+
+      siglaCell.border = border;
+
+      siglaCell.fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+
+          argb:
+
+            idx % 2 === 0
+
+              ? COLORS.row1
+
+              : COLORS.row2
+        }
+      };
+
+      /* DESCRIPCIÓN */
+
+      const descCell =
+        row.getCell(18);
+
+      descCell.value = r[1];
+
+      descCell.font = {
+        size: 9
+      };
+
+      descCell.alignment = left;
+
+      descCell.border = border;
+
+      descCell.fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+
+          argb:
+
+            idx % 2 === 0
+
+              ? COLORS.row1
+
+              : COLORS.row2
+        }
+      };
     });
 
     /* =====================================================
