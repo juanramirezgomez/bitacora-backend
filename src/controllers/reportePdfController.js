@@ -517,73 +517,86 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   obsInicialHeight +
   60;
 
+  /* =====================================================
+     COLUMNAS DINÁMICAS
+  ===================================================== */
+
+  const columnasSet = new Set();
+
+  registros.forEach(r =>
+    r.parametros?.forEach(p =>
+      columnasSet.add(p.label)
+    )
+  );
+
+  const columnasDB =
+  Array.from(columnasSet);
+
+  const ordenPreferido = [
+
+    "presioncaldera",
+    "vapor",
+    "flujoalimentacioncaldera",
+    "totalizadoralimentacion",
+    "temperaturagaseschimenea",
+    "consumodiesel",
+    "diesel",
+    "flujoaguablanda",
+    "totalizadoraguablanda",
+    "flujobba41",
+    "totalizadorbba41",
+    "temperaturasalidaitc"
+
+  ];
+
+  columnasDB.sort((a, b) => {
+
+    const na = normalizar(a);
+    const nb = normalizar(b);
+
+    return (
+      (
+        ordenPreferido.indexOf(na) === -1
+          ? 999
+          : ordenPreferido.indexOf(na)
+      ) -
+      (
+        ordenPreferido.indexOf(nb) === -1
+          ? 999
+          : ordenPreferido.indexOf(nb)
+      )
+    );
+  });
+
   const columnas = [
 
-    { key: "hora", label: "Hora", width: 40 },
-
-    { key: "presioncaldera", label: "P.cal", width: 48 },
-
-    { key: "vapor", label: "Vapor", width: 42 },
-
     {
-      key: "flujoalimentacioncaldera",
-      label: "F.al",
-      width: 42
-    },
-
-    {
-      key: "totalizadoralimentacion",
-      label: "T.al",
-      width: 42
-    },
-
-    {
-      key: "temperaturagaseschimenea",
-      label: "T.g",
-      width: 42
-    },
-
-    {
-      key: "consumodiesel",
-      label: "C.d",
+      key: "hora",
+      label: "Hora",
       width: 40
     },
 
-    {
-      key: "diesel",
-      label: "%D",
-      width: 34
-    },
+    ...columnasDB.map(c => ({
 
-    {
-      key: "flujoaguablanda",
-      label: "F.a",
-      width: 42
-    },
+      key: c,
 
-    {
-      key: "totalizadoraguablanda",
-      label: "T.a",
-      width: 42
-    },
+      label: c
+        .replace("Presión caldera", "P.cal")
+        .replace("Vapor", "Vapor")
+        .replace("Flujo alimentación caldera", "F.al")
+        .replace("Totalizador alimentación", "T.al")
+        .replace("Temperatura gases chimenea", "T.g")
+        .replace("Consumo diesel", "C.d")
+        .replace("% Diesel", "%D")
+        .replace("Flujo agua blanda", "F.a")
+        .replace("Totalizador agua blanda", "T.a")
+        .replace("Flujo BBA41", "FI41")
+        .replace("Totalizador BBA41", "TB41")
+        .replace("Temperatura salida ITC", "ITC"),
 
-    {
-      key: "flujobba41",
-      label: "FI41",
-      width: 42
-    },
+      width: 48
 
-    {
-      key: "totalizadorbba41",
-      label: "TB41",
-      width: 42
-    },
-
-    {
-      key: "temperaturasalidaitc",
-      label: "ITC",
-      width: 36
-    },
+    })),
 
     {
       key: "purga",
@@ -799,10 +812,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     332,
     250
   );
-
-  /* =====================================================
-     OBSERVACIONES FINALES
-  ===================================================== */
 
   const obsFinal =
   cierre?.comentariosFinales || "-";
