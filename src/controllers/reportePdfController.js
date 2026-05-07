@@ -1468,8 +1468,8 @@ export const descargarReporteExcel = async (req, res) => {
        CHECKLIST INICIAL
     ===================================================== */
 
-    sheet.getColumn(17).width = 38; // Q
-    sheet.getColumn(18).width = 24; // R
+    sheet.getColumn(17).width = 38;
+    sheet.getColumn(18).width = 24;
 
     let checklistRow = 11;
 
@@ -1573,7 +1573,7 @@ export const descargarReporteExcel = async (req, res) => {
 
       const estado =
         (f[1] || "-")
-        .replace(/_/g, " ");
+          .replace(/_/g, " ");
 
       /* EQUIPO */
 
@@ -1591,7 +1591,13 @@ export const descargarReporteExcel = async (req, res) => {
 
       equipoCell.alignment = left;
 
-      equipoCell.border = border;
+      equipoCell.border = {
+
+        top: { style: "thin", color: { argb: COLORS.border } },
+        left: { style: "thin", color: { argb: COLORS.border } },
+        bottom: { style: "thin", color: { argb: COLORS.border } },
+        right: { style: "thin", color: { argb: COLORS.border } }
+      };
 
       equipoCell.fill = {
 
@@ -1602,11 +1608,8 @@ export const descargarReporteExcel = async (req, res) => {
         fgColor: {
 
           argb:
-
             idx % 2 === 0
-
               ? COLORS.row1
-
               : COLORS.row2
         }
       };
@@ -1627,7 +1630,13 @@ export const descargarReporteExcel = async (req, res) => {
 
       estadoCell.alignment = center;
 
-      estadoCell.border = border;
+      estadoCell.border = {
+
+        top: { style: "thin", color: { argb: COLORS.border } },
+        left: { style: "thin", color: { argb: COLORS.border } },
+        bottom: { style: "thin", color: { argb: COLORS.border } },
+        right: { style: "thin", color: { argb: COLORS.border } }
+      };
 
       estadoCell.fill = {
 
@@ -1762,8 +1771,6 @@ export const descargarReporteExcel = async (req, res) => {
       "P"
     ];
 
-    /* NO TOCAR REGISTRO */
-
     columnas.forEach((_, i) => {
 
       const column =
@@ -1803,7 +1810,7 @@ export const descargarReporteExcel = async (req, res) => {
     const headerRow =
       sheet.getRow(rowIndex++);
 
-    headerRow.height = 28;
+    headerRow.height = 30;
 
     columnas.forEach((c, i) => {
 
@@ -1879,7 +1886,28 @@ export const descargarReporteExcel = async (req, res) => {
 
         cell.value = v;
 
-        cell.border = border;
+        cell.border = {
+
+          top: {
+            style: "thin",
+            color: { argb: "FFD1D5DB" }
+          },
+
+          left: {
+            style: "thin",
+            color: { argb: "FFD1D5DB" }
+          },
+
+          bottom: {
+            style: "thin",
+            color: { argb: "FFD1D5DB" }
+          },
+
+          right: {
+            style: "thin",
+            color: { argb: "FFD1D5DB" }
+          }
+        };
 
         cell.alignment = center;
 
@@ -1949,8 +1977,6 @@ export const descargarReporteExcel = async (req, res) => {
     refTitle.alignment = center;
 
     refTitle.border = border;
-
-    /* HEADER */
 
     const refHeader =
       sheet.getRow(refStartRow + 1);
@@ -2024,8 +2050,6 @@ export const descargarReporteExcel = async (req, res) => {
 
       row.height = 22;
 
-      /* SIGLA */
-
       const siglaCell =
         row.getCell(17);
 
@@ -2040,7 +2064,13 @@ export const descargarReporteExcel = async (req, res) => {
 
       siglaCell.alignment = center;
 
-      siglaCell.border = border;
+      siglaCell.border = {
+
+        top: { style: "thin", color: { argb: COLORS.border } },
+        left: { style: "thin", color: { argb: COLORS.border } },
+        bottom: { style: "thin", color: { argb: COLORS.border } },
+        right: { style: "thin", color: { argb: COLORS.border } }
+      };
 
       siglaCell.fill = {
 
@@ -2060,8 +2090,6 @@ export const descargarReporteExcel = async (req, res) => {
         }
       };
 
-      /* DESCRIPCIÓN */
-
       const descCell =
         row.getCell(18);
 
@@ -2073,7 +2101,13 @@ export const descargarReporteExcel = async (req, res) => {
 
       descCell.alignment = left;
 
-      descCell.border = border;
+      descCell.border = {
+
+        top: { style: "thin", color: { argb: COLORS.border } },
+        left: { style: "thin", color: { argb: COLORS.border } },
+        bottom: { style: "thin", color: { argb: COLORS.border } },
+        right: { style: "thin", color: { argb: COLORS.border } }
+      };
 
       descCell.fill = {
 
