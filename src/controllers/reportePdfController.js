@@ -1279,13 +1279,6 @@ export const descargarReporteExcel = async (req, res) => {
         "logo-novandino5.png"
       );
 
-      console.log("LOGO:", logoPath);
-
-      console.log(
-        "EXISTE:",
-        fs.existsSync(logoPath)
-      );
-
       if (fs.existsSync(logoPath)) {
 
         const imageId =
@@ -1494,7 +1487,7 @@ export const descargarReporteExcel = async (req, res) => {
     ===================================================== */
 
     sheet.mergeCells(
-      `A${rowIndex}:D${rowIndex}`
+      `A${rowIndex}:F${rowIndex}`
     );
 
     let cell =
@@ -1529,18 +1522,23 @@ export const descargarReporteExcel = async (req, res) => {
 
     cell.border = border;
 
+    sheet.getRow(rowIndex).height = 28;
+
     rowIndex++;
 
-    const headChecklist =
+    const headerChecklist =
     sheet.getRow(rowIndex++);
 
-    headChecklist.height = 24;
+    headerChecklist.height = 26;
 
-    ["Equipo", "Estado"]
+    sheet.getColumn(1).width = 38;
+    sheet.getColumn(2).width = 24;
+
+    ["EQUIPO", "ESTADO"]
     .forEach((h, i) => {
 
       const c =
-      headChecklist.getCell(i + 1);
+      headerChecklist.getCell(i + 1);
 
       c.value = h;
 
@@ -1558,6 +1556,8 @@ export const descargarReporteExcel = async (req, res) => {
       c.font = {
 
         bold: true,
+
+        size: 10,
 
         color: {
           argb: COLORS.white
@@ -1593,40 +1593,76 @@ export const descargarReporteExcel = async (req, res) => {
       const row =
       sheet.getRow(rowIndex++);
 
-      row.height = 22;
+      row.height = 24;
+
+      const estadoRaw =
+      f[1] || "-";
 
       const estado =
-      (f[1] || "-")
-      .replace(/_/g, " ");
+      estadoRaw.replace(/_/g, " ");
 
-      row.getCell(1).value = f[0];
+      /* EQUIPO */
 
-      row.getCell(2).value = estado;
+      const equipoCell =
+      row.getCell(1);
 
-      row.eachCell(c => {
+      equipoCell.value = f[0];
 
-        c.border = border;
+      equipoCell.font = {
 
-        c.alignment = center;
+        bold: true,
 
-        c.fill = {
+        size: 10,
 
-          type: "pattern",
+        color: {
+          argb: COLORS.dark
+        }
+      };
 
-          pattern: "solid",
+      equipoCell.alignment = {
 
-          fgColor: {
+        horizontal: "left",
 
-            argb:
+        vertical: "middle"
+      };
 
-            idx % 2 === 0
+      equipoCell.border = border;
 
-            ? COLORS.row1
+      equipoCell.fill = {
 
-            : COLORS.row2
-          }
-        };
-      });
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+
+          argb:
+
+          idx % 2 === 0
+
+          ? COLORS.row1
+
+          : COLORS.row2
+        }
+      };
+
+      /* ESTADO */
+
+      const estadoCell =
+      row.getCell(2);
+
+      estadoCell.value = estado;
+
+      estadoCell.font = {
+
+        bold: true,
+
+        size: 10
+      };
+
+      estadoCell.alignment = center;
+
+      estadoCell.border = border;
 
       if (
 
@@ -1638,7 +1674,7 @@ export const descargarReporteExcel = async (req, res) => {
 
       ) {
 
-        row.getCell(2).fill = {
+        estadoCell.fill = {
 
           type: "pattern",
 
@@ -1648,9 +1684,8 @@ export const descargarReporteExcel = async (req, res) => {
             argb: COLORS.success
           }
         };
-      }
 
-      if (
+      } else if (
 
         estado.includes("FUERA") ||
 
@@ -1658,7 +1693,7 @@ export const descargarReporteExcel = async (req, res) => {
 
       ) {
 
-        row.getCell(2).fill = {
+        estadoCell.fill = {
 
           type: "pattern",
 
@@ -1668,87 +1703,23 @@ export const descargarReporteExcel = async (req, res) => {
             argb: COLORS.danger
           }
         };
+
+      } else {
+
+        estadoCell.fill = {
+
+          type: "pattern",
+
+          pattern: "solid",
+
+          fgColor: {
+            argb: COLORS.row1
+          }
+        };
       }
     });
 
-    /* =====================================================
-       OBSERVACIONES
-    ===================================================== */
-
-    if (checklist?.observacionesIniciales) {
-
-      rowIndex += 1;
-
-      sheet.mergeCells(
-        `A${rowIndex}:D${rowIndex}`
-      );
-
-      const obsTitle =
-      sheet.getCell(`A${rowIndex}`);
-
-      obsTitle.value =
-      "OBSERVACIONES INICIALES";
-
-      obsTitle.fill = {
-
-        type: "pattern",
-
-        pattern: "solid",
-
-        fgColor: {
-          argb: COLORS.primary
-        }
-      };
-
-      obsTitle.font = {
-
-        bold: true,
-
-        color: {
-          argb: COLORS.white
-        }
-      };
-
-      obsTitle.alignment = left;
-
-      obsTitle.border = border;
-
-      rowIndex++;
-
-      sheet.mergeCells(
-        `A${rowIndex}:H${rowIndex + 2}`
-      );
-
-      const obs =
-      sheet.getCell(`A${rowIndex}`);
-
-      obs.value =
-      checklist.observacionesIniciales;
-
-      obs.alignment = {
-
-        vertical: "top",
-        horizontal: "left",
-        wrapText: true
-      };
-
-      obs.border = border;
-
-      obs.fill = {
-
-        type: "pattern",
-
-        pattern: "solid",
-
-        fgColor: {
-          argb: COLORS.light
-        }
-      };
-
-      sheet.getRow(rowIndex).height = 40;
-
-      rowIndex += 5;
-    }
+    rowIndex += 2;
 
     /* =====================================================
        REGISTRO OPERACIÓN
@@ -2004,6 +1975,157 @@ export const descargarReporteExcel = async (req, res) => {
           }
         };
       });
+    });
+
+    /* =====================================================
+       REFERENCIA PARÁMETROS
+    ===================================================== */
+
+    rowIndex += 2;
+
+    sheet.mergeCells(
+      `A${rowIndex}:F${rowIndex}`
+    );
+
+    const refTitle =
+    sheet.getCell(`A${rowIndex}`);
+
+    refTitle.value =
+    "III. REFERENCIA DE PARÁMETROS";
+
+    refTitle.fill = {
+
+      type: "pattern",
+
+      pattern: "solid",
+
+      fgColor: {
+        argb: COLORS.primary
+      }
+    };
+
+    refTitle.font = {
+
+      bold: true,
+
+      size: 11,
+
+      color: {
+        argb: COLORS.white
+      }
+    };
+
+    refTitle.alignment = center;
+
+    refTitle.border = border;
+
+    sheet.getRow(rowIndex).height = 26;
+
+    rowIndex++;
+
+    const refHeader =
+    sheet.getRow(rowIndex++);
+
+    ["SIGLA", "DESCRIPCIÓN"]
+    .forEach((h, i) => {
+
+      const c =
+      refHeader.getCell(i + 1);
+
+      c.value = h;
+
+      c.fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+          argb: COLORS.secondary
+        }
+      };
+
+      c.font = {
+
+        bold: true,
+
+        color: {
+          argb: COLORS.white
+        }
+      };
+
+      c.alignment = center;
+
+      c.border = border;
+    });
+
+    const referencias = [
+
+      ["P.cal", "Presión de caldera"],
+
+      ["Vapor", "Toneladas de vapor"],
+
+      ["%D", "Porcentaje de combustible"],
+
+      ["Fl41", "Flujo bomba 41"],
+
+      ["F.al", "Flujo alimentación agua caldera"],
+
+      ["T.al", "Totalizador alimentación"],
+
+      ["T.g", "Temperatura gases chimenea"],
+
+      ["C.d", "Consumo diesel"],
+
+      ["F.a", "Flujo agua blanda"],
+
+      ["T.a", "Totalizador agua blanda"],
+
+      ["TB41", "Totalizador bomba 41"],
+
+      ["ITC", "Temperatura salida ITC"],
+
+      ["P", "Purga de fondo"]
+    ];
+
+    referencias.forEach((r, idx) => {
+
+      const row =
+      sheet.getRow(rowIndex++);
+
+      row.height = 22;
+
+      row.getCell(1).value = r[0];
+      row.getCell(2).value = r[1];
+
+      row.eachCell(c => {
+
+        c.border = border;
+
+        c.alignment = left;
+
+        c.fill = {
+
+          type: "pattern",
+
+          pattern: "solid",
+
+          fgColor: {
+
+            argb:
+
+            idx % 2 === 0
+
+            ? COLORS.row1
+
+            : COLORS.row2
+          }
+        };
+      });
+
+      row.getCell(1).font = {
+        bold: true
+      };
     });
 
     /* =====================================================
