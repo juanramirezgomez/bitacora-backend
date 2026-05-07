@@ -141,7 +141,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     size: "LEGAL",
     layout: "landscape",
-
     margin: 0
 
   });
@@ -182,8 +181,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     doc.rect(0, 101, 1008, 4)
     .fill(COLORS.violet);
 
-    /* LOGO */
-
     try {
 
       const logoPath = path.join(
@@ -209,8 +206,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       console.log("Error logo:", err);
     }
-
-    /* TITULO */
 
     doc.fillColor(COLORS.dark)
     .font("Helvetica-Bold")
@@ -340,28 +335,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     `${dia}/${mes}/${anioCompleto}`,
     600,
     168
-  );
-
-  doc.fillColor(COLORS.violet)
-  .fontSize(10)
-  .text("ESTADO", 840, 148);
-
-  doc.roundedRect(
-    830,
-    165,
-    95,
-    24,
-    6
-  )
-  .fill(COLORS.green);
-
-  doc.fillColor("#ffffff")
-  .font("Helvetica-Bold")
-  .fontSize(10)
-  .text(
-    "CERRADA",
-    848,
-    173
   );
 
   /* =====================================================
@@ -511,58 +484,67 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   columnas.push("Purga");
 
   const startX = 10;
-  const tableWidth = 988;
+
+  const tableWidth = 970;
 
   const colWidth =
   tableWidth / columnas.length;
 
-  /* HEADER TABLA */
+  /* =====================================================
+     HEADER TABLA FIX
+  ===================================================== */
 
   let x = startX;
 
   columnas.forEach(col => {
 
-    doc.rect(
-      x,
-      tableY,
-      colWidth,
-      42
-    )
-    .fill(COLORS.violet);
-
-    doc.fillColor("#ffffff")
-    .font("Helvetica-Bold")
-    .fontSize(6);
+    doc
+      .rect(
+        x,
+        tableY,
+        colWidth,
+        24
+      )
+      .fillAndStroke(
+        COLORS.violet,
+        "#ffffff"
+      );
 
     let titulo = col;
 
     titulo = titulo
-      .replace("alimentación", "alim.")
-      .replace("Temperatura", "Temp.")
-      .replace("Presión", "Pres.")
-      .replace("agua/blanda", "agua")
+      .replace("Presión", "P.")
+      .replace("Temperatura", "T.")
+      .replace("alimentación", "Alim.")
+      .replace("caldera", "Cald.")
+      .replace("agua", "Ag.")
+      .replace("diesel", "Dsl.")
       .replace("Flujo", "Fl.")
-      .replace("caldera", "cald.")
-      .replace("alimentacion", "alim.")
-      .replace("diesel", "dsl")
-      .replace("Purga", "P.");
+      .replace("Purga", "Pg.");
 
-    doc.text(
-      titulo,
-      x + 2,
-      tableY + 13,
-      {
-        width: colWidth - 4,
-        align: "center"
-      }
-    );
+    doc
+      .fillColor("#ffffff")
+      .font("Helvetica-Bold")
+      .fontSize(5)
+      .text(
+        titulo,
+        x + 1,
+        tableY + 8,
+        {
+          width: colWidth - 2,
+          align: "center",
+          lineBreak: false
+        }
+      );
 
     x += colWidth;
   });
 
-  tableY += 42;
+  tableY += 24;
 
-  /* FILAS */
+  /* =====================================================
+     FILAS
+  ===================================================== */
 
   registros.forEach((reg, rowIndex) => {
 
@@ -595,7 +577,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         x,
         tableY,
         colWidth,
-        28
+        22
       )
       .fillAndStroke(
         rowIndex % 2 === 0
@@ -614,21 +596,22 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       doc.fillColor(color)
       .font("Helvetica")
-      .fontSize(6.5)
+      .fontSize(5.5)
       .text(
         String(valor),
         x + 1,
-        tableY + 10,
+        tableY + 7,
         {
           width: colWidth - 2,
-          align: "center"
+          align: "center",
+          lineBreak: false
         }
       );
 
       x += colWidth;
     });
 
-    tableY += 28;
+    tableY += 22;
 
     /* NUEVA PAGINA */
 
@@ -646,45 +629,49 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       columnas.forEach(col => {
 
-        doc.rect(
-          rx,
-          tableY,
-          colWidth,
-          42
-        )
-        .fill(COLORS.violet);
-
-        doc.fillColor("#ffffff")
-        .font("Helvetica-Bold")
-        .fontSize(6);
+        doc
+          .rect(
+            rx,
+            tableY,
+            colWidth,
+            24
+          )
+          .fillAndStroke(
+            COLORS.violet,
+            "#ffffff"
+          );
 
         let titulo = col;
 
         titulo = titulo
-          .replace("alimentación", "alim.")
-          .replace("Temperatura", "Temp.")
-          .replace("Presión", "Pres.")
-          .replace("agua/blanda", "agua")
+          .replace("Presión", "P.")
+          .replace("Temperatura", "T.")
+          .replace("alimentación", "Alim.")
+          .replace("caldera", "Cald.")
+          .replace("agua", "Ag.")
+          .replace("diesel", "Dsl.")
           .replace("Flujo", "Fl.")
-          .replace("caldera", "cald.")
-          .replace("alimentacion", "alim.")
-          .replace("diesel", "dsl")
-          .replace("Purga", "P.");
+          .replace("Purga", "Pg.");
 
-        doc.text(
-          titulo,
-          rx + 2,
-          tableY + 13,
-          {
-            width: colWidth - 4,
-            align: "center"
-          }
-        );
+        doc
+          .fillColor("#ffffff")
+          .font("Helvetica-Bold")
+          .fontSize(5)
+          .text(
+            titulo,
+            rx + 1,
+            tableY + 8,
+            {
+              width: colWidth - 2,
+              align: "center",
+              lineBreak: false
+            }
+          );
 
         rx += colWidth;
       });
 
-      tableY += 42;
+      tableY += 24;
     }
 
   });
@@ -704,8 +691,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     140,
     COLORS.blue
   );
-
-  /* RECEPCION */
 
   card(25, 205, 460, 100);
 
@@ -733,8 +718,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     280
   );
 
-  /* TK */
-
   card(525, 205, 460, 100);
 
   doc.fillColor(COLORS.blue)
@@ -760,8 +743,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     550,
     280
   );
-
-  /* OBSERVACIONES */
 
   card(
     25,
@@ -853,47 +834,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       align: "center"
     }
   );
-
-  doc.fillColor(COLORS.gray)
-  .font("Helvetica")
-  .fontSize(10)
-  .text(
-    "Firma digital operador",
-    330,
-    730,
-    {
-      width: 340,
-      align: "center"
-    }
-  );
-
-  /* =====================================================
-     LOGO FOOTER
-  ===================================================== */
-
-  try {
-
-    const logoFooter = path.join(
-      process.cwd(),
-      "src",
-      "assets",
-      "logo-final.png"
-    );
-
-    if (fs.existsSync(logoFooter)) {
-
-      doc.image(
-        logoFooter,
-        40,
-        720,
-        {
-          width: 140,
-          opacity: 0.18
-        }
-      );
-    }
-
-  } catch {}
 
   drawFooter();
 
