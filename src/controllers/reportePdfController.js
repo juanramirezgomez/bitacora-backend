@@ -573,14 +573,12 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     {
       key: "hora",
       label: "Hora",
-      width: 40
+      width: 34
     },
 
-    ...columnasDB.map(c => ({
+    ...columnasDB.map(c => {
 
-      key: c,
-
-      label: c
+      const label = c
         .replace("Presión caldera", "P.cal")
         .replace("Vapor", "Vapor")
         .replace("Flujo alimentación caldera", "F.al")
@@ -592,21 +590,51 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         .replace("Totalizador agua blanda", "T.a")
         .replace("Flujo BBA41", "FI41")
         .replace("Totalizador BBA41", "TB41")
-        .replace("Temperatura salida ITC", "ITC"),
+        .replace("Temperatura salida ITC", "ITC");
 
-      width: 48
+      let width = 42;
 
-    })),
+      if (
+        label === "P.cal" ||
+        label === "%D" ||
+        label === "P"
+      ) {
+        width = 34;
+      }
+
+      if (
+        label === "T.g" ||
+        label === "ITC"
+      ) {
+        width = 38;
+      }
+
+      if (
+        label === "FI41" ||
+        label === "TB41"
+      ) {
+        width = 40;
+      }
+
+      return {
+
+        key: c,
+        label,
+        width
+
+      };
+
+    }),
 
     {
       key: "purga",
       label: "P",
-      width: 28
+      width: 24
     }
 
   ];
 
-  const rowHeight = 24;
+  const rowHeight = 20;
 
   const tableX = 8;
 
@@ -626,11 +654,11 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       doc.fillColor("#ffffff")
       .font("Helvetica-Bold")
-      .fontSize(5.5)
+      .fontSize(5)
       .text(
         col.label,
         hx,
-        tableY + 9,
+        tableY + 6,
         {
           width: col.width,
           align: "center"
@@ -719,12 +747,12 @@ export const generarReportePdfInterno = async (bitacoraId) => {
           : COLORS.dark
       );
 
-      doc.fontSize(5.5)
+      doc.fontSize(5)
       .font("Helvetica")
       .text(
         String(value),
         x,
-        tableY + 8,
+        tableY + 6,
         {
           width: col.width,
           align: "center"
