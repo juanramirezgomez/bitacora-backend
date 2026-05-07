@@ -134,7 +134,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   }
 
   /* =====================================================
-     PDF LANDSCAPE LEGAL
+     PDF
   ===================================================== */
 
   const doc = new PDFDocument({
@@ -142,8 +142,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     size: "LEGAL",
     layout: "landscape",
 
-    margin: 0,
-    bufferPages: true
+    margin: 0
 
   });
 
@@ -232,6 +231,26 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     );
   };
 
+  const drawFooter = () => {
+
+    doc.rect(0, 585, 1008, 28)
+    .fill(COLORS.violet);
+
+    doc.fillColor("#ffffff")
+    .font("Helvetica")
+    .fontSize(9)
+    .text(
+      "Novandino Litio • Bitácora Digital",
+      0,
+      595,
+      {
+        align: "center",
+        width: 1008
+      }
+    );
+
+  };
+
   const sectionTitle = (
     title,
     y,
@@ -279,7 +298,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   };
 
   /* =====================================================
-     HEADER
+     PAGE 1
   ===================================================== */
 
   drawHeader();
@@ -461,7 +480,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   );
 
   /* =====================================================
-     REGISTROS TABLA
+     REGISTROS
   ===================================================== */
 
   sectionTitle(
@@ -491,15 +510,13 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   columnas.push("Purga");
 
-  /* CONFIG */
-
   const startX = 10;
   const tableWidth = 988;
 
   const colWidth =
   tableWidth / columnas.length;
 
-  /* HEADER */
+  /* HEADER TABLA */
 
   let x = startX;
 
@@ -617,6 +634,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     if (tableY > 520) {
 
+      drawFooter();
+
       doc.addPage();
 
       drawHeader();
@@ -669,6 +688,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     }
 
   });
+
+  drawFooter();
 
   /* =====================================================
      PAGE CIERRE
@@ -864,7 +885,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       doc.image(
         logoFooter,
         40,
-        735,
+        720,
         {
           width: 140,
           opacity: 0.18
@@ -874,33 +895,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   } catch {}
 
-  /* =====================================================
-     FOOTERS
-  ===================================================== */
-
-  const pages =
-  doc.bufferedPageRange();
-
-  for (let i = 0; i < pages.count; i++) {
-
-    doc.switchToPage(i);
-
-    doc.rect(0, 585, 1008, 28)
-    .fill(COLORS.violet);
-
-    doc.fillColor("#ffffff")
-    .font("Helvetica")
-    .fontSize(9)
-    .text(
-      `Novandino Litio • Bitácora Digital • Página ${i + 1}`,
-      0,
-      595,
-      {
-        align: "center",
-        width: 1008
-      }
-    );
-  }
+  drawFooter();
 
   doc.end();
 
