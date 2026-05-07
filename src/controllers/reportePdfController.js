@@ -132,10 +132,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     try { fs.unlinkSync(filePath); } catch {}
   }
 
-  /* =====================================================
-     PDF
-  ===================================================== */
-
   const doc = new PDFDocument({
 
     size: "A4",
@@ -422,14 +418,28 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   checkY += 45;
 
   /* =====================================================
-     OBSERVACIONES
+     OBSERVACIONES INICIALES AUTO HEIGHT
   ===================================================== */
+
+  const obsInicial =
+  checklist?.observacionesIniciales || "-";
+
+  const obsInicialHeight =
+  Math.max(
+    50,
+    doc.heightOfString(
+      obsInicial,
+      {
+        width: 520
+      }
+    ) + 35
+  );
 
   card(
     18,
     checkY,
     560,
-    50,
+    obsInicialHeight,
     "#f8f7ff"
   );
 
@@ -446,7 +456,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   .font("Helvetica")
   .fontSize(8)
   .text(
-    checklist?.observacionesIniciales || "-",
+    obsInicial,
     35,
     checkY + 25,
     {
@@ -460,10 +470,13 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   sectionTitle(
     "II. REGISTRO DE OPERACIÓN",
-    checkY + 70
+    checkY + obsInicialHeight + 20
   );
 
-  let tableY = checkY + 110;
+  let tableY =
+  checkY +
+  obsInicialHeight +
+  60;
 
   const columnas = [
 
@@ -575,9 +588,20 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       } else {
 
         const param =
-        reg.parametros?.find(
-          p => p.label === col.key
-        );
+        reg.parametros?.find(p => {
+
+          if (col.key === "Temperatura gases chimenea") {
+
+            return (
+              p.label === "Temperatura gases chimenea" ||
+              p.label === "Temperatura gases" ||
+              p.label === "T gases" ||
+              p.label === "T° gases"
+            );
+          }
+
+          return p.label === col.key;
+        });
 
         if (param) {
 
@@ -699,11 +723,29 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     250
   );
 
+  /* =====================================================
+     OBSERVACIONES FINALES AUTO HEIGHT
+  ===================================================== */
+
+  const obsFinal =
+  cierre?.comentariosFinales || "-";
+
+  const obsFinalHeight =
+  Math.max(
+    110,
+    doc.heightOfString(
+      obsFinal,
+      {
+        width: 510
+      }
+    ) + 40
+  );
+
   card(
     18,
     305,
     557,
-    110,
+    obsFinalHeight,
     "#fafaff"
   );
 
@@ -720,7 +762,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   .font("Helvetica")
   .fontSize(8)
   .text(
-    cierre?.comentariosFinales || "-",
+    obsFinal,
     35,
     345,
     {
@@ -734,7 +776,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   card(
     165,
-    470,
+    335 + obsFinalHeight,
     260,
     120,
     "#ffffff"
@@ -746,7 +788,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   .text(
     "FIRMA OPERADOR",
     230,
-    490
+    355 + obsFinalHeight
   );
 
   if (cierre?.firmaBase64) {
@@ -765,7 +807,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       doc.image(
         buffer,
         200,
-        520,
+        385 + obsFinalHeight,
         {
           fit: [180, 45]
         }
@@ -774,8 +816,14 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     } catch {}
   }
 
-  doc.moveTo(210, 565)
-  .lineTo(380, 565)
+  doc.moveTo(
+    210,
+    430 + obsFinalHeight
+  )
+  .lineTo(
+    380,
+    430 + obsFinalHeight
+  )
   .strokeColor("#9ca3af")
   .stroke();
 
@@ -785,7 +833,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   .text(
     bitacora.operador,
     165,
-    575,
+    440 + obsFinalHeight,
     {
       width: 260,
       align: "center"
@@ -802,8 +850,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   return filePath;
 };
-
-
 
 
 /* =====================================================
