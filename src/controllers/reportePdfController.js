@@ -243,7 +243,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         width: 1008
       }
     );
-
   };
 
   const sectionTitle = (
@@ -463,7 +462,9 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   let tableY = checkY + 155;
 
-  /* COLUMNAS */
+  /* =====================================================
+     COLUMNAS
+  ===================================================== */
 
   const columnas = ["Hora"];
 
@@ -491,24 +492,23 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   tableWidth / columnas.length;
 
   /* =====================================================
-     HEADER TABLA FIX
+     HEADER TABLA FINAL
   ===================================================== */
 
   let x = startX;
 
   columnas.forEach(col => {
 
-    doc
-      .rect(
-        x,
-        tableY,
-        colWidth,
-        24
-      )
-      .fillAndStroke(
-        COLORS.violet,
-        "#ffffff"
-      );
+    doc.rect(
+      x,
+      tableY,
+      colWidth,
+      24
+    )
+    .fillAndStroke(
+      COLORS.violet,
+      "#ffffff"
+    );
 
     let titulo = col;
 
@@ -522,20 +522,29 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       .replace("Flujo", "Fl.")
       .replace("Purga", "Pg.");
 
-    doc
-      .fillColor("#ffffff")
-      .font("Helvetica-Bold")
-      .fontSize(5)
-      .text(
-        titulo,
-        x + 1,
-        tableY + 8,
-        {
-          width: colWidth - 2,
-          align: "center",
-          lineBreak: false
-        }
-      );
+    while (
+      doc.widthOfString(titulo, {
+        font: "Helvetica-Bold",
+        size: 5
+      }) > (colWidth - 4)
+    ) {
+
+      titulo = titulo.slice(0, -1);
+
+    }
+
+    doc.fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .fontSize(5)
+    .text(
+      titulo,
+      x + 2,
+      tableY + 8,
+      {
+        width: colWidth - 4,
+        align: "center"
+      }
+    );
 
     x += colWidth;
   });
@@ -603,8 +612,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         tableY + 7,
         {
           width: colWidth - 2,
-          align: "center",
-          lineBreak: false
+          align: "center"
         }
       );
 
@@ -612,8 +620,6 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     });
 
     tableY += 22;
-
-    /* NUEVA PAGINA */
 
     if (tableY > 520) {
 
@@ -629,17 +635,16 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
       columnas.forEach(col => {
 
-        doc
-          .rect(
-            rx,
-            tableY,
-            colWidth,
-            24
-          )
-          .fillAndStroke(
-            COLORS.violet,
-            "#ffffff"
-          );
+        doc.rect(
+          rx,
+          tableY,
+          colWidth,
+          24
+        )
+        .fillAndStroke(
+          COLORS.violet,
+          "#ffffff"
+        );
 
         let titulo = col;
 
@@ -653,20 +658,29 @@ export const generarReportePdfInterno = async (bitacoraId) => {
           .replace("Flujo", "Fl.")
           .replace("Purga", "Pg.");
 
-        doc
-          .fillColor("#ffffff")
-          .font("Helvetica-Bold")
-          .fontSize(5)
-          .text(
-            titulo,
-            rx + 1,
-            tableY + 8,
-            {
-              width: colWidth - 2,
-              align: "center",
-              lineBreak: false
-            }
-          );
+        while (
+          doc.widthOfString(titulo, {
+            font: "Helvetica-Bold",
+            size: 5
+          }) > (colWidth - 4)
+        ) {
+
+          titulo = titulo.slice(0, -1);
+
+        }
+
+        doc.fillColor("#ffffff")
+        .font("Helvetica-Bold")
+        .fontSize(5)
+        .text(
+          titulo,
+          rx + 2,
+          tableY + 8,
+          {
+            width: colWidth - 4,
+            align: "center"
+          }
+        );
 
         rx += colWidth;
       });
@@ -773,7 +787,9 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     }
   );
 
-  /* FIRMA */
+  /* =====================================================
+     FIRMA
+  ===================================================== */
 
   card(
     330,
