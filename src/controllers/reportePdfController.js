@@ -1172,9 +1172,13 @@ export const descargarReporteExcel = async (req, res) => {
       "Bitácora"
     );
 
+    /* =====================================================
+       HEADER FIJO SOLO FILAS 1-5
+    ===================================================== */
+
     sheet.views = [{
       state: "frozen",
-      ySplit: 14
+      ySplit: 5
     }];
 
     /* =====================================================
@@ -1295,8 +1299,8 @@ export const descargarReporteExcel = async (req, res) => {
         sheet.addImage(imageId, {
 
           tl: {
-            col: 0.2,
-            row: 0.3
+            col: 0.3,
+            row: 0.4
           },
 
           ext: {
@@ -1315,7 +1319,7 @@ export const descargarReporteExcel = async (req, res) => {
     }
 
     /* =====================================================
-       HEADER
+       TITULO
     ===================================================== */
 
     sheet.mergeCells("D2:N2");
@@ -1388,52 +1392,102 @@ export const descargarReporteExcel = async (req, res) => {
 
     let rowIndex = 7;
 
-    const info = [
+    sheet.mergeCells("A7:B7");
+    sheet.mergeCells("C7:D7");
+    sheet.mergeCells("E7:F7");
+    sheet.mergeCells("G7:H7");
 
-      ["OPERADOR", bitacora.operador],
+    const headersInfo = [
 
-      ["TURNO", bitacora.turno],
+      ["A7", "OPERADOR"],
+      ["C7", "TURNO"],
+      ["E7", "N° TURNO"],
+      ["G7", "FECHA"]
 
-      ["N° TURNO", bitacora.turnoNumero],
-
-      ["FECHA", `${dia}-${mes}-${anioCompleto}`]
     ];
 
-    info.forEach((d, idx) => {
+    headersInfo.forEach(h => {
 
-      const row =
-      sheet.getRow(rowIndex + idx);
+      const cell =
+      sheet.getCell(h[0]);
 
-      row.height = 24;
+      cell.value = h[1];
 
-      row.getCell(1).value = d[0];
+      cell.fill = {
 
-      row.getCell(2).value = d[1];
+        type: "pattern",
 
-      row.getCell(1).font = {
-        bold: true
+        pattern: "solid",
+
+        fgColor: {
+          argb: COLORS.primary
+        }
       };
 
-      row.eachCell(c => {
+      cell.font = {
 
-        c.border = border;
+        bold: true,
 
-        c.alignment = left;
+        color: {
+          argb: COLORS.white
+        }
+      };
 
-        c.fill = {
+      cell.alignment = center;
 
-          type: "pattern",
-
-          pattern: "solid",
-
-          fgColor: {
-            argb: COLORS.light
-          }
-        };
-      });
+      cell.border = border;
     });
 
-    rowIndex += 6;
+    sheet.mergeCells("A8:B8");
+    sheet.mergeCells("C8:D8");
+    sheet.mergeCells("E8:F8");
+    sheet.mergeCells("G8:H8");
+
+    const valuesInfo = [
+
+      ["A8", bitacora.operador],
+
+      ["C8", bitacora.turno],
+
+      ["E8", bitacora.turnoNumero],
+
+      ["G8", `${dia}-${mes}-${anioCompleto}`]
+
+    ];
+
+    valuesInfo.forEach(v => {
+
+      const cell =
+      sheet.getCell(v[0]);
+
+      cell.value = v[1];
+
+      cell.fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+          argb: COLORS.light
+        }
+      };
+
+      cell.font = {
+
+        bold: true,
+
+        color: {
+          argb: COLORS.dark
+        }
+      };
+
+      cell.alignment = center;
+
+      cell.border = border;
+    });
+
+    rowIndex = 11;
 
     /* =====================================================
        CHECKLIST
@@ -1473,7 +1527,47 @@ export const descargarReporteExcel = async (req, res) => {
 
     cell.alignment = center;
 
+    cell.border = border;
+
     rowIndex++;
+
+    const headChecklist =
+    sheet.getRow(rowIndex++);
+
+    headChecklist.height = 24;
+
+    ["Equipo", "Estado"]
+    .forEach((h, i) => {
+
+      const c =
+      headChecklist.getCell(i + 1);
+
+      c.value = h;
+
+      c.fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+          argb: COLORS.secondary
+        }
+      };
+
+      c.font = {
+
+        bold: true,
+
+        color: {
+          argb: COLORS.white
+        }
+      };
+
+      c.alignment = center;
+
+      c.border = border;
+    });
 
     const checklistRows = [
 
@@ -1496,14 +1590,14 @@ export const descargarReporteExcel = async (req, res) => {
 
     checklistRows.forEach((f, idx) => {
 
-      const estado =
-      (f[1] || "-")
-      .replace(/_/g, " ");
-
       const row =
       sheet.getRow(rowIndex++);
 
-      row.height = 24;
+      row.height = 22;
+
+      const estado =
+      (f[1] || "-")
+      .replace(/_/g, " ");
 
       row.getCell(1).value = f[0];
 
@@ -1513,7 +1607,7 @@ export const descargarReporteExcel = async (req, res) => {
 
         c.border = border;
 
-        c.alignment = left;
+        c.alignment = center;
 
         c.fill = {
 
@@ -1522,10 +1616,14 @@ export const descargarReporteExcel = async (req, res) => {
           pattern: "solid",
 
           fgColor: {
+
             argb:
-              idx % 2 === 0
-              ? COLORS.row1
-              : COLORS.row2
+
+            idx % 2 === 0
+
+            ? COLORS.row1
+
+            : COLORS.row2
           }
         };
       });
@@ -1579,10 +1677,46 @@ export const descargarReporteExcel = async (req, res) => {
 
     if (checklist?.observacionesIniciales) {
 
+      rowIndex += 1;
+
+      sheet.mergeCells(
+        `A${rowIndex}:D${rowIndex}`
+      );
+
+      const obsTitle =
+      sheet.getCell(`A${rowIndex}`);
+
+      obsTitle.value =
+      "OBSERVACIONES INICIALES";
+
+      obsTitle.fill = {
+
+        type: "pattern",
+
+        pattern: "solid",
+
+        fgColor: {
+          argb: COLORS.primary
+        }
+      };
+
+      obsTitle.font = {
+
+        bold: true,
+
+        color: {
+          argb: COLORS.white
+        }
+      };
+
+      obsTitle.alignment = left;
+
+      obsTitle.border = border;
+
       rowIndex++;
 
       sheet.mergeCells(
-        `A${rowIndex}:F${rowIndex + 2}`
+        `A${rowIndex}:H${rowIndex + 2}`
       );
 
       const obs =
@@ -1591,7 +1725,12 @@ export const descargarReporteExcel = async (req, res) => {
       obs.value =
       checklist.observacionesIniciales;
 
-      obs.alignment = left;
+      obs.alignment = {
+
+        vertical: "top",
+        horizontal: "left",
+        wrapText: true
+      };
 
       obs.border = border;
 
@@ -1605,9 +1744,11 @@ export const descargarReporteExcel = async (req, res) => {
           argb: COLORS.light
         }
       };
-    }
 
-    rowIndex += 5;
+      sheet.getRow(rowIndex).height = 40;
+
+      rowIndex += 5;
+    }
 
     /* =====================================================
        REGISTRO OPERACIÓN
@@ -1648,10 +1789,6 @@ export const descargarReporteExcel = async (req, res) => {
     cell.alignment = center;
 
     rowIndex++;
-
-    /* =====================================================
-       COLUMNAS DINÁMICAS
-    ===================================================== */
 
     const columnasSet =
     new Set();
@@ -1725,8 +1862,6 @@ export const descargarReporteExcel = async (req, res) => {
       "P"
     ];
 
-    /* ANCHOS */
-
     sheet.columns =
     columnas.map((_, i) => ({
 
@@ -1736,10 +1871,6 @@ export const descargarReporteExcel = async (req, res) => {
       ? 10
       : 14
     }));
-
-    /* =====================================================
-       HEADER TABLA
-    ===================================================== */
 
     const nombres = {
 
@@ -1807,10 +1938,6 @@ export const descargarReporteExcel = async (req, res) => {
 
       celda.alignment = center;
     });
-
-    /* =====================================================
-       FILAS TABLA
-    ===================================================== */
 
     registros.forEach((r, idx) => {
 
@@ -1880,94 +2007,10 @@ export const descargarReporteExcel = async (req, res) => {
     });
 
     /* =====================================================
-       LEYENDA
-    ===================================================== */
-
-    rowIndex += 3;
-
-    sheet.mergeCells(
-      `A${rowIndex}:F${rowIndex}`
-    );
-
-    const legend =
-    sheet.getCell(`A${rowIndex}`);
-
-    legend.value =
-    "III. LEYENDA DE PARÁMETROS";
-
-    legend.fill = {
-
-      type: "pattern",
-
-      pattern: "solid",
-
-      fgColor: {
-        argb: COLORS.primary
-      }
-    };
-
-    legend.font = {
-
-      bold: true,
-
-      color: {
-        argb: COLORS.white
-      }
-    };
-
-    legend.alignment = center;
-
-    rowIndex++;
-
-    const leyenda = [
-
-      ["P.cal", "Presión de caldera"],
-
-      ["F.al", "Flujo alimentación agua"],
-
-      ["T.al", "Totalizador alimentación"],
-
-      ["T.g", "Temperatura gases chimenea"],
-
-      ["C.d", "Consumo diesel"],
-
-      ["%D", "Porcentaje diesel"],
-
-      ["F.a", "Flujo agua blanda"],
-
-      ["T.a", "Totalizador agua blanda"],
-
-      ["Fl41", "Flujo bomba 41"],
-
-      ["TB41", "Totalizador bomba 41"],
-
-      ["ITC", "Temperatura salida ITC"],
-
-      ["P", "Purga de fondo"]
-    ];
-
-    leyenda.forEach(l => {
-
-      const row =
-      sheet.getRow(rowIndex++);
-
-      row.getCell(1).value = l[0];
-
-      row.getCell(2).value = l[1];
-
-      row.eachCell(c => {
-
-        c.border = border;
-
-        c.alignment = left;
-      });
-    });
-
-    /* =====================================================
        FOOTER
     ===================================================== */
 
-    rowIndex += 2;
+    rowIndex += 3;
 
     sheet.mergeCells(
       `A${rowIndex}:N${rowIndex}`
