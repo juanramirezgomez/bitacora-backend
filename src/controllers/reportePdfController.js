@@ -768,6 +768,104 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   drawFooter();
 
   /* =====================================================
+   LEYENDA TABLA
+===================================================== */
+
+tableY += 18;
+
+if (tableY > 650) {
+
+  drawFooter();
+
+  doc.addPage();
+
+  drawHeader();
+
+  tableY = 130;
+}
+
+sectionTitle(
+  "REFERENCIA DE PARÁMETROS",
+  tableY,
+  COLORS.blue
+);
+
+tableY += 42;
+
+const referencias = [
+
+  ["Vapor", "Toneladas de vapor"],
+  ["%D", "Porcentaje de TK combustible"],
+  ["FI41", "Flujo bomba BBA-41"],
+  ["P.cal", "Presión de caldera"],
+  ["F.al", "Flujo alimentación agua caldera"],
+  ["T.al", "Totalizador alimentación agua"],
+  ["T.g", "Temperatura gases chimenea"],
+  ["C.d", "Consumo de combustible diesel"],
+  ["F.a", "Flujo llegada TK agua blanda"],
+  ["T.a", "Totalizador agua blanda"],
+  ["TB41", "Totalizador bomba BBA-41"],
+  ["ITC", "Temperatura salida ITC a TK-23"],
+  ["P", "Purga de fondo"]
+
+];
+
+let refY = tableY;
+
+referencias.forEach((r, index) => {
+
+  const x =
+    index % 2 === 0
+      ? 20
+      : 300;
+
+  if (
+    index % 2 === 0 &&
+    index !== 0
+  ) {
+    refY += 26;
+  }
+
+  doc.roundedRect(
+    x,
+    refY,
+    260,
+    20,
+    5
+  )
+  .fillAndStroke(
+    index % 2 === 0
+      ? "#f8fafc"
+      : "#eef2ff",
+    COLORS.border
+  );
+
+  doc.fillColor(COLORS.violet)
+  .font("Helvetica-Bold")
+  .fontSize(7)
+  .text(
+    r[0],
+    x + 8,
+    refY + 7
+  );
+
+  doc.fillColor(COLORS.dark)
+  .font("Helvetica")
+  .fontSize(7)
+  .text(
+    r[1],
+    x + 48,
+    refY + 7,
+    {
+      width: 200
+    }
+  );
+
+});
+
+tableY = refY + 40;
+
+  /* =====================================================
      PAGE CIERRE
   ===================================================== */
 
