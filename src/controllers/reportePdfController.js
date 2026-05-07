@@ -104,15 +104,19 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   const bitacora =
   await Bitacora.findById(bitacoraId);
 
-  if (!bitacora ||
-      bitacora.estado !== "CERRADA")
-    return null;
+  if (
+    !bitacora ||
+    bitacora.estado !== "CERRADA"
+  ) return null;
 
   const { dia, mes, anioCompleto } =
   obtenerYYMMDD(bitacora.fechaInicio);
 
-  let [checklist, registros, cierre] =
-  await Promise.all([
+  let [
+    checklist,
+    registros,
+    cierre
+  ] = await Promise.all([
 
     ChecklistInicial.findOne({ bitacoraId }),
 
@@ -123,18 +127,27 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   ]);
 
   registros =
-  ordenarPorTurno(registros, bitacora.turno);
+  ordenarPorTurno(
+    registros,
+    bitacora.turno
+  );
 
   const { filePath } =
-  generarInfoArchivo(bitacora, "pdf");
+  generarInfoArchivo(
+    bitacora,
+    "pdf"
+  );
 
   if (fs.existsSync(filePath)) {
-    try { fs.unlinkSync(filePath); } catch {}
+    try {
+      fs.unlinkSync(filePath);
+    } catch {}
   }
 
   const doc = new PDFDocument({
 
     size: "A4",
+    layout: "portrait",
     margin: 0,
     bufferPages: true
 
@@ -160,7 +173,10 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     border: "#dbe4ee",
 
     green: "#16a34a",
-    red: "#dc2626"
+    red: "#dc2626",
+
+    row1: "#f8fafc",
+    row2: "#eef2ff"
   };
 
   /* =====================================================
@@ -177,7 +193,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     try {
 
-      const logoPath = path.join(
+      const logoPath =
+      path.join(
         process.cwd(),
         "src",
         "assets",
@@ -198,7 +215,10 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     } catch (err) {
 
-      console.log("Error logo:", err);
+      console.log(
+        "Error logo:",
+        err
+      );
     }
 
     doc.fillColor(COLORS.dark)
@@ -305,7 +325,11 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   doc.fillColor(COLORS.dark)
   .font("Helvetica")
   .fontSize(11)
-  .text(bitacora.operador, 35, 148);
+  .text(
+    bitacora.operador,
+    35,
+    148
+  );
 
   doc.fillColor(COLORS.violet)
   .font("Helvetica-Bold")
@@ -380,12 +404,16 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     checklist?.[key] || "-";
 
     const x =
-      index % 2 === 0
-        ? 18
-        : 300;
+    index % 2 === 0
+      ? 18
+      : 300;
 
-    if (index % 2 === 0 && index !== 0)
+    if (
+      index % 2 === 0 &&
+      index !== 0
+    ) {
       checkY += 34;
+    }
 
     card(
       x,
@@ -408,7 +436,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     .font("Helvetica-Bold")
     .fontSize(8)
     .text(
-      String(value).replace(/_/g, " "),
+      String(value)
+      .replace(/_/g, " "),
       x + 145,
       checkY + 10
     );
@@ -418,7 +447,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   checkY += 45;
 
   /* =====================================================
-     OBSERVACIONES INICIALES AUTO HEIGHT
+     OBSERVACIONES
   ===================================================== */
 
   const obsInicial =
@@ -490,19 +519,39 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
     { key: "T alimentación", label: "T.al", width: 42 },
 
-    { key: "Temperatura gases chimenea", label: "T.g", width: 42 },
+    {
+      key: "Temperatura gases chimenea",
+      label: "T.g",
+      width: 42
+    },
 
     { key: "C diesel", label: "C.d", width: 40 },
 
     { key: "% Diesel", label: "%D", width: 34 },
 
-    { key: "F agua/blanda", label: "F.a", width: 42 },
+    {
+      key: "F agua/blanda",
+      label: "F.a",
+      width: 42
+    },
 
-    { key: "T agua/blanda", label: "T.a", width: 42 },
+    {
+      key: "T agua/blanda",
+      label: "T.a",
+      width: 42
+    },
 
-    { key: "Flujo BBA41", label: "FI41", width: 42 },
+    {
+      key: "Flujo BBA41",
+      label: "FI41",
+      width: 42
+    },
 
-    { key: "T BBA41", label: "TB41", width: 42 },
+    {
+      key: "T BBA41",
+      label: "TB41",
+      width: 42
+    },
 
     { key: "Tº ITC", label: "ITC", width: 36 },
 
@@ -547,16 +596,9 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     tableY += rowHeight;
   };
 
-  let firstPage = true;
+  drawTableHeader();
 
   registros.forEach((reg, index) => {
-
-    if (firstPage) {
-
-      drawTableHeader();
-
-      firstPage = false;
-    }
 
     if (tableY > 760) {
 
@@ -590,25 +632,62 @@ export const generarReportePdfInterno = async (bitacoraId) => {
         const param =
         reg.parametros?.find(p => {
 
-          if (col.key === "Temperatura gases chimenea") {
+          const label =
+          String(p.label || "")
+          .trim()
+          .toLowerCase();
+
+          if (
+            col.key ===
+            "Temperatura gases chimenea"
+          ) {
 
             return (
-              p.label === "Temperatura gases chimenea" ||
-              p.label === "Temperatura gases" ||
-              p.label === "T gases" ||
-              p.label === "T° gases"
+
+              label.includes(
+                "temperatura gases"
+              ) ||
+
+              label.includes(
+                "temp gases"
+              ) ||
+
+              label.includes(
+                "t gases"
+              ) ||
+
+              label.includes(
+                "t° gases"
+              ) ||
+
+              label.includes(
+                "tgases"
+              ) ||
+
+              label.includes(
+                "gases chimenea"
+              ) ||
+
+              label.includes(
+                "chimenea"
+              )
             );
           }
 
-          return p.label === col.key;
+          return (
+            label ===
+            String(col.key)
+            .trim()
+            .toLowerCase()
+          );
         });
 
         if (param) {
 
           value =
-          `${param.value}${
+          `${param.value || "-"}${
             param.unidad
-              ? param.unidad
+              ? ` ${param.unidad}`
               : ""
           }`;
         }
@@ -622,8 +701,8 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       )
       .fillAndStroke(
         index % 2 === 0
-          ? "#f8fafc"
-          : "#eef2ff",
+          ? COLORS.row1
+          : COLORS.row2,
         COLORS.border
       );
 
@@ -686,13 +765,17 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   .font("Helvetica")
   .fontSize(9)
   .text(
-    `Recepción: ${cierre?.recepcionCombustible || "-"}`,
+    `Recepción: ${
+      cierre?.recepcionCombustible || "-"
+    }`,
     35,
     230
   );
 
   doc.text(
-    `Litros: ${cierre?.litrosCombustible || "-"}`,
+    `Litros: ${
+      cierre?.litrosCombustible || "-"
+    }`,
     35,
     250
   );
@@ -712,19 +795,23 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   .font("Helvetica")
   .fontSize(9)
   .text(
-    `TK28: ${cierre?.tk28EnServicio || "-"}`,
+    `TK28: ${
+      cierre?.tk28EnServicio || "-"
+    }`,
     332,
     230
   );
 
   doc.text(
-    `% TK: ${cierre?.tk28Porcentaje || "-"}`,
+    `% TK: ${
+      cierre?.tk28Porcentaje || "-"
+    }`,
     332,
     250
   );
 
   /* =====================================================
-     OBSERVACIONES FINALES AUTO HEIGHT
+     OBSERVACIONES FINALES
   ===================================================== */
 
   const obsFinal =
@@ -802,7 +889,10 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       );
 
       const buffer =
-      Buffer.from(firma, "base64");
+      Buffer.from(
+        firma,
+        "base64"
+      );
 
       doc.image(
         buffer,
@@ -850,6 +940,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
 
   return filePath;
 };
+
 
 
 /* =====================================================
