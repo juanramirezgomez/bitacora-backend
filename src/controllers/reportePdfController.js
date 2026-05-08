@@ -2621,7 +2621,7 @@ export const descargarPdfRango = async (req, res) => {
 
         layout: "landscape",
 
-        margin: 30
+        margin: 25
       });
 
     res.setHeader(
@@ -2650,11 +2650,11 @@ export const descargarPdfRango = async (req, res) => {
 
       gray: "#6B7280",
 
+      border: "#D1D5DB",
+
       row1: "#FFFFFF",
 
-      row2: "#F3F4F6",
-
-      border: "#D1D5DB"
+      row2: "#F3F4F6"
     };
 
     /* =====================================================
@@ -2674,20 +2674,17 @@ export const descargarPdfRango = async (req, res) => {
 
         doc.image(
           logoPath,
-          35,
           25,
+          18,
           {
-            width: 170
+            width: 150
           }
         );
       }
 
     } catch (err) {
 
-      console.log(
-        "ERROR LOGO PDF:",
-        err
-      );
+      console.log("ERROR LOGO PDF:", err);
     }
 
     /* =====================================================
@@ -2697,11 +2694,11 @@ export const descargarPdfRango = async (req, res) => {
     doc
       .fillColor(COLORS.dark)
       .font("Helvetica-Bold")
-      .fontSize(22)
+      .fontSize(20)
       .text(
         "REPORTE OPERACIONAL POR RANGO",
         0,
-        35,
+        25,
         {
           align: "center"
         }
@@ -2718,16 +2715,12 @@ export const descargarPdfRango = async (req, res) => {
         }
       );
 
-    /* =====================================================
-       BARRA
-    ===================================================== */
-
     doc
       .rect(
-        30,
-        95,
-        doc.page.width - 60,
-        8
+        25,
+        85,
+        doc.page.width - 50,
+        6
       )
       .fill(COLORS.primary);
 
@@ -2735,115 +2728,94 @@ export const descargarPdfRango = async (req, res) => {
        COLUMNAS
     ===================================================== */
 
-    const columnasSet =
-      new Set();
-
-    registros.forEach(r =>
-      r.parametros.forEach(p =>
-        columnasSet.add(p.label)
-      )
-    );
-
-    const columnasDB =
-      Array.from(columnasSet);
-
-    const nombres = {
-
-      "Presión caldera": "P.cal",
-
-      "Vapor": "Vapor",
-
-      "Flujo alimentación caldera": "F.al",
-
-      "Totalizador alimentación": "T.al",
-
-      "Temperatura gases chimenea": "T.g",
-
-      "Consumo diesel": "C.d",
-
-      "% Diesel": "%D",
-
-      "Flujo agua blanda": "F.a",
-
-      "Totalizador agua blanda": "T.a",
-
-      "Flujo BBA41": "Fl41",
-
-      "Totalizador BBA41": "TB41",
-
-      "Temperatura salida ITC": "ITC"
-    };
-
     const columnas = [
 
-      "Fecha",
+      { key: "fecha", label: "Fecha", width: 58 },
 
-      "Hora",
+      { key: "hora", label: "Hora", width: 42 },
 
-      ...columnasDB,
+      { key: "Presión caldera", label: "P.cal", width: 42 },
 
-      "P"
+      { key: "Vapor", label: "Vapor", width: 42 },
+
+      { key: "Flujo alimentación caldera", label: "F.al", width: 48 },
+
+      { key: "Totalizador alimentación", label: "T.al", width: 48 },
+
+      { key: "Temperatura gases chimenea", label: "T.g", width: 45 },
+
+      { key: "Consumo diesel", label: "C.d", width: 45 },
+
+      { key: "% Diesel", label: "%D", width: 35 },
+
+      { key: "Flujo agua blanda", label: "F.a", width: 45 },
+
+      { key: "Totalizador agua blanda", label: "T.a", width: 45 },
+
+      { key: "Flujo BBA41", label: "Fl41", width: 45 },
+
+      { key: "Totalizador BBA41", label: "TB41", width: 45 },
+
+      { key: "Temperatura salida ITC", label: "ITC", width: 45 },
+
+      { key: "Purga", label: "P", width: 30 }
     ];
 
     /* =====================================================
        TABLA
     ===================================================== */
 
-    const marginX = 30;
+    let y = 105;
 
-    const tableWidth =
-      doc.page.width - 60;
+    const startX = 20;
 
-    const colWidth =
-      tableWidth / columnas.length;
+    const rowHeight = 18;
 
-    const rowHeight = 20;
+    const drawHeader = () => {
 
-    let y = 120;
+      let x = startX;
 
-    /* =====================================================
-       HEADER
-    ===================================================== */
+      columnas.forEach(col => {
 
-    columnas.forEach((col, i) => {
+        doc
+          .rect(
+            x,
+            y,
+            col.width,
+            rowHeight
+          )
+          .fillAndStroke(
+            COLORS.secondary,
+            COLORS.border
+          );
 
-      const x =
-        marginX + (i * colWidth);
+        doc
+          .fillColor("white")
+          .font("Helvetica-Bold")
+          .fontSize(7)
+          .text(
 
-      doc
-        .rect(
-          x,
-          y,
-          colWidth,
-          rowHeight
-        )
-        .fillAndStroke(
-          COLORS.secondary,
-          COLORS.border
-        );
+            col.label,
 
-      doc
-        .fillColor("#FFFFFF")
-        .font("Helvetica-Bold")
-        .fontSize(8)
-        .text(
+            x,
 
-          nombres[col] || col,
+            y + 5,
 
-          x + 2,
+            {
 
-          y + 6,
+              width: col.width,
 
-          {
+              align: "center"
+            }
+          );
 
-            width: colWidth - 4,
+        x += col.width;
+      });
 
-            align: "center"
-          }
-        );
-    });
+      y += rowHeight;
+    };
 
-    y += rowHeight;
+    drawHeader();
 
     /* =====================================================
        FILAS
@@ -2851,168 +2823,128 @@ export const descargarPdfRango = async (req, res) => {
 
     registros.forEach((r, idx) => {
 
-      /* NUEVA PAGINA */
-
       if (y > 520) {
 
         doc.addPage({
 
-          layout: "landscape"
+          size: "A4",
+
+          layout: "landscape",
+
+          margin: 25
         });
 
         y = 40;
 
-        /* HEADER NUEVO */
-
-        columnas.forEach((col, i) => {
-
-          const x =
-            marginX + (i * colWidth);
-
-          doc
-            .rect(
-              x,
-              y,
-              colWidth,
-              rowHeight
-            )
-            .fillAndStroke(
-              COLORS.secondary,
-              COLORS.border
-            );
-
-          doc
-            .fillColor("#FFFFFF")
-            .font("Helvetica-Bold")
-            .fontSize(8)
-            .text(
-
-              nombres[col] || col,
-
-              x + 2,
-
-              y + 6,
-
-              {
-
-                width: colWidth - 4,
-
-                align: "center"
-              }
-            );
-        });
-
-        y += rowHeight;
+        drawHeader();
       }
 
-      /* COLOR FILA */
-
-      const bgColor =
+      const bg =
         idx % 2 === 0
           ? COLORS.row1
           : COLORS.row2;
 
-      columnas.forEach((col, i) => {
+      let x = startX;
 
-        const x =
-          marginX + (i * colWidth);
+      columnas.forEach(col => {
 
-        let val = "-";
+        let value = "-";
 
-        if (col === "Fecha") {
+        if (col.key === "fecha") {
 
-          val = r.fecha;
+          value = r.fecha;
 
-        } else if (col === "Hora") {
+        } else if (col.key === "hora") {
 
-          val = r.hora;
+          value = r.hora;
 
-        } else if (col === "P") {
+        } else if (col.key === "Purga") {
 
-          val = r.purgaDeFondo;
+          value = r.purgaDeFondo;
 
         } else {
 
           const p =
             r.parametros.find(
-              x => x.label === col
+              p => p.label === col.key
             );
 
           if (p) {
 
-            val =
-              `${p.value} ${p.unidad || ""}`;
+            value =
+              `${p.value}${p.unidad ? " " + p.unidad : ""}`;
           }
         }
-
-        /* CELDA */
 
         doc
           .rect(
             x,
             y,
-            colWidth,
+            col.width,
             rowHeight
           )
           .fillAndStroke(
-            bgColor,
+            bg,
             COLORS.border
           );
-
-        /* TEXTO */
 
         doc
           .fillColor(COLORS.dark)
           .font("Helvetica")
-          .fontSize(7)
+          .fontSize(6.5)
           .text(
 
-            val,
+            value,
 
-            x + 2,
+            x + 1,
 
-            y + 6,
+            y + 5,
 
             {
 
-              width: colWidth - 4,
+              width: col.width - 2,
 
               align: "center"
             }
           );
+
+        x += col.width;
       });
 
       y += rowHeight;
     });
 
     /* =====================================================
-       REFERENCIAS
+       REFERENCIA PARÁMETROS
     ===================================================== */
 
-    y += 25;
+    y += 20;
 
     if (y > 470) {
 
       doc.addPage({
-        layout: "landscape"
+
+        size: "A4",
+
+        layout: "landscape",
+
+        margin: 25
       });
 
       y = 40;
     }
 
-    /* TITULO */
-
     doc
       .rect(
-        30,
+        25,
         y,
-        260,
+        300,
         20
       )
       .fill(COLORS.primary);
 
     doc
-      .fillColor("#FFFFFF")
+      .fillColor("white")
       .font("Helvetica-Bold")
       .fontSize(10)
       .text(
@@ -3059,19 +2991,13 @@ export const descargarPdfRango = async (req, res) => {
           ? COLORS.row1
           : COLORS.row2;
 
-      /* SIGLA */
+      doc
+        .rect(25, y, 80, 18)
+        .fillAndStroke(bg, COLORS.border);
 
       doc
-        .rect(
-          30,
-          y,
-          80,
-          18
-        )
-        .fillAndStroke(
-          bg,
-          COLORS.border
-        );
+        .rect(105, y, 260, 18)
+        .fillAndStroke(bg, COLORS.border);
 
       doc
         .fillColor(COLORS.dark)
@@ -3079,7 +3005,7 @@ export const descargarPdfRango = async (req, res) => {
         .fontSize(8)
         .text(
           r[0],
-          30,
+          25,
           y + 5,
           {
             width: 80,
@@ -3087,32 +3013,21 @@ export const descargarPdfRango = async (req, res) => {
           }
         );
 
-      /* DESC */
-
       doc
-        .rect(
-          110,
-          y,
-          220,
-          18
-        )
-        .fillAndStroke(
-          bg,
-          COLORS.border
-        );
-
-      doc
-        .fillColor(COLORS.dark)
         .font("Helvetica")
         .fontSize(8)
         .text(
           r[1],
-          115,
+          110,
           y + 5
         );
 
       y += 18;
     });
+
+    /* =====================================================
+       FINALIZAR
+    ===================================================== */
 
     doc.end();
 
@@ -3125,4 +3040,3 @@ export const descargarPdfRango = async (req, res) => {
     });
   }
 };
-
