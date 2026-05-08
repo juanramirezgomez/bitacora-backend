@@ -2770,7 +2770,7 @@ export const descargarPdfRango = async (req, res) => {
     };
 
     /* =====================================================
-       COLUMNAS ORDENADAS
+       TABLA CENTRADA
     ===================================================== */
 
     const columnasConfig = [
@@ -2806,13 +2806,16 @@ export const descargarPdfRango = async (req, res) => {
       { key: "P", width: 32 }
     ];
 
-    /* =====================================================
-       TABLA
-    ===================================================== */
-
-    const marginX = 18;
-
     const rowHeight = 18;
+
+    const totalWidth =
+      columnasConfig.reduce(
+        (acc, col) => acc + col.width,
+        0
+      );
+
+    const marginX =
+      (doc.page.width - totalWidth) / 2;
 
     let y = 118;
 
@@ -2972,39 +2975,45 @@ export const descargarPdfRango = async (req, res) => {
        REFERENCIAS
     ===================================================== */
 
-    y += 25;
+    doc.addPage({
 
-    if (y > 470) {
+      size: "A4",
 
-      doc.addPage({
-        layout: "landscape"
-      });
+      layout: "landscape",
 
-      y = 40;
-    }
+      margin: 30
+    });
 
-    /* TITULO */
+    y = 40;
+
+    /* =====================================================
+       TITULO REFERENCIAS
+    ===================================================== */
 
     doc
       .rect(
-        30,
+        60,
         y,
-        300,
-        20
+        350,
+        22
       )
       .fill(COLORS.primary);
 
     doc
       .fillColor("#FFFFFF")
       .font("Helvetica-Bold")
-      .fontSize(10)
+      .fontSize(11)
       .text(
         "REFERENCIA PARÁMETROS",
-        38,
-        y + 6
+        72,
+        y + 7
       );
 
-    y += 20;
+    y += 22;
+
+    /* =====================================================
+       DATOS REFERENCIAS
+    ===================================================== */
 
     const referencias = [
 
@@ -3020,7 +3029,7 @@ export const descargarPdfRango = async (req, res) => {
 
       ["T.al", "Totalizador alimentación"],
 
-      ["T.g", "Temperatura gases"],
+      ["T.g", "Temperatura gases chimenea"],
 
       ["C.d", "Consumo diesel"],
 
@@ -3046,10 +3055,10 @@ export const descargarPdfRango = async (req, res) => {
 
       doc
         .rect(
-          30,
+          60,
           y,
-          85,
-          18
+          110,
+          22
         )
         .fillAndStroke(
           bg,
@@ -3059,13 +3068,13 @@ export const descargarPdfRango = async (req, res) => {
       doc
         .fillColor(COLORS.dark)
         .font("Helvetica-Bold")
-        .fontSize(8)
+        .fontSize(9)
         .text(
           r[0],
-          30,
-          y + 5,
+          60,
+          y + 7,
           {
-            width: 85,
+            width: 110,
             align: "center"
           }
         );
@@ -3074,10 +3083,10 @@ export const descargarPdfRango = async (req, res) => {
 
       doc
         .rect(
-          115,
+          170,
           y,
-          260,
-          18
+          340,
+          22
         )
         .fillAndStroke(
           bg,
@@ -3087,14 +3096,14 @@ export const descargarPdfRango = async (req, res) => {
       doc
         .fillColor(COLORS.dark)
         .font("Helvetica")
-        .fontSize(8)
+        .fontSize(9)
         .text(
           r[1],
-          122,
-          y + 5
+          182,
+          y + 7
         );
 
-      y += 18;
+      y += 22;
     });
 
     /* =====================================================
