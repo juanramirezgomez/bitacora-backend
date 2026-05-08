@@ -2381,7 +2381,7 @@ export const descargarExcelRango = async (req, res) => {
    LINEA SUPERIOR VIOLETA
 ===================================================== */
 
-for (let i = 1; i <= 19; i++) {
+for (let i = 1; i <= 18; i++) {
 
   const cell =
     sheet.getCell(5, i);
