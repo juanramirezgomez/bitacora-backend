@@ -2610,10 +2610,6 @@ export const descargarPdfRango = async (req, res) => {
       });
     }
 
-    /* =====================================================
-       PDF
-    ===================================================== */
-
     const doc =
       new PDFDocument({
 
@@ -2621,7 +2617,7 @@ export const descargarPdfRango = async (req, res) => {
 
         layout: "landscape",
 
-        margin: 25
+        margin: 18
       });
 
     res.setHeader(
@@ -2674,17 +2670,17 @@ export const descargarPdfRango = async (req, res) => {
 
         doc.image(
           logoPath,
-          25,
           18,
+          12,
           {
-            width: 150
+            width: 135
           }
         );
       }
 
     } catch (err) {
 
-      console.log("ERROR LOGO PDF:", err);
+      console.log(err);
     }
 
     /* =====================================================
@@ -2694,11 +2690,11 @@ export const descargarPdfRango = async (req, res) => {
     doc
       .fillColor(COLORS.dark)
       .font("Helvetica-Bold")
-      .fontSize(20)
+      .fontSize(19)
       .text(
         "REPORTE OPERACIONAL POR RANGO",
         0,
-        25,
+        20,
         {
           align: "center"
         }
@@ -2717,10 +2713,10 @@ export const descargarPdfRango = async (req, res) => {
 
     doc
       .rect(
-        25,
-        85,
-        doc.page.width - 50,
-        6
+        18,
+        72,
+        doc.page.width - 36,
+        5
       )
       .fill(COLORS.primary);
 
@@ -2730,46 +2726,46 @@ export const descargarPdfRango = async (req, res) => {
 
     const columnas = [
 
-      { key: "fecha", label: "Fecha", width: 58 },
+      { key: "fecha", label: "Fecha", width: 60 },
 
-      { key: "hora", label: "Hora", width: 42 },
+      { key: "hora", label: "Hora", width: 40 },
 
-      { key: "Presión caldera", label: "P.cal", width: 42 },
+      { key: "Presión caldera", label: "P.cal", width: 45 },
 
       { key: "Vapor", label: "Vapor", width: 42 },
 
-      { key: "Flujo alimentación caldera", label: "F.al", width: 48 },
+      { key: "Flujo alimentación caldera", label: "F.al", width: 44 },
 
-      { key: "Totalizador alimentación", label: "T.al", width: 48 },
+      { key: "Totalizador alimentación", label: "T.al", width: 44 },
 
-      { key: "Temperatura gases chimenea", label: "T.g", width: 45 },
+      { key: "Temperatura gases chimenea", label: "T.g", width: 42 },
 
-      { key: "Consumo diesel", label: "C.d", width: 45 },
+      { key: "Consumo diesel", label: "C.d", width: 42 },
 
-      { key: "% Diesel", label: "%D", width: 35 },
+      { key: "% Diesel", label: "%D", width: 34 },
 
-      { key: "Flujo agua blanda", label: "F.a", width: 45 },
+      { key: "Flujo agua blanda", label: "F.a", width: 42 },
 
-      { key: "Totalizador agua blanda", label: "T.a", width: 45 },
+      { key: "Totalizador agua blanda", label: "T.a", width: 42 },
 
-      { key: "Flujo BBA41", label: "Fl41", width: 45 },
+      { key: "Flujo BBA41", label: "Fl41", width: 48 },
 
-      { key: "Totalizador BBA41", label: "TB41", width: 45 },
+      { key: "Totalizador BBA41", label: "TB41", width: 48 },
 
-      { key: "Temperatura salida ITC", label: "ITC", width: 45 },
+      { key: "Temperatura salida ITC", label: "ITC", width: 42 },
 
       { key: "Purga", label: "P", width: 30 }
     ];
 
-    /* =====================================================
-       TABLA
-    ===================================================== */
+    let y = 92;
 
-    let y = 105;
-
-    const startX = 20;
+    const startX = 12;
 
     const rowHeight = 18;
+
+    /* =====================================================
+       HEADER TABLA
+    ===================================================== */
 
     const drawHeader = () => {
 
@@ -2792,7 +2788,7 @@ export const descargarPdfRango = async (req, res) => {
         doc
           .fillColor("white")
           .font("Helvetica-Bold")
-          .fontSize(7)
+          .fontSize(6.5)
           .text(
 
             col.label,
@@ -2823,7 +2819,7 @@ export const descargarPdfRango = async (req, res) => {
 
     registros.forEach((r, idx) => {
 
-      if (y > 520) {
+      if (y > 540) {
 
         doc.addPage({
 
@@ -2831,20 +2827,20 @@ export const descargarPdfRango = async (req, res) => {
 
           layout: "landscape",
 
-          margin: 25
+          margin: 18
         });
 
-        y = 40;
+        y = 25;
 
         drawHeader();
       }
+
+      let x = startX;
 
       const bg =
         idx % 2 === 0
           ? COLORS.row1
           : COLORS.row2;
-
-      let x = startX;
 
       columnas.forEach(col => {
 
@@ -2891,7 +2887,7 @@ export const descargarPdfRango = async (req, res) => {
         doc
           .fillColor(COLORS.dark)
           .font("Helvetica")
-          .fontSize(6.5)
+          .fontSize(6.3)
           .text(
 
             value,
@@ -2915,12 +2911,12 @@ export const descargarPdfRango = async (req, res) => {
     });
 
     /* =====================================================
-       REFERENCIA PARÁMETROS
+       REFERENCIAS
     ===================================================== */
 
     y += 20;
 
-    if (y > 470) {
+    if (y > 430) {
 
       doc.addPage({
 
@@ -2928,7 +2924,7 @@ export const descargarPdfRango = async (req, res) => {
 
         layout: "landscape",
 
-        margin: 25
+        margin: 18
       });
 
       y = 40;
@@ -2936,9 +2932,9 @@ export const descargarPdfRango = async (req, res) => {
 
     doc
       .rect(
-        25,
+        18,
         y,
-        300,
+        350,
         20
       )
       .fill(COLORS.primary);
@@ -2949,7 +2945,7 @@ export const descargarPdfRango = async (req, res) => {
       .fontSize(10)
       .text(
         "REFERENCIA PARÁMETROS",
-        35,
+        28,
         y + 6
       );
 
@@ -2969,7 +2965,7 @@ export const descargarPdfRango = async (req, res) => {
 
       ["T.al", "Totalizador alimentación"],
 
-      ["T.g", "Temperatura gases"],
+      ["T.g", "Temperatura gases chimenea"],
 
       ["C.d", "Consumo diesel"],
 
@@ -2992,11 +2988,11 @@ export const descargarPdfRango = async (req, res) => {
           : COLORS.row2;
 
       doc
-        .rect(25, y, 80, 18)
+        .rect(18, y, 80, 18)
         .fillAndStroke(bg, COLORS.border);
 
       doc
-        .rect(105, y, 260, 18)
+        .rect(98, y, 270, 18)
         .fillAndStroke(bg, COLORS.border);
 
       doc
@@ -3005,7 +3001,7 @@ export const descargarPdfRango = async (req, res) => {
         .fontSize(8)
         .text(
           r[0],
-          25,
+          18,
           y + 5,
           {
             width: 80,
@@ -3018,16 +3014,12 @@ export const descargarPdfRango = async (req, res) => {
         .fontSize(8)
         .text(
           r[1],
-          110,
+          105,
           y + 5
         );
 
       y += 18;
     });
-
-    /* =====================================================
-       FINALIZAR
-    ===================================================== */
 
     doc.end();
 
