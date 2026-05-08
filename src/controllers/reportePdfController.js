@@ -2770,43 +2770,145 @@ export const descargarPdfRango = async (req, res) => {
     };
 
     /* =====================================================
-       TABLA CENTRADA
+       COLUMNAS DINAMICAS
     ===================================================== */
 
-    const columnasConfig = [
+    const columnasSet = new Set();
 
-      { key: "Fecha", width: 58 },
+    registros.forEach(r =>
+      r.parametros.forEach(p =>
+        columnasSet.add(p.label)
+      )
+    );
 
-      { key: "Hora", width: 42 },
+    const columnasDB =
+      Array.from(columnasSet);
 
-      { key: "P.cal", width: 45 },
+    /* =====================================================
+       ORDEN
+    ===================================================== */
 
-      { key: "Vapor", width: 45 },
+    const ordenPreferido = [
 
-      { key: "F.al", width: 50 },
+      "Presión caldera",
 
-      { key: "T.al", width: 50 },
+      "Vapor",
 
-      { key: "T.g", width: 48 },
+      "Flujo alimentación caldera",
 
-      { key: "C.d", width: 48 },
+      "Totalizador alimentación",
 
-      { key: "%D", width: 36 },
+      "Temperatura gases chimenea",
 
-      { key: "F.a", width: 50 },
+      "Consumo diesel",
 
-      { key: "T.a", width: 50 },
+      "% Diesel",
 
-      { key: "Fl41", width: 50 },
+      "Flujo agua blanda",
 
-      { key: "TB41", width: 52 },
+      "Totalizador agua blanda",
 
-      { key: "ITC", width: 45 },
+      "Flujo BBA41",
 
-      { key: "P", width: 32 }
+      "Totalizador BBA41",
+
+      "Temperatura salida ITC"
     ];
 
+    columnasDB.sort((a, b) => {
+
+      const ia =
+        ordenPreferido.indexOf(a);
+
+      const ib =
+        ordenPreferido.indexOf(b);
+
+      return (
+        (ia === -1 ? 999 : ia)
+        -
+        (ib === -1 ? 999 : ib)
+      );
+    });
+
+    /* =====================================================
+       COLUMNAS FINALES
+    ===================================================== */
+
+    const columnasFinales = [
+
+      "Fecha",
+
+      "Hora",
+
+      ...columnasDB,
+
+      "P"
+    ];
+
+    /* =====================================================
+       ANCHOS DINAMICOS
+    ===================================================== */
+
+    const totalDisponible =
+      doc.page.width - 80;
+
+    const columnasFijas = 3;
+
+    const anchoFijo =
+      60 + 42 + 32;
+
+    const anchoDinamico =
+      Math.max(
+        38,
+        (totalDisponible - anchoFijo)
+        /
+        (columnasFinales.length - columnasFijas)
+      );
+
+    const columnasConfig =
+      columnasFinales.map(col => {
+
+        if (col === "Fecha") {
+
+          return {
+            key: col,
+            width: 60
+          };
+        }
+
+        if (col === "Hora") {
+
+          return {
+            key: col,
+            width: 42
+          };
+        }
+
+        if (col === "P") {
+
+          return {
+            key: col,
+            original: "P",
+            width: 32
+          };
+        }
+
+        return {
+
+          key:
+            nombres[col] || col,
+
+          original: col,
+
+          width: anchoDinamico
+        };
+      });
+
     const rowHeight = 18;
+
+    /* =====================================================
+       CALCULAR ANCHO TOTAL
+    ===================================================== */
 
     const totalWidth =
       columnasConfig.reduce(
@@ -2910,20 +3012,18 @@ export const descargarPdfRango = async (req, res) => {
 
           value = r.hora;
 
-        } else if (col.key === "P") {
+        } else if (
+          col.original === "P" ||
+          col.key === "P"
+        ) {
 
           value = r.purgaDeFondo;
 
         } else {
 
-          const labelOriginal =
-            Object.keys(nombres).find(
-              k => nombres[k] === col.key
-            );
-
           const p =
             r.parametros.find(
-              x => x.label === labelOriginal
+              x => x.label === col.original
             );
 
           if (p) {
