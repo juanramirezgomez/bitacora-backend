@@ -1134,14 +1134,8 @@ export const descargarReporteExcel = async (req, res) => {
       });
     }
 
-    let [checklist, registros] =
-      await Promise.all([
-
-        ChecklistInicial.findOne({ bitacoraId }),
-
-        RegistroOperacion.find({ bitacoraId })
-
-      ]);
+    let registros =
+      await RegistroOperacion.find({ bitacoraId });
 
     registros =
       ordenarPorTurno(
@@ -1465,15 +1459,10 @@ export const descargarReporteExcel = async (req, res) => {
     });
 
     /* =====================================================
-       CHECKLIST INICIAL
-    ===================================================== */
-
-    
-    /* =====================================================
        REGISTRO OPERACIÓN
     ===================================================== */
 
-    rowIndex = checklistRow + 2; 
+    rowIndex = 12;
 
     sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
 
@@ -1696,28 +1685,7 @@ export const descargarReporteExcel = async (req, res) => {
 
         cell.value = v;
 
-        cell.border = {
-
-          top: {
-            style: "thin",
-            color: { argb: "FFD1D5DB" }
-          },
-
-          left: {
-            style: "thin",
-            color: { argb: "FFD1D5DB" }
-          },
-
-          bottom: {
-            style: "thin",
-            color: { argb: "FFD1D5DB" }
-          },
-
-          right: {
-            style: "thin",
-            color: { argb: "FFD1D5DB" }
-          }
-        };
+        cell.border = border;
 
         cell.alignment = center;
 
@@ -1743,199 +1711,6 @@ export const descargarReporteExcel = async (req, res) => {
           }
         };
       });
-    });
-
-    /* =====================================================
-       REFERENCIA PARÁMETROS
-    ===================================================== */
-
-    const refStartRow = rowIndex + 3;
-
-    sheet.getColumn(17).width = 18;
-    sheet.getColumn(18).width = 42;
-
-    sheet.mergeCells(`Q${refStartRow}:R${refStartRow}`);
-
-    const refTitle =
-      sheet.getCell(`Q${refStartRow}`);
-
-    refTitle.value =
-      "REFERENCIA PARÁMETROS";
-
-    refTitle.fill = {
-
-      type: "pattern",
-
-      pattern: "solid",
-
-      fgColor: {
-        argb: COLORS.primary
-      }
-    };
-
-    refTitle.font = {
-
-      bold: true,
-
-      size: 11,
-
-      color: {
-        argb: COLORS.white
-      }
-    };
-
-    refTitle.alignment = center;
-
-    refTitle.border = border;
-
-    const refHeader =
-      sheet.getRow(refStartRow + 1);
-
-    ["SIGLA", "DESCRIPCIÓN"]
-      .forEach((h, i) => {
-
-        const c =
-          refHeader.getCell(i + 17);
-
-        c.value = h;
-
-        c.fill = {
-
-          type: "pattern",
-
-          pattern: "solid",
-
-          fgColor: {
-            argb: COLORS.secondary
-          }
-        };
-
-        c.font = {
-
-          bold: true,
-
-          color: {
-            argb: COLORS.white
-          }
-        };
-
-        c.alignment = center;
-
-        c.border = border;
-      });
-
-    const referencias = [
-
-      ["P.cal", "Presión de caldera"],
-
-      ["Vapor", "Toneladas de vapor"],
-
-      ["%D", "Porcentaje combustible"],
-
-      ["Fl41", "Flujo bomba 41"],
-
-      ["F.al", "Flujo alimentación agua"],
-
-      ["T.al", "Totalizador alimentación"],
-
-      ["T.g", "Temperatura gases"],
-
-      ["C.d", "Consumo diesel"],
-
-      ["F.a", "Flujo agua blanda"],
-
-      ["T.a", "Totalizador agua blanda"],
-
-      ["TB41", "Totalizador bomba 41"],
-
-      ["ITC", "Temperatura salida ITC"],
-
-      ["P", "Purga fondo"]
-    ];
-
-    referencias.forEach((r, idx) => {
-
-      const row =
-        sheet.getRow(refStartRow + 2 + idx);
-
-      row.height = 22;
-
-      const siglaCell =
-        row.getCell(17);
-
-      siglaCell.value = r[0];
-
-      siglaCell.font = {
-
-        bold: true,
-
-        size: 9
-      };
-
-      siglaCell.alignment = center;
-
-      siglaCell.border = {
-
-        top: { style: "thin", color: { argb: COLORS.border } },
-        left: { style: "thin", color: { argb: COLORS.border } },
-        bottom: { style: "thin", color: { argb: COLORS.border } },
-        right: { style: "thin", color: { argb: COLORS.border } }
-      };
-
-      siglaCell.fill = {
-
-        type: "pattern",
-
-        pattern: "solid",
-
-        fgColor: {
-
-          argb:
-
-            idx % 2 === 0
-
-              ? COLORS.row1
-
-              : COLORS.row2
-        }
-      };
-
-      const descCell =
-        row.getCell(18);
-
-      descCell.value = r[1];
-
-      descCell.font = {
-        size: 9
-      };
-
-      descCell.alignment = left;
-
-      descCell.border = {
-
-        top: { style: "thin", color: { argb: COLORS.border } },
-        left: { style: "thin", color: { argb: COLORS.border } },
-        bottom: { style: "thin", color: { argb: COLORS.border } },
-        right: { style: "thin", color: { argb: COLORS.border } }
-      };
-
-      descCell.fill = {
-
-        type: "pattern",
-
-        pattern: "solid",
-
-        fgColor: {
-
-          argb:
-
-            idx % 2 === 0
-
-              ? COLORS.row1
-
-              : COLORS.row2
-        }
-      };
     });
 
     /* =====================================================
