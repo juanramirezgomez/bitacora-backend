@@ -2377,19 +2377,26 @@ export const descargarExcelRango = async (req, res) => {
 
     subtitle.alignment = center;
 
-    for (let i = 1; i <= 14; i++) {
+    /* =====================================================
+   LINEA SUPERIOR VIOLETA
+===================================================== */
 
-      sheet.getCell(5, i).fill = {
+for (let i = 1; i <= 19; i++) {
 
-        type: "pattern",
+  const cell =
+    sheet.getCell(5, i);
 
-        pattern: "solid",
+  cell.fill = {
 
-        fgColor: {
-          argb: COLORS.primary
-        }
-      };
+    type: "pattern",
+
+    pattern: "solid",
+
+    fgColor: {
+      argb: COLORS.primary
     }
+  };
+}
 
     /* =====================================================
        COLUMNAS
@@ -2610,6 +2617,10 @@ export const descargarPdfRango = async (req, res) => {
       });
     }
 
+    /* =====================================================
+       PDF
+    ===================================================== */
+
     const doc =
       new PDFDocument({
 
@@ -2617,7 +2628,7 @@ export const descargarPdfRango = async (req, res) => {
 
         layout: "landscape",
 
-        margin: 18
+        margin: 30
       });
 
     res.setHeader(
@@ -2646,11 +2657,11 @@ export const descargarPdfRango = async (req, res) => {
 
       gray: "#6B7280",
 
-      border: "#D1D5DB",
-
       row1: "#FFFFFF",
 
-      row2: "#F3F4F6"
+      row2: "#F3F4F6",
+
+      border: "#D1D5DB"
     };
 
     /* =====================================================
@@ -2670,17 +2681,20 @@ export const descargarPdfRango = async (req, res) => {
 
         doc.image(
           logoPath,
-          18,
-          12,
+          35,
+          25,
           {
-            width: 135
+            width: 170
           }
         );
       }
 
     } catch (err) {
 
-      console.log(err);
+      console.log(
+        "ERROR LOGO PDF:",
+        err
+      );
     }
 
     /* =====================================================
@@ -2690,11 +2704,11 @@ export const descargarPdfRango = async (req, res) => {
     doc
       .fillColor(COLORS.dark)
       .font("Helvetica-Bold")
-      .fontSize(19)
+      .fontSize(22)
       .text(
         "REPORTE OPERACIONAL POR RANGO",
         0,
-        20,
+        35,
         {
           align: "center"
         }
@@ -2711,12 +2725,16 @@ export const descargarPdfRango = async (req, res) => {
         }
       );
 
+    /* =====================================================
+       BARRA
+    ===================================================== */
+
     doc
       .rect(
-        18,
-        72,
-        doc.page.width - 36,
-        5
+        30,
+        95,
+        doc.page.width - 60,
+        8
       )
       .fill(COLORS.primary);
 
@@ -2724,94 +2742,115 @@ export const descargarPdfRango = async (req, res) => {
        COLUMNAS
     ===================================================== */
 
-    const columnas = [
+    const columnasSet =
+      new Set();
 
-      { key: "fecha", label: "Fecha", width: 60 },
+    registros.forEach(r =>
+      r.parametros.forEach(p =>
+        columnasSet.add(p.label)
+      )
+    );
 
-      { key: "hora", label: "Hora", width: 40 },
+    const columnasDB =
+      Array.from(columnasSet);
 
-      { key: "Presión caldera", label: "P.cal", width: 45 },
+    const nombres = {
 
-      { key: "Vapor", label: "Vapor", width: 42 },
+      "Presión caldera": "P.cal",
 
-      { key: "Flujo alimentación caldera", label: "F.al", width: 44 },
+      "Vapor": "Vapor",
 
-      { key: "Totalizador alimentación", label: "T.al", width: 44 },
+      "Flujo alimentación caldera": "F.al",
 
-      { key: "Temperatura gases chimenea", label: "T.g", width: 42 },
+      "Totalizador alimentación": "T.al",
 
-      { key: "Consumo diesel", label: "C.d", width: 42 },
+      "Temperatura gases chimenea": "T.g",
 
-      { key: "% Diesel", label: "%D", width: 34 },
+      "Consumo diesel": "C.d",
 
-      { key: "Flujo agua blanda", label: "F.a", width: 42 },
+      "% Diesel": "%D",
 
-      { key: "Totalizador agua blanda", label: "T.a", width: 42 },
+      "Flujo agua blanda": "F.a",
 
-      { key: "Flujo BBA41", label: "Fl41", width: 48 },
+      "Totalizador agua blanda": "T.a",
 
-      { key: "Totalizador BBA41", label: "TB41", width: 48 },
+      "Flujo BBA41": "Fl41",
 
-      { key: "Temperatura salida ITC", label: "ITC", width: 42 },
+      "Totalizador BBA41": "TB41",
 
-      { key: "Purga", label: "P", width: 30 }
-    ];
-
-    let y = 92;
-
-    const startX = 12;
-
-    const rowHeight = 18;
-
-    /* =====================================================
-       HEADER TABLA
-    ===================================================== */
-
-    const drawHeader = () => {
-
-      let x = startX;
-
-      columnas.forEach(col => {
-
-        doc
-          .rect(
-            x,
-            y,
-            col.width,
-            rowHeight
-          )
-          .fillAndStroke(
-            COLORS.secondary,
-            COLORS.border
-          );
-
-        doc
-          .fillColor("white")
-          .font("Helvetica-Bold")
-          .fontSize(6.5)
-          .text(
-
-            col.label,
-
-            x,
-
-            y + 5,
-
-            {
-
-              width: col.width,
-
-              align: "center"
-            }
-          );
-
-        x += col.width;
-      });
-
-      y += rowHeight;
+      "Temperatura salida ITC": "ITC"
     };
 
-    drawHeader();
+    const columnas = [
+
+      "Fecha",
+
+      "Hora",
+
+      ...columnasDB,
+
+      "P"
+    ];
+
+    /* =====================================================
+       TABLA
+    ===================================================== */
+
+    const marginX = 30;
+
+    const tableWidth =
+      doc.page.width - 60;
+
+    const colWidth =
+      tableWidth / columnas.length;
+
+    const rowHeight = 20;
+
+    let y = 120;
+
+    /* =====================================================
+       HEADER
+    ===================================================== */
+
+    columnas.forEach((col, i) => {
+
+      const x =
+        marginX + (i * colWidth);
+
+      doc
+        .rect(
+          x,
+          y,
+          colWidth,
+          rowHeight
+        )
+        .fillAndStroke(
+          COLORS.secondary,
+          COLORS.border
+        );
+
+      doc
+        .fillColor("#FFFFFF")
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(
+
+          nombres[col] || col,
+
+          x + 2,
+
+          y + 6,
+
+          {
+
+            width: colWidth - 4,
+
+            align: "center"
+          }
+        );
+    });
+
+    y += rowHeight;
 
     /* =====================================================
        FILAS
@@ -2819,92 +2858,135 @@ export const descargarPdfRango = async (req, res) => {
 
     registros.forEach((r, idx) => {
 
-      if (y > 540) {
+      /* NUEVA PAGINA */
+
+      if (y > 520) {
 
         doc.addPage({
 
-          size: "A4",
-
-          layout: "landscape",
-
-          margin: 18
+          layout: "landscape"
         });
 
-        y = 25;
+        y = 40;
 
-        drawHeader();
+        /* HEADER NUEVO */
+
+        columnas.forEach((col, i) => {
+
+          const x =
+            marginX + (i * colWidth);
+
+          doc
+            .rect(
+              x,
+              y,
+              colWidth,
+              rowHeight
+            )
+            .fillAndStroke(
+              COLORS.secondary,
+              COLORS.border
+            );
+
+          doc
+            .fillColor("#FFFFFF")
+            .font("Helvetica-Bold")
+            .fontSize(8)
+            .text(
+
+              nombres[col] || col,
+
+              x + 2,
+
+              y + 6,
+
+              {
+
+                width: colWidth - 4,
+
+                align: "center"
+              }
+            );
+        });
+
+        y += rowHeight;
       }
 
-      let x = startX;
+      /* COLOR FILA */
 
-      const bg =
+      const bgColor =
         idx % 2 === 0
           ? COLORS.row1
           : COLORS.row2;
 
-      columnas.forEach(col => {
+      columnas.forEach((col, i) => {
 
-        let value = "-";
+        const x =
+          marginX + (i * colWidth);
 
-        if (col.key === "fecha") {
+        let val = "-";
 
-          value = r.fecha;
+        if (col === "Fecha") {
 
-        } else if (col.key === "hora") {
+          val = r.fecha;
 
-          value = r.hora;
+        } else if (col === "Hora") {
 
-        } else if (col.key === "Purga") {
+          val = r.hora;
 
-          value = r.purgaDeFondo;
+        } else if (col === "P") {
+
+          val = r.purgaDeFondo;
 
         } else {
 
           const p =
             r.parametros.find(
-              p => p.label === col.key
+              x => x.label === col
             );
 
           if (p) {
 
-            value =
-              `${p.value}${p.unidad ? " " + p.unidad : ""}`;
+            val =
+              `${p.value} ${p.unidad || ""}`;
           }
         }
+
+        /* CELDA */
 
         doc
           .rect(
             x,
             y,
-            col.width,
+            colWidth,
             rowHeight
           )
           .fillAndStroke(
-            bg,
+            bgColor,
             COLORS.border
           );
+
+        /* TEXTO */
 
         doc
           .fillColor(COLORS.dark)
           .font("Helvetica")
-          .fontSize(6.3)
+          .fontSize(7)
           .text(
 
-            value,
+            val,
 
-            x + 1,
+            x + 2,
 
-            y + 5,
+            y + 6,
 
             {
 
-              width: col.width - 2,
+              width: colWidth - 4,
 
               align: "center"
             }
           );
-
-        x += col.width;
       });
 
       y += rowHeight;
@@ -2914,38 +2996,35 @@ export const descargarPdfRango = async (req, res) => {
        REFERENCIAS
     ===================================================== */
 
-    y += 20;
+    y += 25;
 
-    if (y > 430) {
+    if (y > 470) {
 
       doc.addPage({
-
-        size: "A4",
-
-        layout: "landscape",
-
-        margin: 18
+        layout: "landscape"
       });
 
       y = 40;
     }
 
+    /* TITULO */
+
     doc
       .rect(
-        18,
+        30,
         y,
-        350,
+        260,
         20
       )
       .fill(COLORS.primary);
 
     doc
-      .fillColor("white")
+      .fillColor("#FFFFFF")
       .font("Helvetica-Bold")
       .fontSize(10)
       .text(
         "REFERENCIA PARÁMETROS",
-        28,
+        35,
         y + 6
       );
 
@@ -2965,7 +3044,7 @@ export const descargarPdfRango = async (req, res) => {
 
       ["T.al", "Totalizador alimentación"],
 
-      ["T.g", "Temperatura gases chimenea"],
+      ["T.g", "Temperatura gases"],
 
       ["C.d", "Consumo diesel"],
 
@@ -2987,13 +3066,19 @@ export const descargarPdfRango = async (req, res) => {
           ? COLORS.row1
           : COLORS.row2;
 
-      doc
-        .rect(18, y, 80, 18)
-        .fillAndStroke(bg, COLORS.border);
+      /* SIGLA */
 
       doc
-        .rect(98, y, 270, 18)
-        .fillAndStroke(bg, COLORS.border);
+        .rect(
+          30,
+          y,
+          80,
+          18
+        )
+        .fillAndStroke(
+          bg,
+          COLORS.border
+        );
 
       doc
         .fillColor(COLORS.dark)
@@ -3001,7 +3086,7 @@ export const descargarPdfRango = async (req, res) => {
         .fontSize(8)
         .text(
           r[0],
-          18,
+          30,
           y + 5,
           {
             width: 80,
@@ -3009,12 +3094,27 @@ export const descargarPdfRango = async (req, res) => {
           }
         );
 
+      /* DESC */
+
       doc
+        .rect(
+          110,
+          y,
+          220,
+          18
+        )
+        .fillAndStroke(
+          bg,
+          COLORS.border
+        );
+
+      doc
+        .fillColor(COLORS.dark)
         .font("Helvetica")
         .fontSize(8)
         .text(
           r[1],
-          105,
+          115,
           y + 5
         );
 
