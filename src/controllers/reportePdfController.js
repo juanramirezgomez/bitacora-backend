@@ -1468,8 +1468,8 @@ export const descargarReporteExcel = async (req, res) => {
        CHECKLIST INICIAL
     ===================================================== */
 
-    sheet.getColumn(17).width = 38;
-    sheet.getColumn(18).width = 24;
+    sheet.getColumn(17).width = 34;
+    sheet.getColumn(18).width = 32;
 
     let checklistRow = 11;
 
@@ -1569,7 +1569,7 @@ export const descargarReporteExcel = async (req, res) => {
       const row =
         sheet.getRow(checklistRow++);
 
-      row.height = 22;
+      row.height = 28;
 
       const estado =
         (f[1] || "-")
@@ -1663,7 +1663,7 @@ export const descargarReporteExcel = async (req, res) => {
        REGISTRO OPERACIÓN
     ===================================================== */
 
-    rowIndex = 12;
+    rowIndex = checklistRow + 2; 
 
     sheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
 
