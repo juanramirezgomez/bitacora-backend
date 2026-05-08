@@ -442,20 +442,47 @@ export const generarReportePdfInterno = async (bitacoraId) => {
       checkY + 10
     );
 
-    doc.fillColor(COLORS.green)
-    .font("Helvetica-Bold")
-    .fontSize(8)
-    .text(
-      String(value)
-      .replace(/_/g, " "),
-      x + 145,
-      checkY + 10
-    );
+    /* =========================================
+     ESTADO
+  ========================================= */
 
-  });
+  const estadoTexto =
+    String(value)
+      .replace(/_/g, " ");
 
-  checkY += 45;
+  const estadoUpper =
+    estadoTexto.toUpperCase();
 
+  /* COLOR DINÁMICO */
+
+  if (
+
+    estadoUpper.includes("EN SERVICIO") ||
+
+    estadoUpper.includes("NORMAL") ||
+
+    estadoUpper.includes("LLENO")
+
+  ) {
+
+    doc.fillColor(COLORS.green);
+
+  } else {
+
+    doc.fillColor(COLORS.red);
+  }
+
+  doc.font("Helvetica-Bold")
+  .fontSize(8)
+  .text(
+    estadoTexto,
+    x + 145,
+    checkY + 10
+  );
+
+});
+
+checkY += 45;
   /* =====================================================
      OBSERVACIONES
   ===================================================== */
