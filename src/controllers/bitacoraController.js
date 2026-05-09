@@ -225,12 +225,12 @@ export const listarBitacoras = async (req, res) => {
       const inicio =
         new Date(fecha);
 
-      inicio.setHours(0,0,0,0);
+      inicio.setHours(0, 0, 0, 0);
 
       const fin =
         new Date(fecha);
 
-      fin.setHours(23,59,59,999);
+      fin.setHours(23, 59, 59, 999);
 
       filtro.fechaInicio = {
 
@@ -259,6 +259,22 @@ export const listarBitacoras = async (req, res) => {
 
     const total =
       await Bitacora.countDocuments(filtro);
+
+    const totalPages =
+      Math.ceil(total / limitNumber);
+
+    console.log({
+
+      total,
+
+      pageNumber,
+
+      limitNumber,
+
+      skip,
+
+      totalPages
+    });
 
     /* =========================================
        CONSULTA
@@ -313,10 +329,7 @@ export const listarBitacoras = async (req, res) => {
       currentPage:
         pageNumber,
 
-      totalPages:
-        Math.ceil(
-          total / limitNumber
-        )
+      totalPages
     });
 
   } catch (error) {
