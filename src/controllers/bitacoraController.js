@@ -153,44 +153,133 @@ export const obtenerBitacoraAbierta = async (req, res) => {
    LISTAR BITÁCORAS (SANITIZA DATOS)
 ===================================================== */
 export const listarBitacoras = async (req, res) => {
+
   try {
 
     let { rol, nombre } = req.user;
-    const { estado } = req.query;
+
+    const {
+      estado,
+      page = 1,
+      limit = 6
+    } = req.query;
 
     nombre = String(nombre).trim();
 
     const filtro = {};
 
+    /* =========================================
+       FILTRO OPERADOR
+    ========================================= */
+
     if (rol === "OPERADOR") {
-      filtro.operador = new RegExp(`^\\s*${nombre}\\s*$`, "i");
+
+      filtro.operador =
+        new RegExp(
+          `^\\s*${nombre}\\s*$`,
+          "i"
+        );
     }
 
+    /* =========================================
+       FILTRO ESTADO
+    ========================================= */
+
     if (estado) {
+
       filtro.estado = estado;
     }
 
-    let bitacoras = await Bitacora.find(filtro)
-      .sort({ fechaInicio: -1 });
+    /* =========================================
+       PAGINACIÓN
+    ========================================= */
 
-    // 🔥 SANITIZAR DATOS (ANTI DIAMETRO)
-    bitacoras = bitacoras.map(b => {
-      const turnoValido = ["DIA", "NOCHE"].includes(b.turno)
-        ? b.turno
-        : "NOCHE"; // fallback seguro
+    const pageNumber =
+      Number(page);
 
-      return {
-        ...b.toObject(),
-        turno: turnoValido
-      };
+    const limitNumber =
+      Number(limit);
+
+    const skip =
+      (pageNumber - 1) * limitNumber;
+
+    /* =========================================
+       TOTAL
+    ========================================= */
+
+    const total =
+      await Bitacora.countDocuments(filtro);
+
+    /* =========================================
+       CONSULTA
+    ========================================= */
+
+    let bitacoras =
+      await Bitacora.find(filtro)
+
+        .sort({
+          fechaInicio: -1
+        })
+
+        .skip(skip)
+
+        .limit(limitNumber);
+
+    /* =========================================
+       SANITIZAR
+    ========================================= */
+
+    bitacoras =
+      bitacoras.map(b => {
+
+        const turnoValido =
+
+          ["DIA", "NOCHE"]
+            .includes(b.turno)
+
+              ? b.turno
+
+              : "NOCHE";
+
+        return {
+
+          ...b.toObject(),
+
+          turno:
+            turnoValido
+        };
+      });
+
+    /* =========================================
+       RESPONSE
+    ========================================= */
+
+    return res.json({
+
+      bitacoras,
+
+      total,
+
+      currentPage:
+        pageNumber,
+
+      totalPages:
+        Math.ceil(
+          total / limitNumber
+        )
     });
 
-    return res.json(bitacoras);
-
   } catch (error) {
-    console.error("🔥 Error listarBitacoras:", error);
+
+    console.error(
+      "🔥 Error listarBitacoras:",
+      error
+    );
+
     return res.status(500).json({
-      message: "Error listando bitácoras"
+
+      message:
+        "Error listando bitácoras"
     });
   }
 };
