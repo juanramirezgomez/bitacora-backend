@@ -161,7 +161,9 @@ export const listarBitacoras = async (req, res) => {
     const {
       estado,
       page = 1,
-      limit = 5
+      limit = 5,
+      search = '',
+      fecha = ''
     } = req.query;
 
     nombre = String(nombre).trim();
@@ -182,12 +184,60 @@ export const listarBitacoras = async (req, res) => {
     }
 
     /* =========================================
-       FILTRO ESTADO
+       ESTADO
     ========================================= */
 
     if (estado) {
 
       filtro.estado = estado;
+    }
+
+    /* =========================================
+       BUSCADOR
+    ========================================= */
+
+    if (search) {
+
+      filtro.$or = [
+
+        {
+          operador: {
+            $regex: search,
+            $options: 'i'
+          }
+        },
+
+        {
+          turnoNumero: {
+            $regex: search,
+            $options: 'i'
+          }
+        }
+      ];
+    }
+
+    /* =========================================
+       FECHA
+    ========================================= */
+
+    if (fecha) {
+
+      const inicio =
+        new Date(fecha);
+
+      inicio.setHours(0,0,0,0);
+
+      const fin =
+        new Date(fecha);
+
+      fin.setHours(23,59,59,999);
+
+      filtro.fechaInicio = {
+
+        $gte: inicio,
+
+        $lte: fin
+      };
     }
 
     /* =========================================
@@ -202,15 +252,6 @@ export const listarBitacoras = async (req, res) => {
 
     const skip =
       (pageNumber - 1) * limitNumber;
-
-    console.log({
-
-      pageNumber,
-
-      limitNumber,
-
-      skip
-    });
 
     /* =========================================
        TOTAL
