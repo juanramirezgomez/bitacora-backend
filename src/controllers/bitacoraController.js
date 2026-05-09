@@ -161,7 +161,7 @@ export const listarBitacoras = async (req, res) => {
     const {
       estado,
       page = 1,
-      limit = 6
+      limit = 5
     } = req.query;
 
     nombre = String(nombre).trim();
@@ -195,13 +195,22 @@ export const listarBitacoras = async (req, res) => {
     ========================================= */
 
     const pageNumber =
-      Number(page);
+      parseInt(page) || 1;
 
     const limitNumber =
-      Number(limit);
+      parseInt(limit) || 5;
 
     const skip =
       (pageNumber - 1) * limitNumber;
+
+    console.log({
+
+      pageNumber,
+
+      limitNumber,
+
+      skip
+    });
 
     /* =========================================
        TOTAL
@@ -283,7 +292,6 @@ export const listarBitacoras = async (req, res) => {
     });
   }
 };
-
 
 /* =====================================================
    OBTENER POR ID
