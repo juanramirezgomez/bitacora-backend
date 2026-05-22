@@ -11,6 +11,14 @@ const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
 const ROLES_ALERTA = ["SUPERVISION", "SUPERVISOR", "ADMIN"];
 const ROLES_VALIDOS_ALERTA = ["ADMIN", "SUPERVISION", "SUPERVISOR", "OPERADOR", "OPERADOR_PLANTA", "OPERADOR_CALDERA"];
 const ESTADOS_ACTIVOS = ["ACTIVO"];
+const ALERT_CHECKLIST_SELECT = [
+  "-revisionCarroceria.imagenMarcada",
+  "-firmaConductor",
+  "-firmaRevisor",
+  "-firmaRealizadoPor",
+  "-firmaRevisadoPor",
+  "-fotosObservaciones"
+].join(" ");
 
 const DOCUMENT_TYPE_MAP = {
   "LICENCIA MUNICIPAL": ["LICENCIA_VENCIDA", "LICENCIA_POR_VENCER"],
@@ -437,14 +445,19 @@ const enviarWhatsappUsuario = async ({ alerta, user }) => {
 };
 
 export const procesarAlertasChecklist = async (checklistOrId) => {
+  const inicio = Date.now();
   try {
     console.log("🔥 INICIO ALERT SERVICE", {
       email: emailConfigStatus(),
       whatsapp: whatsappConfigured()
     });
+    const mongoInicio = Date.now();
     const checklist = typeof checklistOrId === "string"
-      ? await ChecklistCamioneta.findById(checklistOrId).populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
+      ? await ChecklistCamioneta.findById(checklistOrId)
+        .select(ALERT_CHECKLIST_SELECT)
+        .populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
       : await checklistOrId.populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas");
+    console.log("⚡ Tiempo Mongo alertas:", `${Date.now() - mongoInicio}ms`);
 
     if (!checklist) {
       return { alertasGeneradas: [], notificaciones: [{ estado: "omitido", motivo: "Checklist no encontrado" }] };
@@ -507,6 +520,8 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
   } catch (error) {
     console.error("❌ ERROR ALERT SERVICE:", error);
     return { alertasGeneradas: [], notificaciones: [{ estado: "error", motivo: error.message }], destinatarios: [], canalesActivos: canalesPreparados() };
+  } finally {
+    console.log("⚡ Tiempo alertas:", `${Date.now() - inicio}ms`);
   }
 };
 

@@ -107,6 +107,40 @@ const CRITICOS = [
 ];
 
 const UPLOAD_DIR = path.join(process.cwd(), "src", "uploads", "checklist-camionetas");
+const CHECKLIST_LIST_FIELDS = [
+  "_id",
+  "planta",
+  "estado",
+  "aptaOperacion",
+  "aptitudOperacion",
+  "patente",
+  "marca",
+  "modelo",
+  "tipoVehiculo",
+  "kilometrajeHorometro",
+  "fechaUltimaMantencion",
+  "fechaProximaMantencion",
+  "conductorResponsable",
+  "areaTrabajo",
+  "fechaInspeccion",
+  "horaInspeccion",
+  "turno",
+  "turnoNumero",
+  "documentacion",
+  "aspectosInspeccionar.estado",
+  "estadoCamioneta.estado",
+  "frenosDireccion.estado",
+  "luces.estado",
+  "fotosObservaciones.nombre",
+  "fotosObservaciones.ruta",
+  "fotosObservaciones.fecha",
+  "creadoPor",
+  "revisadoPor",
+  "fechaCreacion",
+  "fechaActualizacion",
+  "createdAt",
+  "updatedAt"
+].join(" ");
 
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -320,11 +354,14 @@ const getChecklistOr404 = async (req, res) => {
 };
 
 export const crearChecklistCamioneta = async (req, res) => {
+  const inicio = Date.now();
   try {
+    console.time("⚡ Tiempo crear checklist");
     if (!(esAdmin(req) || esOperadorPlanta(req))) {
       return res.status(403).json({ message: "No autorizado" });
     }
 
+    const mongoInicio = Date.now();
     const autor = await resolverUserId(req);
     if (!autor) {
       return res.status(401).json({ message: "Sesion invalida. Vuelve a iniciar sesion." });
@@ -337,6 +374,7 @@ export const crearChecklistCamioneta = async (req, res) => {
       creadoPor: autor,
       fechaCreacion: new Date()
     });
+    console.log("⚡ Tiempo Mongo crear checklist:", `${Date.now() - mongoInicio}ms`);
 
     return res.status(201).json({
       ok: true,
@@ -354,11 +392,16 @@ export const crearChecklistCamioneta = async (req, res) => {
       message: "Error creando checklist camioneta",
       detail: error?.message
     });
+  } finally {
+    console.timeEnd("⚡ Tiempo crear checklist");
+    console.log("⚡ Tiempo crear checklist total:", `${Date.now() - inicio}ms`);
   }
 };
 
 export const listarChecklistCamionetas = async (req, res) => {
+  const inicio = Date.now();
   try {
+    console.time("⚡ Tiempo listar checklist");
     if (!(esAdmin(req) || esSupervision(req) || esOperadorPlanta(req))) {
       return res.status(403).json({ message: "No autorizado" });
     }
@@ -400,14 +443,26 @@ export const listarChecklistCamionetas = async (req, res) => {
       }
     }
 
+    const mongoInicio = Date.now();
     const checklists = await ChecklistCamioneta.find(filter)
+      .select(CHECKLIST_LIST_FIELDS)
       .sort({ fechaInspeccion: -1, createdAt: -1 })
+      .limit(250)
       .populate("creadoPor", "nombre email rol")
-      .populate("revisadoPor", "nombre email rol");
+      .populate("revisadoPor", "nombre email rol")
+      .lean();
+    console.log("⚡ Tiempo Mongo listar checklist:", `${Date.now() - mongoInicio}ms`, {
+      total: checklists.length,
+      filtros: Object.keys(filter)
+    });
 
     return res.json(checklists);
   } catch (error) {
+    console.error("Error listando checklist camioneta:", error);
     return res.status(500).json({ message: "Error listando checklist camioneta" });
+  } finally {
+    console.timeEnd("⚡ Tiempo listar checklist");
+    console.log("⚡ Tiempo listar checklist total:", `${Date.now() - inicio}ms`);
   }
 };
 
@@ -530,7 +585,9 @@ export const actualizarChecklistCamioneta = async (req, res) => {
 };
 
 export const finalizarChecklistCamioneta = async (req, res) => {
+  const inicio = Date.now();
   try {
+    console.time("⚡ Tiempo finalizar checklist");
     console.log("🔥 PASO 1");
     console.log("🔥 FINALIZANDO CHECKLIST CAMIONETA");
     console.log("🔥 Checklist a finalizar:", req.params.id);
@@ -559,16 +616,16 @@ export const finalizarChecklistCamioneta = async (req, res) => {
       });
     }
 
+    const mongoInicio = Date.now();
     await checklist.save();
+    console.log("⚡ Tiempo Mongo finalizar checklist:", `${Date.now() - mongoInicio}ms`);
     console.log("✅ Checklist guardado como FINALIZADO:", {
       checklistId: checklist._id,
       patente: checklist.patente,
       estado: checklist.estado
     });
 
-    ejecutarAlertasChecklistEnSegundoPlano(checklist._id);
-
-    return res.json({
+    res.json({
       ok: true,
       message: "Checklist finalizado",
       checklist: {
@@ -580,9 +637,15 @@ export const finalizarChecklistCamioneta = async (req, res) => {
       },
       alertasEnProceso: true
     });
+
+    ejecutarAlertasChecklistEnSegundoPlano(checklist._id);
+    return;
   } catch (error) {
     console.error("❌ Error finalizando checklist camioneta:", error);
     return res.status(500).json({ message: "Error finalizando checklist camioneta" });
+  } finally {
+    console.timeEnd("⚡ Tiempo finalizar checklist");
+    console.log("⚡ Tiempo finalizar checklist total:", `${Date.now() - inicio}ms`);
   }
 };
 
@@ -644,7 +707,9 @@ export const eliminarChecklistCamioneta = async (req, res) => {
 };
 
 export const subirFotoChecklistCamioneta = async (req, res) => {
+  const inicio = Date.now();
   try {
+    console.time("⚡ Tiempo upload checklist");
     if (!(esAdmin(req) || esOperadorPlanta(req))) {
       return res.status(403).json({ message: "No autorizado para subir fotos" });
     }
@@ -660,9 +725,17 @@ export const subirFotoChecklistCamioneta = async (req, res) => {
       subidoPor: await resolverUserId(req)
     };
 
+    console.log("⚡ Tiempo upload:", `${Date.now() - inicio}ms`, {
+      nombre: req.file.filename,
+      bytes: req.file.size
+    });
+
     return res.status(201).json({ message: "Foto cargada", foto });
   } catch (error) {
+    console.error("Error subiendo foto checklist camioneta:", error);
     return res.status(500).json({ message: "Error subiendo foto" });
+  } finally {
+    console.timeEnd("⚡ Tiempo upload checklist");
   }
 };
 
