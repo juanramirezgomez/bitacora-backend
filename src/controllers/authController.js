@@ -3,6 +3,93 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 
+const ROLES = [
+  "ADMIN",
+  "OPERADOR",
+  "SUPERVISOR",
+  "OPERADOR_CALDERA",
+  "OPERADOR_PLANTA",
+  "SUPERVISION"
+];
+
+const REGISTER_ROLES = [
+  "OPERADOR_CALDERA",
+  "OPERADOR_PLANTA",
+  "SUPERVISION"
+];
+
+const normalizarRol = (rol) => String(rol || "").trim().toUpperCase();
+const ESTADOS = ["PENDIENTE", "ACTIVO", "BLOQUEADO", "INACTIVO"];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
+const GMAIL_REGEX = /^[^\s@]+@gmail\.com$/i;
+
+const normalizarPreferenciasAlertas = (preferencias = {}) => ({
+  whatsapp: preferencias.whatsapp !== false,
+  correoCorporativo: preferencias.correoCorporativo !== false,
+  correoRespaldo: preferencias.correoRespaldo !== false,
+  soloCriticas: preferencias.soloCriticas === true
+});
+
+const buildContactosAlerta = ({ email = "", correoCorporativo = "", correoRespaldo = "", telefono = "" }) => {
+  const corporativo = String(correoCorporativo || email || "").trim().toLowerCase();
+  const respaldo = String(correoRespaldo || "").trim().toLowerCase();
+  const principal = corporativo || respaldo || String(email || "").trim().toLowerCase();
+
+  return {
+    email: principal,
+    username: principal,
+    correoCorporativo: corporativo,
+    correoRespaldo: respaldo,
+    telefono: String(telefono || "").trim()
+  };
+};
+
+const validarContactosAlerta = ({ email, correoCorporativo, correoRespaldo, telefono }, { telefonoObligatorio = false } = {}) => {
+  const errores = [];
+  if (!email) errores.push("Debes ingresar correo corporativo o Gmail respaldo");
+  if (correoCorporativo && !EMAIL_REGEX.test(correoCorporativo)) errores.push("Correo corporativo invalido");
+  if (correoRespaldo && !GMAIL_REGEX.test(correoRespaldo)) errores.push("Correo Gmail respaldo invalido");
+  if (telefonoObligatorio && !telefono) errores.push("Telefono WhatsApp obligatorio");
+  if (telefono && !TELEFONO_CL_REGEX.test(telefono)) errores.push("Telefono invalido. Usa formato +569XXXXXXXX");
+  return errores;
+};
+
+const modulosPorRol = (rol) => {
+  if (rol === "ADMIN") {
+    return ["BITACORA_CALDERA", "CHECKLIST_CAMIONETA", "PLANTA_PC1"];
+  }
+
+  if (rol === "OPERADOR_PLANTA") {
+    return ["CHECKLIST_CAMIONETA", "PLANTA_PC1"];
+  }
+
+  if (["OPERADOR", "OPERADOR_CALDERA", "SUPERVISOR", "SUPERVISION"].includes(rol)) {
+    return rol === "OPERADOR_CALDERA" || rol === "OPERADOR"
+      ? ["BITACORA_CALDERA"]
+      : ["BITACORA_CALDERA", "CHECKLIST_CAMIONETA"];
+  }
+
+  return [];
+};
+
+const publicUser = (user) => ({
+  id: user._id,
+  username: user.username,
+  nombre: user.nombre,
+  email: user.email,
+  correoCorporativo: user.correoCorporativo || user.email || "",
+  correoRespaldo: user.correoRespaldo || "",
+  telefono: user.telefono,
+  preferenciasAlertas: normalizarPreferenciasAlertas(user.preferenciasAlertas),
+  rol: user.rol,
+  estado: user.estado,
+  planta: user.planta,
+  modulosPermitidos: user.modulosPermitidos || [],
+  activo: user.activo,
+  fechaCreacion: user.fechaCreacion || user.createdAt
+});
+
 const signToken = (user) => {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("Falta JWT_SECRET en .env");
@@ -10,39 +97,133 @@ const signToken = (user) => {
   const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
 
   return jwt.sign(
-    { uid: user._id.toString(), rol: user.rol, nombre: user.nombre, username: user.username },
+    {
+      uid: user._id.toString(),
+      rol: user.rol,
+      nombre: user.nombre,
+      username: user.username,
+      email: user.email,
+      correoCorporativo: user.correoCorporativo || user.email || "",
+      correoRespaldo: user.correoRespaldo || "",
+      preferenciasAlertas: normalizarPreferenciasAlertas(user.preferenciasAlertas),
+      estado: user.estado,
+      planta: user.planta,
+      modulosPermitidos: user.modulosPermitidos || []
+    },
     secret,
     { expiresIn }
   );
 };
 
+// POST /api/auth/register
+export const register = async (req, res) => {
+  try {
+    const {
+      nombre,
+      email,
+      correoCorporativo = "",
+      correoRespaldo = "",
+      telefono = "",
+      password,
+      confirmPassword,
+      rol,
+      preferenciasAlertas = {}
+    } = req.body || {};
+
+    if (!nombre || !password || !confirmPassword || !rol) {
+      return res.status(400).json({
+        message: "nombre, password, confirmPassword y rol son obligatorios"
+      });
+    }
+
+    if (String(password) !== String(confirmPassword)) {
+      return res.status(400).json({ message: "Las contraseñas no coinciden" });
+    }
+
+    const rolUp = normalizarRol(rol);
+    if (!REGISTER_ROLES.includes(rolUp)) {
+      return res.status(400).json({ message: "Rol solicitado inválido" });
+    }
+
+    const contactos = buildContactosAlerta({ email, correoCorporativo, correoRespaldo, telefono });
+    const erroresContactos = validarContactosAlerta(contactos, { telefonoObligatorio: true });
+    if (erroresContactos.length) {
+      return res.status(400).json({ message: erroresContactos.join(". ") });
+    }
+
+    const exists = await User.findOne({ email: contactos.email });
+    if (exists) return res.status(409).json({ message: "El correo ya está registrado" });
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+
+    const nuevo = await User.create({
+      username: contactos.username,
+      nombre: String(nombre).trim(),
+      email: contactos.email,
+      correoCorporativo: contactos.correoCorporativo,
+      correoRespaldo: contactos.correoRespaldo,
+      telefono: contactos.telefono,
+      preferenciasAlertas: normalizarPreferenciasAlertas(preferenciasAlertas),
+      rol: rolUp,
+      estado: "PENDIENTE",
+      planta: "PC1",
+      modulosPermitidos: modulosPorRol(rolUp),
+      passwordHash,
+      activo: false,
+      fechaCreacion: new Date()
+    });
+
+    return res.status(201).json({
+      message: "Registro recibido. Tu usuario queda pendiente de aprobación.",
+      user: publicUser(nuevo)
+    });
+  } catch (e) {
+    return res.status(500).json({ message: "Error registrando usuario" });
+  }
+};
+
 // POST /api/auth/login
 export const login = async (req, res) => {
   try {
-    const { username, password } = req.body || {};
+    const { username, email, password } = req.body || {};
+    const identificador = String(username || email || "").trim().toLowerCase();
 
-    if (!username || !password) {
-      return res.status(400).json({ message: "username y password son obligatorios" });
+    if (!identificador || !password) {
+      return res.status(400).json({ message: "usuario/correo y password son obligatorios" });
     }
 
-    const user = await User.findOne({ username: String(username).trim() });
-    if (!user || !user.activo) {
-      return res.status(401).json({ message: "Credenciales inválidas" });
+    const user = await User.findOne({
+      $or: [
+        { username: identificador },
+        { email: identificador },
+        { correoCorporativo: identificador },
+        { correoRespaldo: identificador }
+      ]
+    });
+
+    if (!user) return res.status(401).json({ message: "Credenciales inválidas" });
+
+    const estado = String(user.estado || (user.activo ? "ACTIVO" : "BLOQUEADO")).toUpperCase();
+    if (!user.activo || estado !== "ACTIVO") {
+      const message = estado === "PENDIENTE"
+        ? "Tu cuenta está pendiente de aprobación por un administrador."
+        : "Usuario bloqueado o inactivo";
+      return res.status(403).json({ message });
     }
 
     const ok = await bcrypt.compare(String(password), user.passwordHash);
     if (!ok) return res.status(401).json({ message: "Credenciales inválidas" });
 
+    if (!user.modulosPermitidos?.length) {
+      user.modulosPermitidos = modulosPorRol(user.rol);
+      await user.save();
+    }
+
     const token = signToken(user);
 
     return res.json({
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        nombre: user.nombre,
-        rol: user.rol
-      }
+      user: publicUser(user)
     });
   } catch (e) {
     return res.status(500).json({ message: "Error en login" });
@@ -51,67 +232,178 @@ export const login = async (req, res) => {
 
 // GET /api/auth/me
 export const me = async (req, res) => {
-  return res.json({ user: req.user });
+  try {
+    const user = await User.findById(req.user?.uid)
+      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+
+    if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    return res.json({ user: publicUser(user) });
+  } catch (e) {
+    return res.status(500).json({ message: "Error obteniendo perfil" });
+  }
 };
 
-// ================================
-// ✅ ADMIN: crear usuario
+// PATCH /api/auth/me
+export const actualizarMiPerfil = async (req, res) => {
+  try {
+    const id = req.user?.uid;
+    if (!id) return res.status(401).json({ message: "Token invalido" });
+
+    const actual = await User.findById(id);
+    if (!actual) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    const contactos = buildContactosAlerta({
+      email: req.body?.email ?? actual.email,
+      correoCorporativo: req.body?.correoCorporativo ?? actual.correoCorporativo,
+      correoRespaldo: req.body?.correoRespaldo ?? actual.correoRespaldo,
+      telefono: req.body?.telefono ?? actual.telefono
+    });
+
+    const erroresContactos = validarContactosAlerta(contactos);
+    if (erroresContactos.length) {
+      return res.status(400).json({ message: erroresContactos.join(". ") });
+    }
+
+    const update = {
+      email: contactos.email,
+      username: contactos.username,
+      correoCorporativo: contactos.correoCorporativo,
+      correoRespaldo: contactos.correoRespaldo,
+      telefono: contactos.telefono
+    };
+
+    if (req.body?.preferenciasAlertas !== undefined) {
+      update.preferenciasAlertas = normalizarPreferenciasAlertas(req.body.preferenciasAlertas);
+    }
+
+    const duplicado = await User.findOne({
+      _id: { $ne: id },
+      $or: [
+        { email: contactos.email },
+        { username: contactos.username }
+      ]
+    });
+    if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
+
+    const user = await User.findByIdAndUpdate(id, update, { new: true })
+      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+
+    return res.json({ message: "Perfil actualizado", user: publicUser(user) });
+  } catch (e) {
+    return res.status(500).json({ message: "Error actualizando perfil" });
+  }
+};
+
 // POST /api/auth/users
 export const crearUsuario = async (req, res) => {
   try {
-    const { username, nombre, rol, password } = req.body || {};
+    const {
+      username,
+      nombre,
+      email,
+      correoCorporativo = "",
+      correoRespaldo = "",
+      telefono = "",
+      rol,
+      password,
+      estado = "ACTIVO",
+      planta = "PC1",
+      preferenciasAlertas = {}
+    } = req.body || {};
+    const contactos = buildContactosAlerta({ email: email || username, correoCorporativo, correoRespaldo, telefono });
+    const identificador = contactos.email;
 
-    if (!username || !nombre || !rol || !password) {
-      return res.status(400).json({ message: "username, nombre, rol y password son obligatorios" });
+    if (!identificador || !nombre || !rol || !password) {
+      return res.status(400).json({ message: "email/username, nombre, rol y password son obligatorios" });
     }
 
-    const rolUp = String(rol).toUpperCase();
-    if (!["OPERADOR", "SUPERVISOR", "ADMIN"].includes(rolUp)) {
+    const erroresContactos = validarContactosAlerta(contactos);
+    if (erroresContactos.length) {
+      return res.status(400).json({ message: erroresContactos.join(". ") });
+    }
+
+    const rolUp = normalizarRol(rol);
+    if (!ROLES.includes(rolUp)) {
       return res.status(400).json({ message: "rol inválido" });
     }
 
-    const exists = await User.findOne({ username: String(username).trim() });
-    if (exists) return res.status(409).json({ message: "username ya existe" });
+    const exists = await User.findOne({
+      $or: [
+        { username: identificador },
+        { email: identificador }
+      ]
+    });
+    if (exists) return res.status(409).json({ message: "usuario ya existe" });
+
+    const estadoUp = String(estado || "ACTIVO").toUpperCase();
+    if (!ESTADOS.includes(estadoUp)) {
+      return res.status(400).json({ message: "estado inválido" });
+    }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
 
     const nuevo = await User.create({
-      username: String(username).trim(),
+      username: contactos.username,
       nombre: String(nombre).trim(),
+      email: contactos.email,
+      correoCorporativo: contactos.correoCorporativo,
+      correoRespaldo: contactos.correoRespaldo,
+      telefono: contactos.telefono,
+      preferenciasAlertas: normalizarPreferenciasAlertas(preferenciasAlertas),
       rol: rolUp,
+      estado: estadoUp,
+      planta: String(planta || "PC1").trim() || "PC1",
+      modulosPermitidos: modulosPorRol(rolUp),
       passwordHash,
-      activo: true
+      activo: estadoUp === "ACTIVO",
+      fechaCreacion: new Date()
     });
 
     return res.status(201).json({
       message: "Usuario creado",
-      user: {
-        id: nuevo._id,
-        username: nuevo.username,
-        nombre: nuevo.nombre,
-        rol: nuevo.rol,
-        activo: nuevo.activo
-      }
+      user: publicUser(nuevo)
     });
   } catch (e) {
     return res.status(500).json({ message: "Error creando usuario" });
   }
 };
 
-// ✅ ADMIN: listar usuarios
 // GET /api/auth/users
 export const listarUsuarios = async (req, res) => {
   try {
-    const users = await User.find({})
+    const { q = "", rol = "", estado = "" } = req.query;
+    const filter = {};
+
+    if (q) {
+      filter.$or = [
+        { username: { $regex: String(q), $options: "i" } },
+        { email: { $regex: String(q), $options: "i" } },
+        { correoCorporativo: { $regex: String(q), $options: "i" } },
+        { correoRespaldo: { $regex: String(q), $options: "i" } },
+        { nombre: { $regex: String(q), $options: "i" } },
+        { telefono: { $regex: String(q), $options: "i" } }
+      ];
+    }
+
+    if (rol) filter.rol = normalizarRol(rol);
+    if (estado) {
+      const estadoUp = String(estado).toUpperCase();
+      if (!ESTADOS.includes(estadoUp)) {
+        return res.status(400).json({ message: "estado inválido" });
+      }
+      filter.estado = estadoUp;
+    }
+
+    const users = await User.find(filter)
       .sort({ createdAt: -1 })
-      .select("_id username nombre rol activo createdAt");
+      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
     return res.json(users);
   } catch (e) {
     return res.status(500).json({ message: "Error listando usuarios" });
   }
 };
 
-// ✅ ADMIN: activar/desactivar o cambiar rol/nombre
 // PATCH /api/auth/users/:id
 export const actualizarUsuario = async (req, res) => {
   try {
@@ -119,18 +411,71 @@ export const actualizarUsuario = async (req, res) => {
 
     const update = {};
     if (req.body.nombre !== undefined) update.nombre = String(req.body.nombre).trim();
-    if (req.body.activo !== undefined) update.activo = !!req.body.activo;
+    if (req.body.telefono !== undefined) update.telefono = String(req.body.telefono).trim();
+    if (req.body.correoCorporativo !== undefined) {
+      update.correoCorporativo = String(req.body.correoCorporativo || "").trim().toLowerCase();
+    }
+    if (req.body.correoRespaldo !== undefined) {
+      update.correoRespaldo = String(req.body.correoRespaldo || "").trim().toLowerCase();
+    }
+    if (req.body.preferenciasAlertas !== undefined) {
+      update.preferenciasAlertas = normalizarPreferenciasAlertas(req.body.preferenciasAlertas);
+    }
+    if (req.body.email !== undefined) {
+      const email = String(req.body.email).trim().toLowerCase();
+      update.email = email;
+      update.username = email;
+    }
+    if (update.email) {
+      const duplicado = await User.findOne({
+        _id: { $ne: id },
+        $or: [
+          { email: update.email },
+          { username: update.email }
+        ]
+      });
+      if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
+    }
+    const contactosActualizados = buildContactosAlerta({
+      email: update.email,
+      correoCorporativo: update.correoCorporativo,
+      correoRespaldo: update.correoRespaldo,
+      telefono: update.telefono
+    });
+    const erroresContactos = validarContactosAlerta(contactosActualizados);
+    if (erroresContactos.some((error) => !error.startsWith("Debes ingresar"))) {
+      return res.status(400).json({ message: erroresContactos.join(". ") });
+    }
+    if (req.body.planta !== undefined) {
+      update.planta = String(req.body.planta || "PC1").trim() || "PC1";
+    }
+    if (req.body.activo !== undefined) {
+      update.activo = !!req.body.activo;
+      update.estado = update.activo ? "ACTIVO" : "BLOQUEADO";
+    }
+    if (req.body.estado !== undefined) {
+      const estadoUp = String(req.body.estado).toUpperCase();
+      if (!ESTADOS.includes(estadoUp)) {
+        return res.status(400).json({ message: "estado inválido" });
+      }
+      if (String(req.user?.uid || "") === String(id) && estadoUp !== "ACTIVO") {
+        return res.status(400).json({ message: "No puedes bloquear o dejar pendiente tu propia cuenta ADMIN" });
+      }
+      update.estado = estadoUp;
+      update.activo = estadoUp === "ACTIVO";
+    }
 
     if (req.body.rol !== undefined) {
-      const rolUp = String(req.body.rol).toUpperCase();
-      if (!["OPERADOR", "SUPERVISOR", "ADMIN"].includes(rolUp)) {
+      const rolUp = normalizarRol(req.body.rol);
+      if (!ROLES.includes(rolUp)) {
         return res.status(400).json({ message: "rol inválido" });
       }
       update.rol = rolUp;
+      update.modulosPermitidos = modulosPorRol(rolUp);
     }
 
     const u = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username nombre rol activo createdAt");
+      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -140,7 +485,64 @@ export const actualizarUsuario = async (req, res) => {
   }
 };
 
-// ✅ ADMIN: reset password
+// PATCH /api/auth/users/:id/estado
+export const actualizarEstadoUsuario = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const estadoUp = String(req.body?.estado || "").toUpperCase();
+
+    if (!ESTADOS.includes(estadoUp)) {
+      return res.status(400).json({ message: "estado inválido" });
+    }
+
+    if (String(req.user?.uid || "") === String(id) && estadoUp !== "ACTIVO") {
+      return res.status(400).json({ message: "No puedes bloquear o dejar pendiente tu propia cuenta ADMIN" });
+    }
+
+    const u = await User.findByIdAndUpdate(
+      id,
+      {
+        estado: estadoUp,
+        activo: estadoUp === "ACTIVO"
+      },
+      { new: true }
+    ).select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+
+    if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    return res.json({ message: "Estado actualizado", user: u });
+  } catch (e) {
+    return res.status(500).json({ message: "Error actualizando estado" });
+  }
+};
+
+// PATCH /api/auth/users/:id/rol
+export const actualizarRolUsuario = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rolUp = normalizarRol(req.body?.rol);
+
+    if (!ROLES.includes(rolUp)) {
+      return res.status(400).json({ message: "rol inválido" });
+    }
+
+    const u = await User.findByIdAndUpdate(
+      id,
+      {
+        rol: rolUp,
+        modulosPermitidos: modulosPorRol(rolUp)
+      },
+      { new: true }
+    ).select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+
+    if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    return res.json({ message: "Rol actualizado", user: u });
+  } catch (e) {
+    return res.status(500).json({ message: "Error actualizando rol" });
+  }
+};
+
 // POST /api/auth/users/:id/reset-password
 export const resetPassword = async (req, res) => {
   try {
@@ -152,12 +554,32 @@ export const resetPassword = async (req, res) => {
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 
     const u = await User.findByIdAndUpdate(id, { passwordHash }, { new: true })
-      .select("_id username nombre rol activo");
+      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado activo");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
     return res.json({ message: "Password actualizado", user: u });
   } catch (e) {
     return res.status(500).json({ message: "Error reseteando password" });
+  }
+};
+
+// DELETE /api/auth/users/:id
+export const eliminarUsuario = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (String(req.user?.uid || "") === String(id)) {
+      return res.status(400).json({ message: "No puedes eliminar tu propio usuario ADMIN" });
+    }
+
+    const deleted = await User.findByIdAndDelete(id)
+      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta activo");
+
+    if (!deleted) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    return res.json({ message: "Usuario eliminado", user: deleted });
+  } catch (e) {
+    return res.status(500).json({ message: "Error eliminando usuario" });
   }
 };

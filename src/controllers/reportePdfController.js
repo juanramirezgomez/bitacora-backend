@@ -1,4 +1,4 @@
-import PDFDocument from "pdfkit";
+﻿import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import path from "path";
 import fs from "fs";
@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 
 
 /* =====================================================
-   ORDENAR HORAS SEGÚN TURNO
+   ORDENAR HORAS SEGúN TURNO
 ===================================================== */
 
 function ordenarPorTurno(registros, turno) {
@@ -259,7 +259,7 @@ export const generarReportePdfInterno = async (bitacoraId) => {
     .font("Helvetica")
     .fontSize(8)
     .text(
-      "Novandino Litio • Bitácora Digital",
+      "Superintendencia Operaciones Litio • Bitácora Digital",
       0,
       823,
       {
@@ -1178,10 +1178,10 @@ export const descargarReporteExcel = async (req, res) => {
       new ExcelJS.Workbook();
 
     workbook.creator =
-      "Novandino Litio";
+      "Superintendencia Operaciones Litio";
 
     workbook.company =
-      "Novandino Litio";
+      "Superintendencia Operaciones Litio";
 
     workbook.subject =
       "Bitácora Digital";
@@ -2019,7 +2019,7 @@ export const descargarExcelRango = async (req, res) => {
       new ExcelJS.Workbook();
 
     workbook.creator =
-      "Novandino Litio";
+      "Superintendencia Operaciones Litio";
 
     const sheet =
       workbook.addWorksheet("Reporte");

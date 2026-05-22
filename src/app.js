@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
@@ -20,6 +20,8 @@ import registroOperacionRoutes from "./routes/registroOperacionRoutes.js";
 import detalleBitacoraRoutes from "./routes/detalleBitacoraRoutes.js";
 import cierreTurnoRoutes from "./routes/cierreTurnoRoutes.js";
 import reportePdfRoutes from "./routes/reportePdfRoutes.js";
+import checklistCamionetaRoutes from "./routes/checklistCamionetaRoutes.js";
+import bitacoraDiariaRoutes from "./routes/bitacoraDiariaRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,8 +50,8 @@ if (process.env.NODE_ENV !== "test") {
 
 app.use(cors(corsOptions()));
 
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 app.use(
   helmet({
@@ -81,15 +83,15 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 ========================================= */
 
 app.get("/health", (req, res) => {
-  res.json({ ok: true, service: "bitacora-caldera-api" });
+  res.json({ ok: true, service: "operaciones-litio-api" });
 });
 
 app.get("/", (req, res) => {
-  res.send("🚂🔥 API Bitácora funcionando correctamente");
+  res.send("API Superintendencia Operaciones Litio funcionando correctamente");
 });
 
 /* =========================================
-   RUTAS PÚBLICAS
+   RUTAS PúBLICAS
 ========================================= */
 
 app.use("/api/auth", authRoutes);
@@ -103,6 +105,8 @@ app.use("/api", requireAuth);
 
 app.use("/api/users", usersRoutes);
 
+app.use("/api/checklist-camionetas", checklistCamionetaRoutes);
+app.use("/api/bitacoras-diarias", bitacoraDiariaRoutes);
 
 app.use("/api/bitacoras", checklistRoutes);
 app.use("/api/bitacoras", registroOperacionRoutes);

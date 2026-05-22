@@ -5,6 +5,12 @@ import CierreTurno from "../models/CierreTurno.js";
 import RegistroOperacion from "../models/RegistroOperacion.js";
 import { generarReportePdfInterno } from "./reportePdfController.js";
 
+const puedeOperarCaldera = (rol) =>
+  ["ADMIN", "OPERADOR", "OPERADOR_CALDERA"].includes(String(rol || "").toUpperCase());
+
+const esOperadorCaldera = (rol) =>
+  ["OPERADOR", "OPERADOR_CALDERA"].includes(String(rol || "").toUpperCase());
+
 const toNumOrUndef = (v) => {
   if (v === undefined || v === null) return undefined;
   const s = String(v).trim();
@@ -33,10 +39,10 @@ export const crearCierreTurno = async (req, res) => {
     const rol = String(req.user?.rol || "").toUpperCase();
     const nombre = String(req.user?.nombre || "").trim();
 
-    if (rol !== "OPERADOR")
-      return res.status(403).json({ message: "Solo OPERADOR puede cerrar turno" });
+    if (!puedeOperarCaldera(rol))
+      return res.status(403).json({ message: "Solo OPERADOR_CALDERA puede cerrar turno" });
 
-    if (bitacora.operador !== nombre)
+    if (rol !== "ADMIN" && bitacora.operador !== nombre)
       return res.status(403).json({
         message: "No puedes cerrar una bitácora que no es tuya",
       });
@@ -166,7 +172,7 @@ export const obtenerCierreTurno = async (req, res) => {
     const rol = String(req.user?.rol || "").toUpperCase();
     const nombre = String(req.user?.nombre || "").trim();
 
-    if (rol === "OPERADOR" && bitacora.operador !== nombre) {
+    if (esOperadorCaldera(rol) && bitacora.operador !== nombre) {
       return res.status(403).json({
         message: "No puedes ver cierre de otra bitácora",
       });
