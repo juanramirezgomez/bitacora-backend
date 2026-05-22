@@ -60,6 +60,7 @@ export const emailConfigStatus = () => ({
 });
 
 const createTransporter = (provider) => nodemailer.createTransport({
+  ...(provider.key === "gmail" ? { service: "gmail" } : {}),
   host: provider.host,
   port: provider.port,
   secure: provider.secure,
