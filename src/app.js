@@ -23,6 +23,7 @@ import reportePdfRoutes from "./routes/reportePdfRoutes.js";
 import checklistCamionetaRoutes from "./routes/checklistCamionetaRoutes.js";
 import bitacoraDiariaRoutes from "./routes/bitacoraDiariaRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
+import registroDatosRoutes from "./routes/registroDatosRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -109,6 +110,7 @@ app.use("/api/users", usersRoutes);
 app.use("/api/checklist-camionetas", checklistCamionetaRoutes);
 app.use("/api/bitacoras-diarias", bitacoraDiariaRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/registro-datos", registroDatosRoutes);
 
 app.use("/api/bitacoras", checklistRoutes);
 app.use("/api/bitacoras", registroOperacionRoutes);
