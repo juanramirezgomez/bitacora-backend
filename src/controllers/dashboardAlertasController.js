@@ -67,7 +67,12 @@ const mapRecentAlert = (alerta) => ({
   tipo: alerta.tipo || "ALERTA_OPERACIONAL",
   operador: alerta.operador || "-",
   canal: alerta.canal || "-",
-  estado: alerta.estado || "-",
+  estado: alerta.estadoOperacional || "ABIERTA",
+  estadoEnvio: alerta.estado || "-",
+  observacion: alerta.error || alerta.mensaje || "",
+  responsable: alerta.responsableResolucion || alerta.destinatarios?.[0]?.nombre || "-",
+  observacionResolucion: alerta.observacionResolucion || "",
+  fechaResolucion: alerta.fechaResolucion || null,
   fecha: alerta.createdAt || alerta.fecha
 });
 
@@ -111,18 +116,20 @@ export const obtenerDashboardAlertas = async (req, res) => {
         { $sort: { _id: 1 } }
       ]),
       HistorialAlerta.find({ estado: { $ne: "omitido" } })
-        .select("tipo prioridad patente operador canal estado fecha createdAt")
+        .select("tipo prioridad patente operador canal estado estadoOperacional mensaje error destinatarios.nombre responsableResolucion observacionResolucion fechaResolucion fecha createdAt")
         .sort({ createdAt: -1 })
-        .limit(8)
+        .limit(12)
         .lean(),
       HistorialAlerta.countDocuments({
         createdAt: { $gte: last30Start },
         prioridad: /CRIT/i,
-        estado: { $ne: "omitido" }
+        estado: { $ne: "omitido" },
+        estadoOperacional: { $ne: "RESUELTA" }
       }),
       HistorialAlerta.countDocuments({
         createdAt: { $gte: last30Start },
-        estado: { $in: ["enviado", "error"] }
+        estado: { $in: ["enviado", "error"] },
+        estadoOperacional: { $ne: "RESUELTA" }
       }),
       ChecklistCamioneta.countDocuments({
         eliminado: { $ne: true },
@@ -214,5 +221,36 @@ export const obtenerDashboardAlertas = async (req, res) => {
   } catch (error) {
     console.error("❌ ERROR DASHBOARD ALERTAS:", error);
     return res.status(500).json({ message: "Error obteniendo dashboard de alertas" });
+  }
+};
+
+export const resolverAlertaDashboard = async (req, res) => {
+  try {
+    const observacion = String(req.body?.observacion || "").trim();
+    if (!observacion) {
+      return res.status(400).json({ message: "La observacion de resolucion es obligatoria" });
+    }
+
+    const alerta = await HistorialAlerta.findByIdAndUpdate(
+      req.params.id,
+      {
+        estadoOperacional: "RESUELTA",
+        observacionResolucion: observacion,
+        responsableResolucion: req.user?.nombre || req.user?.username || "Usuario",
+        resueltaPor: req.user?.uid || req.user?._id || null,
+        fechaResolucion: new Date()
+      },
+      { new: true }
+    ).lean();
+
+    if (!alerta) return res.status(404).json({ message: "Alerta no encontrada" });
+
+    return res.json({
+      message: "Alerta resuelta",
+      alerta: mapRecentAlert(alerta)
+    });
+  } catch (error) {
+    console.error("❌ ERROR RESOLVIENDO ALERTA:", error);
+    return res.status(500).json({ message: "Error resolviendo alerta" });
   }
 };

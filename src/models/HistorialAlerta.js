@@ -23,6 +23,11 @@ const historialAlertaSchema = new mongoose.Schema(
     destinatarios: { type: [destinatarioSchema], default: [] },
     canal: { type: String, enum: ["correo", "correoCorporativo", "correoRespaldo", "whatsapp"], required: true },
     estado: { type: String, enum: ["enviado", "omitido", "error"], required: true },
+    estadoOperacional: { type: String, enum: ["ABIERTA", "RESUELTA"], default: "ABIERTA" },
+    resueltaPor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    responsableResolucion: { type: String, trim: true, default: "" },
+    observacionResolucion: { type: String, trim: true, default: "" },
+    fechaResolucion: { type: Date, default: null },
     error: { type: String, trim: true, default: "" },
     checklistId: { type: mongoose.Schema.Types.ObjectId, ref: "ChecklistCamioneta", default: null },
     patente: { type: String, trim: true, uppercase: true, default: "" },
@@ -34,6 +39,7 @@ const historialAlertaSchema = new mongoose.Schema(
 
 historialAlertaSchema.index({ checklistId: 1, tipo: 1, canal: 1, createdAt: -1 });
 historialAlertaSchema.index({ estado: 1, prioridad: 1, createdAt: -1 });
+historialAlertaSchema.index({ estadoOperacional: 1, prioridad: 1, createdAt: -1 });
 historialAlertaSchema.index({ patente: 1, createdAt: -1 });
 
 export default mongoose.model("HistorialAlerta", historialAlertaSchema);

@@ -1,8 +1,10 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+import http from "http";
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
+import { initRealtime } from "./services/realtimeService.js";
 
 const PORT = process.env.PORT || 4000;
 
@@ -25,7 +27,9 @@ async function start() {
   try {
     logRuntimeConfig();
     await connectDB();
-    app.listen(PORT, () => {
+    const server = http.createServer(app);
+    initRealtime(server);
+    server.listen(PORT, () => {
       console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
     });
   } catch (err) {

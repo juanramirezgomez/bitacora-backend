@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import RegistroDatos, { HORARIOS_TURNO, VARIABLES_REGISTRO_DATOS } from "../models/RegistroDatos.js";
+import { emitRegistroDatosUpdate } from "../services/realtimeService.js";
 
 const TURNOS_VALIDOS = Object.keys(HORARIOS_TURNO);
 
@@ -160,6 +161,25 @@ export const crearRegistroDatos = async (req, res) => {
       turno,
       hora,
       operador: registro.operador
+    });
+
+    emitRegistroDatosUpdate({
+      tipo: "CREADO",
+      registro: {
+        id: String(registro._id),
+        fechaKey: registro.fechaKey,
+        fechaHora: registro.fechaHora,
+        turno: registro.turno,
+        hora: registro.hora,
+        operador: registro.operador,
+        estado: registro.estado,
+        lecturas: registro.lecturas?.map((lectura) => ({
+          nombre: lectura.nombre,
+          valor: lectura.valor,
+          diferencia: lectura.diferencia,
+          valorAnterior: lectura.valorAnterior
+        })) || []
+      }
     });
 
     return res.status(201).json({
