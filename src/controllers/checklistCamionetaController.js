@@ -18,9 +18,11 @@ const ESTADOS_DOCUMENTO = ["VIGENTE", "VENCIDO", "NO_APLICA"];
 const ESTADOS_INSPECCION = ["BUENO", "MALO", "NA"];
 
 const ejecutarAlertasChecklistEnSegundoPlano = (checklistId) => {
+  console.log("🚀 ALERTAS EN BACKGROUND", { checklistId });
   setImmediate(async () => {
     try {
       console.log("🔥 EJECUTANDO ALERTAS CHECKLIST", { checklistId, modo: "segundo_plano" });
+      console.log("📨 EMAIL BACKGROUND / 📲 WHATSAPP BACKGROUND", { checklistId });
       const resultadoAlertas = await procesarAlertasChecklist(String(checklistId));
       console.log("✅ ALERTAS FINALIZADAS", {
         checklistId,
@@ -619,7 +621,7 @@ export const finalizarChecklistCamioneta = async (req, res) => {
     const mongoInicio = Date.now();
     await checklist.save();
     console.log("⚡ Tiempo Mongo finalizar checklist:", `${Date.now() - mongoInicio}ms`);
-    console.log("✅ Checklist guardado como FINALIZADO:", {
+    console.log("✅ CHECKLIST GUARDADO", {
       checklistId: checklist._id,
       patente: checklist.patente,
       estado: checklist.estado
