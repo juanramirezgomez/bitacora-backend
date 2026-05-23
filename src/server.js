@@ -13,8 +13,12 @@ const logRuntimeConfig = () => {
     jwtSecretExists: Boolean(process.env.JWT_SECRET),
     smtpGmailEmail: process.env.SMTP_GMAIL_EMAIL || null,
     smtpGmailPassExists: Boolean(process.env.SMTP_GMAIL_PASSWORD),
+    smtpGmailPassLength: String(process.env.SMTP_GMAIL_PASSWORD || "").replace(/\s+/g, "").length,
     smtpGmailHost: process.env.SMTP_GMAIL_HOST || "smtp.gmail.com",
+    smtpGmailPort: process.env.SMTP_GMAIL_PORT || "587",
+    smtpGmailSecure: process.env.SMTP_GMAIL_SECURE || "false",
     twilioSidExists: Boolean(process.env.TWILIO_ACCOUNT_SID),
+    twilioTokenExists: Boolean(process.env.TWILIO_AUTH_TOKEN),
     twilioFromExists: Boolean(process.env.TWILIO_WHATSAPP_FROM),
     corsOrigins: process.env.CORS_ORIGINS || null
   });

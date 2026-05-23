@@ -2,6 +2,7 @@ import express from "express";
 import {
   actualizarChecklistCamioneta,
   crearChecklistCamioneta,
+  diagnosticoAlertasChecklistCamionetaController,
   descargarChecklistCamionetaExcel,
   descargarChecklistCamionetaPdf,
   eliminarChecklistCamioneta,
@@ -24,6 +25,7 @@ router.post("/upload", uploadChecklistCamioneta.single("foto"), subirFotoCheckli
 router.get("/alertas-vencimientos", obtenerAlertasVencimientosChecklistCamionetaController);
 router.get("/alertas", obtenerAlertasChecklistCamionetaController);
 router.post("/alertas/enviar", enviarAlertasChecklistCamionetaController);
+router.post("/alertas/diagnostico", diagnosticoAlertasChecklistCamionetaController);
 router.get("/:id/pdf", descargarChecklistCamionetaPdf);
 router.get("/:id/excel", descargarChecklistCamionetaExcel);
 router.get("/:id", obtenerChecklistCamioneta);

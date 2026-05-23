@@ -2,17 +2,27 @@ import nodemailer from "nodemailer";
 import { ALERT_PRIORITIES } from "../config/alertTemplates.js";
 
 const boolEnv = (value) => String(value || "false").trim().toLowerCase() === "true";
+const cleanEnv = (value) => String(value || "").trim();
 const gmailPassword = () => String(process.env.SMTP_GMAIL_PASSWORD || "").replace(/\s+/g, "");
 const verifiedProviders = new Map();
 
+const smtpErrorSeguro = (error) => ({
+  message: error?.message,
+  code: error?.code,
+  response: error?.response,
+  responseCode: error?.responseCode,
+  command: error?.command,
+  stack: error?.stack
+});
+
 const cleanFrom = (value, fallbackEmail) => {
-  const raw = String(value || "").trim();
+  const raw = cleanEnv(value);
   if (!raw) return fallbackEmail;
   if (raw.includes("<") && raw.includes(">")) return raw;
 
   const mailtoMatch = raw.match(/\[([^\]]+)\]\(mailto:([^)]+)\)/i);
   if (mailtoMatch) {
-    return `NOVANDINO | GESTIÓN OPERACIONAL <${mailtoMatch[2].trim()}>`;
+    return `NOVANDINO | GESTION OPERACIONAL <${mailtoMatch[2].trim()}>`;
   }
 
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return raw;
@@ -21,29 +31,31 @@ const cleanFrom = (value, fallbackEmail) => {
 };
 
 const providerConfigs = () => {
-  const gmail = {
-    key: "gmail",
-    label: "Gmail SMTP principal",
-    host: process.env.SMTP_GMAIL_HOST || "smtp.gmail.com",
-    port: Number(process.env.SMTP_GMAIL_PORT || 587),
-    secure: boolEnv(process.env.SMTP_GMAIL_SECURE),
-    user: process.env.SMTP_GMAIL_EMAIL,
-    pass: gmailPassword(),
-    from: cleanFrom(process.env.SMTP_GMAIL_FROM, process.env.SMTP_GMAIL_EMAIL)
-  };
+  const gmailEmail = cleanEnv(process.env.SMTP_GMAIL_EMAIL);
+  const microsoftEmail = cleanEnv(process.env.SMTP_EMAIL);
 
-  const microsoft = {
-    key: "microsoft365",
-    label: "Microsoft 365 SMTP respaldo",
-    host: process.env.SMTP_HOST || "smtp.office365.com",
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: boolEnv(process.env.SMTP_SECURE),
-    user: process.env.SMTP_EMAIL,
-    pass: process.env.SMTP_PASSWORD,
-    from: cleanFrom(process.env.SMTP_FROM, process.env.SMTP_EMAIL)
-  };
-
-  return [gmail, microsoft];
+  return [
+    {
+      key: "gmail",
+      label: "Gmail SMTP principal",
+      host: cleanEnv(process.env.SMTP_GMAIL_HOST) || "smtp.gmail.com",
+      port: Number(process.env.SMTP_GMAIL_PORT || 587),
+      secure: boolEnv(process.env.SMTP_GMAIL_SECURE),
+      user: gmailEmail,
+      pass: gmailPassword(),
+      from: cleanFrom(process.env.SMTP_GMAIL_FROM, gmailEmail)
+    },
+    {
+      key: "microsoft365",
+      label: "Microsoft 365 SMTP respaldo",
+      host: cleanEnv(process.env.SMTP_HOST) || "smtp.office365.com",
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: boolEnv(process.env.SMTP_SECURE),
+      user: microsoftEmail,
+      pass: cleanEnv(process.env.SMTP_PASSWORD),
+      from: cleanFrom(process.env.SMTP_FROM, microsoftEmail)
+    }
+  ];
 };
 
 const usableProviders = () =>
@@ -54,9 +66,18 @@ const usableProviders = () =>
 export const emailConfigured = () => usableProviders().length > 0;
 
 export const emailConfigStatus = () => ({
-  gmail: Boolean(process.env.SMTP_GMAIL_HOST && process.env.SMTP_GMAIL_EMAIL && process.env.SMTP_GMAIL_PASSWORD),
-  microsoft365: Boolean(process.env.SMTP_HOST && process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD),
-  principal: usableProviders()[0]?.key || null
+  gmail: Boolean(cleanEnv(process.env.SMTP_GMAIL_HOST) && cleanEnv(process.env.SMTP_GMAIL_EMAIL) && gmailPassword()),
+  microsoft365: Boolean(cleanEnv(process.env.SMTP_HOST) && cleanEnv(process.env.SMTP_EMAIL) && cleanEnv(process.env.SMTP_PASSWORD)),
+  principal: usableProviders()[0]?.key || null,
+  smtpGmailHost: cleanEnv(process.env.SMTP_GMAIL_HOST) || "smtp.gmail.com",
+  smtpGmailPort: Number(process.env.SMTP_GMAIL_PORT || 587),
+  smtpGmailSecure: boolEnv(process.env.SMTP_GMAIL_SECURE),
+  smtpGmailEmail: cleanEnv(process.env.SMTP_GMAIL_EMAIL) || null,
+  smtpGmailPasswordExists: Boolean(gmailPassword()),
+  smtpGmailPasswordLength: gmailPassword().length,
+  smtpGmailFromExists: Boolean(cleanEnv(process.env.SMTP_GMAIL_FROM)),
+  microsoftEmail: cleanEnv(process.env.SMTP_EMAIL) || null,
+  microsoftPasswordExists: Boolean(cleanEnv(process.env.SMTP_PASSWORD))
 });
 
 const createTransporter = (provider) => nodemailer.createTransport({
@@ -80,21 +101,19 @@ const verifyTransporterOnce = async (provider, transporter) => {
   try {
     await transporter.verify();
     verifiedProviders.set(provider.key, true);
-    const label = provider.key === "gmail" ? "📧 SMTP GMAIL OK" : "📧 SMTP MICROSOFT OK";
-    console.log(label, { host: provider.host, user: provider.user });
+    console.log(provider.key === "gmail" ? "✅ SMTP VERIFICADO GMAIL" : "✅ SMTP VERIFICADO MICROSOFT", {
+      host: provider.host,
+      user: provider.user
+    });
     return true;
   } catch (error) {
-    console.error(provider.key === "gmail" ? "❌ ERROR SMTP GMAIL" : "❌ ERROR SMTP MICROSOFT", {
-      message: error.message,
-      code: error.code,
-      command: error.command
-    });
+    console.error(provider.key === "gmail" ? "❌ SMTP ERROR GMAIL" : "❌ SMTP ERROR MICROSOFT", smtpErrorSeguro(error));
     throw error;
   }
 };
 
 // FUTURO:
-// soporte Microsoft Graph API corporativo. Microsoft 365 queda preparado como respaldo SMTP y futura migración Graph.
+// soporte Microsoft Graph API corporativo. Microsoft 365 queda preparado como respaldo SMTP y futura migracion Graph.
 
 export const buildAlertEmailHtml = ({ alerta, destinatario }) => {
   const priority = ALERT_PRIORITIES[alerta.prioridad] || ALERT_PRIORITIES.ALTA;
@@ -114,17 +133,17 @@ export const buildAlertEmailHtml = ({ alerta, destinatario }) => {
           Prioridad ${priority.label}
         </div>
         <h2 style="font-size:18px;margin:18px 0 8px;">${alerta.titulo}</h2>
-        <p style="font-size:14px;line-height:1.5;">Hola ${destinatario.nombre || "equipo"}, se detectó una condición que requiere revisión operacional.</p>
+        <p style="font-size:14px;line-height:1.5;">Hola ${destinatario.nombre || "equipo"}, se detecto una condicion que requiere revision operacional.</p>
         <table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0;">
           <tr><td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;">Patente</td><td style="padding:8px;border:1px solid #e5e7eb;">${alerta.patente || "-"}</td></tr>
           <tr><td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;">Operador</td><td style="padding:8px;border:1px solid #e5e7eb;">${alerta.operador || "-"}</td></tr>
           <tr><td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;">Fecha checklist</td><td style="padding:8px;border:1px solid #e5e7eb;">${alerta.fechaTexto || "-"}</td></tr>
           <tr><td style="padding:8px;border:1px solid #e5e7eb;font-weight:bold;">Tipo alerta</td><td style="padding:8px;border:1px solid #e5e7eb;">${alerta.tipo}</td></tr>
         </table>
-        <h3 style="font-size:15px;margin:14px 0 8px;">Anomalías detectadas</h3>
+        <h3 style="font-size:15px;margin:14px 0 8px;">Anomalias detectadas</h3>
         <ul style="font-size:14px;line-height:1.6;padding-left:20px;">${anomalies}</ul>
         <p style="font-size:12px;color:#64748b;margin-top:22px;">
-          NOVANDINO | GESTIÓN OPERACIONAL
+          NOVANDINO | GESTION OPERACIONAL
         </p>
       </div>
     </div>
@@ -132,17 +151,19 @@ export const buildAlertEmailHtml = ({ alerta, destinatario }) => {
 };
 
 export const sendEmailAlert = async ({ to, subject, html, text }) => {
-  const destinatario = String(to || "").trim().toLowerCase();
+  const destinatario = cleanEnv(to).toLowerCase();
   console.log("📧 INICIANDO EMAIL SERVICE", emailConfigStatus());
-  console.log("📨 ENVIANDO CORREO", { destinatario, subject });
+  console.log("SMTP EMAIL:", cleanEnv(process.env.SMTP_GMAIL_EMAIL) || null);
+  console.log("SMTP PASS EXISTS:", Boolean(gmailPassword()));
+  console.log("📧 ENVIANDO EMAIL", { destinatario, subject });
 
   if (!destinatario) {
-    return { ok: false, canal: "email", estado: "omitido", destino: destinatario, motivo: "Destinatario vacío" };
+    return { ok: false, canal: "email", estado: "omitido", destino: destinatario, motivo: "Destinatario vacio" };
   }
 
   const providers = usableProviders();
   if (!providers.length) {
-    console.log("⚠️ Correo omitido: faltan variables SMTP Gmail y Microsoft 365");
+    console.log("⚠️ Correo omitido: faltan variables SMTP Gmail y Microsoft 365", emailConfigStatus());
     return {
       ok: false,
       canal: "email",
@@ -174,7 +195,7 @@ export const sendEmailAlert = async ({ to, subject, html, text }) => {
         text
       });
 
-      console.log("✅ CORREO ENVIADO", {
+      console.log("✅ EMAIL ENVIADO", {
         canal: provider.key,
         destinatario,
         messageId: info.messageId
@@ -189,13 +210,7 @@ export const sendEmailAlert = async ({ to, subject, html, text }) => {
         messageId: info.messageId
       };
     } catch (error) {
-      console.error("❌ ERROR SMTP", {
-        canal: provider.key,
-        destinatario,
-        message: error.message,
-        code: error.code,
-        command: error.command
-      });
+      console.error("❌ SMTP ERROR", { canal: provider.key, destinatario, ...smtpErrorSeguro(error) });
       errores.push(`${provider.key}: ${error.message}`);
     }
   }
@@ -219,10 +234,54 @@ export const sendEmailMultipleRecipients = async ({ recipients = [], subject, ht
       const text = textBuilder(recipient);
       results.push(await sendEmailAlert({ to: recipient.email, subject, html, text }));
     } catch (error) {
-      console.error("❌ ERROR SMTP MULTIPLE:", error);
+      console.error("❌ ERROR SMTP MULTIPLE:", smtpErrorSeguro(error));
       results.push({ canal: "email", estado: "error", destino: recipient.email, motivo: error.message });
     }
   }
 
   return results;
+};
+
+export const verifyEmailProviders = async () => {
+  console.log("📧 DIAGNOSTICO SMTP", emailConfigStatus());
+  const providers = usableProviders();
+  const results = [];
+
+  if (!providers.length) {
+    return {
+      ok: false,
+      status: emailConfigStatus(),
+      providers: [],
+      error: "No hay proveedores SMTP configurados"
+    };
+  }
+
+  for (const provider of providers) {
+    try {
+      const transporter = createTransporter(provider);
+      await transporter.verify();
+      console.log("✅ SMTP VERIFICADO", { provider: provider.key, host: provider.host, user: provider.user });
+      results.push({ provider: provider.key, ok: true, host: provider.host, user: provider.user });
+    } catch (error) {
+      console.error("❌ SMTP ERROR", { provider: provider.key, ...smtpErrorSeguro(error) });
+      results.push({ provider: provider.key, ok: false, host: provider.host, user: provider.user, error: smtpErrorSeguro(error) });
+    }
+  }
+
+  return {
+    ok: results.some((item) => item.ok),
+    status: emailConfigStatus(),
+    providers: results
+  };
+};
+
+export const sendTestEmail = async ({ to = "jota.raaamirez@gmail.com" } = {}) => {
+  const subject = "Prueba SMTP Render - NOVANDINO";
+  const text = [
+    "Prueba real de correo SMTP desde backend Render.",
+    `Fecha: ${new Date().toISOString()}`,
+    "NOVANDINO | GESTION OPERACIONAL"
+  ].join("\n");
+  const html = `<p>Prueba real de correo SMTP desde backend Render.</p><p>Fecha: ${new Date().toISOString()}</p><p>NOVANDINO | GESTION OPERACIONAL</p>`;
+  return sendEmailAlert({ to, subject, html, text });
 };

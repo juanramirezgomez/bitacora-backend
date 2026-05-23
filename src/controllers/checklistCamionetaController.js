@@ -12,6 +12,8 @@ import {
   procesarAlertasChecklist,
   variablesNotificacionChecklistCamioneta
 } from "../services/alertService.js";
+import { emailConfigStatus, sendTestEmail, verifyEmailProviders } from "../services/emailService.js";
+import { enviarWhatsApp, whatsappConfigStatus } from "../services/whatsappService.js";
 
 const ESTADOS_CHECKLIST = ["BORRADOR", "FINALIZADO", "REVISADO"];
 const ESTADOS_DOCUMENTO = ["VIGENTE", "VENCIDO", "NO_APLICA"];
@@ -562,6 +564,63 @@ export const enviarAlertasChecklistCamionetaController = async (req, res) => {
   } catch (error) {
     console.error("❌ ERROR ALERTAS MANUALES:", error);
     return res.status(500).json({ message: "Error enviando alertas checklist camioneta", detail: error.message });
+  }
+};
+
+export const diagnosticoAlertasChecklistCamionetaController = async (req, res) => {
+  try {
+    if (!esAdmin(req)) {
+      return res.status(403).json({ message: "Solo ADMIN puede ejecutar diagnostico de alertas" });
+    }
+
+    const destino = String(req.body?.email || req.query?.email || "jota.raaamirez@gmail.com").trim().toLowerCase();
+    const telefono = String(req.body?.telefono || req.query?.telefono || "").trim();
+    console.log("🧪 DIAGNOSTICO ALERTAS RENDER", {
+      smtpEmail: process.env.SMTP_GMAIL_EMAIL || null,
+      smtpPassExists: Boolean(process.env.SMTP_GMAIL_PASSWORD),
+      twilioSidExists: Boolean(process.env.TWILIO_ACCOUNT_SID),
+      twilioFromExists: Boolean(process.env.TWILIO_WHATSAPP_FROM),
+      destino,
+      telefono: telefono || null
+    });
+
+    const smtp = await verifyEmailProviders();
+    const emailTest = await sendTestEmail({ to: destino });
+    const whatsappTest = telefono
+      ? await enviarWhatsApp({
+        telefono,
+        mensaje: [
+          "Prueba WhatsApp Render",
+          "NOVANDINO | GESTION OPERACIONAL",
+          new Date().toISOString()
+        ].join("\n")
+      })
+      : { ok: false, estado: "omitido", motivo: "No se envio telefono de prueba" };
+
+    return res.json({
+      ok: Boolean(emailTest.ok),
+      destino,
+      smtp,
+      emailTest,
+      whatsappTest,
+      emailEnv: emailConfigStatus(),
+      twilioEnv: whatsappConfigStatus()
+    });
+  } catch (error) {
+    console.error("❌ ERROR DIAGNOSTICO ALERTAS:", {
+      message: error?.message,
+      code: error?.code,
+      response: error?.response,
+      command: error?.command,
+      stack: error?.stack
+    });
+    return res.status(500).json({
+      message: "Error ejecutando diagnostico de alertas",
+      detail: error?.message,
+      code: error?.code,
+      response: error?.response,
+      command: error?.command
+    });
   }
 };
 

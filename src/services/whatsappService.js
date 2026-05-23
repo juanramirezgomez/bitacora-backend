@@ -3,6 +3,13 @@ import twilio from "twilio";
 export const whatsappConfigured = () =>
   Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM);
 
+export const whatsappConfigStatus = () => ({
+  configured: whatsappConfigured(),
+  twilioSidExists: Boolean(process.env.TWILIO_ACCOUNT_SID),
+  twilioTokenExists: Boolean(process.env.TWILIO_AUTH_TOKEN),
+  twilioFrom: process.env.TWILIO_WHATSAPP_FROM || null
+});
+
 const getClient = () =>
   twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN, {
     timeout: 15000
@@ -28,6 +35,7 @@ export const enviarWhatsApp = async ({ telefono, mensaje }) => {
   const telefonoDestino = limpiarTelefono(telefono);
 
   try {
+    console.log(whatsappConfigured() ? "✅ TWILIO OK" : "❌ TWILIO ERROR", whatsappConfigStatus());
     console.log("📲 ENVIANDO WHATSAPP", {
       to: telefonoDestino,
       from: process.env.TWILIO_WHATSAPP_FROM
