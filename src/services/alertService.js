@@ -397,7 +397,7 @@ const enviarCorreoUsuario = async ({ alerta, user, tipoCorreo }) => {
     return omitirCanal({ alerta, user, canal, motivo: validacion.motivos.join("; ") });
   }
   if (!emailConfigured()) {
-    return omitirCanal({ alerta, user, canal, motivo: "SMTP no configurado" });
+    return omitirCanal({ alerta, user, canal, motivo: "Resend no configurado" });
   }
 
   const destinoCorreo = tipoCorreo === "respaldo"
@@ -532,18 +532,8 @@ export const canalesPreparados = () => ({
 });
 
 export const variablesNotificacionChecklistCamioneta = [
-  "SMTP_HOST=smtp.office365.com",
-  "SMTP_GMAIL_HOST=smtp.gmail.com",
-  "SMTP_GMAIL_PORT=587",
-  "SMTP_GMAIL_SECURE=false",
-  "SMTP_GMAIL_EMAIL",
-  "SMTP_GMAIL_PASSWORD",
-  "SMTP_GMAIL_FROM",
-  "SMTP_PORT=587",
-  "SMTP_SECURE=false",
-  "SMTP_EMAIL",
-  "SMTP_PASSWORD",
-  "SMTP_FROM",
+  "RESEND_API_KEY",
+  "EMAIL_FROM=onboarding@resend.dev",
   "TWILIO_ACCOUNT_SID",
   "TWILIO_AUTH_TOKEN",
   "TWILIO_WHATSAPP_FROM=whatsapp:+14155238886"

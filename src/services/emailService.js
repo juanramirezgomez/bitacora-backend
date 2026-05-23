@@ -1,119 +1,34 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { ALERT_PRIORITIES } from "../config/alertTemplates.js";
 
-const boolEnv = (value) => String(value || "false").trim().toLowerCase() === "true";
 const cleanEnv = (value) => String(value || "").trim();
-const gmailPassword = () => String(process.env.SMTP_GMAIL_PASSWORD || "").replace(/\s+/g, "");
-const verifiedProviders = new Map();
 
-const smtpErrorSeguro = (error) => ({
+const resendErrorSeguro = (error) => ({
   message: error?.message,
-  code: error?.code,
+  name: error?.name,
+  statusCode: error?.statusCode || error?.status,
   response: error?.response,
-  responseCode: error?.responseCode,
-  command: error?.command,
+  details: error?.details,
   stack: error?.stack
 });
 
-const cleanFrom = (value, fallbackEmail) => {
-  const raw = cleanEnv(value);
-  if (!raw) return fallbackEmail;
-  if (raw.includes("<") && raw.includes(">")) return raw;
+const resendClient = () => new Resend(cleanEnv(process.env.RESEND_API_KEY));
 
-  const mailtoMatch = raw.match(/\[([^\]]+)\]\(mailto:([^)]+)\)/i);
-  if (mailtoMatch) {
-    return `NOVANDINO | GESTION OPERACIONAL <${mailtoMatch[2].trim()}>`;
-  }
+const emailFrom = () => cleanEnv(process.env.EMAIL_FROM);
 
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) return raw;
-  if (fallbackEmail) return `${raw} <${fallbackEmail}>`;
-  return raw;
+export const emailConfigStatus = () => {
+  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
+
+  return {
+    provider: "resend",
+    configured: Boolean(apiKey && emailFrom()),
+    resendApiKeyExists: Boolean(apiKey),
+    resendApiKeyPrefix: apiKey ? `${apiKey.slice(0, 8)}...` : null,
+    emailFrom: emailFrom()
+  };
 };
 
-const providerConfigs = () => {
-  const gmailEmail = cleanEnv(process.env.SMTP_GMAIL_EMAIL);
-  const microsoftEmail = cleanEnv(process.env.SMTP_EMAIL);
-
-  return [
-    {
-      key: "gmail",
-      label: "Gmail SMTP principal",
-      host: cleanEnv(process.env.SMTP_GMAIL_HOST) || "smtp.gmail.com",
-      port: Number(process.env.SMTP_GMAIL_PORT || 587),
-      secure: boolEnv(process.env.SMTP_GMAIL_SECURE),
-      user: gmailEmail,
-      pass: gmailPassword(),
-      from: cleanFrom(process.env.SMTP_GMAIL_FROM, gmailEmail)
-    },
-    {
-      key: "microsoft365",
-      label: "Microsoft 365 SMTP respaldo",
-      host: cleanEnv(process.env.SMTP_HOST) || "smtp.office365.com",
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: boolEnv(process.env.SMTP_SECURE),
-      user: microsoftEmail,
-      pass: cleanEnv(process.env.SMTP_PASSWORD),
-      from: cleanFrom(process.env.SMTP_FROM, microsoftEmail)
-    }
-  ];
-};
-
-const usableProviders = () =>
-  providerConfigs().filter((provider) =>
-    Boolean(provider.host && provider.port && provider.user && provider.pass)
-  );
-
-export const emailConfigured = () => usableProviders().length > 0;
-
-export const emailConfigStatus = () => ({
-  gmail: Boolean(cleanEnv(process.env.SMTP_GMAIL_HOST) && cleanEnv(process.env.SMTP_GMAIL_EMAIL) && gmailPassword()),
-  microsoft365: Boolean(cleanEnv(process.env.SMTP_HOST) && cleanEnv(process.env.SMTP_EMAIL) && cleanEnv(process.env.SMTP_PASSWORD)),
-  principal: usableProviders()[0]?.key || null,
-  smtpGmailHost: cleanEnv(process.env.SMTP_GMAIL_HOST) || "smtp.gmail.com",
-  smtpGmailPort: Number(process.env.SMTP_GMAIL_PORT || 587),
-  smtpGmailSecure: boolEnv(process.env.SMTP_GMAIL_SECURE),
-  smtpGmailEmail: cleanEnv(process.env.SMTP_GMAIL_EMAIL) || null,
-  smtpGmailPasswordExists: Boolean(gmailPassword()),
-  smtpGmailPasswordLength: gmailPassword().length,
-  smtpGmailFromExists: Boolean(cleanEnv(process.env.SMTP_GMAIL_FROM)),
-  microsoftEmail: cleanEnv(process.env.SMTP_EMAIL) || null,
-  microsoftPasswordExists: Boolean(cleanEnv(process.env.SMTP_PASSWORD))
-});
-
-const createTransporter = (provider) => nodemailer.createTransport({
-  ...(provider.key === "gmail" ? { service: "gmail" } : {}),
-  host: provider.host,
-  port: provider.port,
-  secure: provider.secure,
-  requireTLS: !provider.secure,
-  auth: {
-    user: provider.user,
-    pass: provider.pass
-  },
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 30000
-});
-
-const verifyTransporterOnce = async (provider, transporter) => {
-  if (verifiedProviders.get(provider.key)) return true;
-
-  try {
-    await transporter.verify();
-    verifiedProviders.set(provider.key, true);
-    console.log(provider.key === "gmail" ? "✅ SMTP VERIFICADO GMAIL" : "✅ SMTP VERIFICADO MICROSOFT", {
-      host: provider.host,
-      user: provider.user
-    });
-    return true;
-  } catch (error) {
-    console.error(provider.key === "gmail" ? "❌ SMTP ERROR GMAIL" : "❌ SMTP ERROR MICROSOFT", smtpErrorSeguro(error));
-    throw error;
-  }
-};
-
-// FUTURO:
-// soporte Microsoft Graph API corporativo. Microsoft 365 queda preparado como respaldo SMTP y futura migracion Graph.
+export const emailConfigured = () => emailConfigStatus().configured;
 
 export const buildAlertEmailHtml = ({ alerta, destinatario }) => {
   const priority = ALERT_PRIORITIES[alerta.prioridad] || ALERT_PRIORITIES.ALTA;
@@ -152,77 +67,68 @@ export const buildAlertEmailHtml = ({ alerta, destinatario }) => {
 
 export const sendEmailAlert = async ({ to, subject, html, text }) => {
   const destinatario = cleanEnv(to).toLowerCase();
-  console.log("📧 INICIANDO EMAIL SERVICE", emailConfigStatus());
-  console.log("SMTP EMAIL:", cleanEnv(process.env.SMTP_GMAIL_EMAIL) || null);
-  console.log("SMTP PASS EXISTS:", Boolean(gmailPassword()));
-  console.log("📧 ENVIANDO EMAIL", { destinatario, subject });
+  console.log("📧 INICIANDO RESEND", emailConfigStatus());
+  console.log("📨 ENVIANDO EMAIL RESEND", { destinatario, subject, from: emailFrom() });
 
   if (!destinatario) {
-    return { ok: false, canal: "email", estado: "omitido", destino: destinatario, motivo: "Destinatario vacio" };
-  }
-
-  const providers = usableProviders();
-  if (!providers.length) {
-    console.log("⚠️ Correo omitido: faltan variables SMTP Gmail y Microsoft 365", emailConfigStatus());
     return {
       ok: false,
-      canal: "email",
+      canal: "resend",
+      provider: "resend",
       estado: "omitido",
       destino: destinatario,
-      motivo: "Faltan SMTP_GMAIL_* o SMTP_*"
+      motivo: "Destinatario vacio"
     };
   }
 
-  const errores = [];
-
-  for (const provider of providers) {
-    try {
-      console.log("📧 Transporter activo:", {
-        canal: provider.key,
-        host: provider.host,
-        port: provider.port,
-        secure: provider.secure,
-        user: provider.user
-      });
-
-      const transporter = createTransporter(provider);
-      await verifyTransporterOnce(provider, transporter);
-      const info = await transporter.sendMail({
-        from: provider.from || provider.user,
-        to: destinatario,
-        subject,
-        html,
-        text
-      });
-
-      console.log("✅ EMAIL ENVIADO", {
-        canal: provider.key,
-        destinatario,
-        messageId: info.messageId
-      });
-
-      return {
-        ok: true,
-        canal: provider.key,
-        provider: provider.key,
-        estado: "enviado",
-        destino: destinatario,
-        messageId: info.messageId
-      };
-    } catch (error) {
-      console.error("❌ SMTP ERROR", { canal: provider.key, destinatario, ...smtpErrorSeguro(error) });
-      errores.push(`${provider.key}: ${error.message}`);
-    }
+  if (!emailConfigured()) {
+    console.log("⚠️ Email omitido: faltan variables RESEND_API_KEY o EMAIL_FROM", emailConfigStatus());
+    return {
+      ok: false,
+      canal: "resend",
+      provider: "resend",
+      estado: "omitido",
+      destino: destinatario,
+      motivo: "Faltan RESEND_API_KEY o EMAIL_FROM"
+    };
   }
 
-  return {
-    ok: false,
-    canal: providers[0]?.key || "email",
-    provider: providers[0]?.key || "email",
-    estado: "error",
-    destino: destinatario,
-    motivo: errores.join(" | ") || "Error SMTP desconocido"
-  };
+  try {
+    const result = await resendClient().emails.send({
+      from: emailFrom(),
+      to: destinatario,
+      subject,
+      html,
+      text
+    });
+
+    if (result?.error) {
+      throw result.error;
+    }
+
+    const messageId = result?.data?.id || result?.id || "";
+    console.log("✅ EMAIL ENVIADO RESEND", { destinatario, messageId });
+
+    return {
+      ok: true,
+      canal: "resend",
+      provider: "resend",
+      estado: "enviado",
+      destino: destinatario,
+      messageId
+    };
+  } catch (error) {
+    console.error("❌ ERROR RESEND", { destinatario, ...resendErrorSeguro(error) });
+    return {
+      ok: false,
+      canal: "resend",
+      provider: "resend",
+      estado: "error",
+      destino: destinatario,
+      motivo: error?.message || "Error Resend",
+      error: resendErrorSeguro(error)
+    };
+  }
 };
 
 export const sendEmailMultipleRecipients = async ({ recipients = [], subject, htmlBuilder, textBuilder }) => {
@@ -234,8 +140,14 @@ export const sendEmailMultipleRecipients = async ({ recipients = [], subject, ht
       const text = textBuilder(recipient);
       results.push(await sendEmailAlert({ to: recipient.email, subject, html, text }));
     } catch (error) {
-      console.error("❌ ERROR SMTP MULTIPLE:", smtpErrorSeguro(error));
-      results.push({ canal: "email", estado: "error", destino: recipient.email, motivo: error.message });
+      console.error("❌ ERROR RESEND MULTIPLE:", resendErrorSeguro(error));
+      results.push({
+        canal: "resend",
+        provider: "resend",
+        estado: "error",
+        destino: recipient.email,
+        motivo: error.message
+      });
     }
   }
 
@@ -243,45 +155,23 @@ export const sendEmailMultipleRecipients = async ({ recipients = [], subject, ht
 };
 
 export const verifyEmailProviders = async () => {
-  console.log("📧 DIAGNOSTICO SMTP", emailConfigStatus());
-  const providers = usableProviders();
-  const results = [];
-
-  if (!providers.length) {
-    return {
-      ok: false,
-      status: emailConfigStatus(),
-      providers: [],
-      error: "No hay proveedores SMTP configurados"
-    };
-  }
-
-  for (const provider of providers) {
-    try {
-      const transporter = createTransporter(provider);
-      await transporter.verify();
-      console.log("✅ SMTP VERIFICADO", { provider: provider.key, host: provider.host, user: provider.user });
-      results.push({ provider: provider.key, ok: true, host: provider.host, user: provider.user });
-    } catch (error) {
-      console.error("❌ SMTP ERROR", { provider: provider.key, ...smtpErrorSeguro(error) });
-      results.push({ provider: provider.key, ok: false, host: provider.host, user: provider.user, error: smtpErrorSeguro(error) });
-    }
-  }
+  console.log("📧 DIAGNOSTICO RESEND", emailConfigStatus());
 
   return {
-    ok: results.some((item) => item.ok),
+    ok: emailConfigured(),
+    provider: "resend",
     status: emailConfigStatus(),
-    providers: results
+    error: emailConfigured() ? "" : "Faltan RESEND_API_KEY o EMAIL_FROM"
   };
 };
 
 export const sendTestEmail = async ({ to = "jota.raaamirez@gmail.com" } = {}) => {
-  const subject = "Prueba SMTP Render - NOVANDINO";
+  const subject = "Prueba Resend Render - NOVANDINO";
   const text = [
-    "Prueba real de correo SMTP desde backend Render.",
+    "Prueba real de correo Resend desde backend Render.",
     `Fecha: ${new Date().toISOString()}`,
     "NOVANDINO | GESTION OPERACIONAL"
   ].join("\n");
-  const html = `<p>Prueba real de correo SMTP desde backend Render.</p><p>Fecha: ${new Date().toISOString()}</p><p>NOVANDINO | GESTION OPERACIONAL</p>`;
+  const html = `<p>Prueba real de correo Resend desde backend Render.</p><p>Fecha: ${new Date().toISOString()}</p><p>NOVANDINO | GESTION OPERACIONAL</p>`;
   return sendEmailAlert({ to, subject, html, text });
 };

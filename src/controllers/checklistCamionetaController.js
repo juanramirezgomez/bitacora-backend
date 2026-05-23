@@ -575,16 +575,17 @@ export const diagnosticoAlertasChecklistCamionetaController = async (req, res) =
 
     const destino = String(req.body?.email || req.query?.email || "jota.raaamirez@gmail.com").trim().toLowerCase();
     const telefono = String(req.body?.telefono || req.query?.telefono || "").trim();
-    console.log("🧪 DIAGNOSTICO ALERTAS RENDER", {
-      smtpEmail: process.env.SMTP_GMAIL_EMAIL || null,
-      smtpPassExists: Boolean(process.env.SMTP_GMAIL_PASSWORD),
+    console.log("🧪 DIAGNOSTICO ALERTAS RESEND", {
+      resendApiKeyExists: Boolean(process.env.RESEND_API_KEY),
+      resendApiKeyPrefix: process.env.RESEND_API_KEY ? `${String(process.env.RESEND_API_KEY).slice(0, 8)}...` : null,
+      emailFrom: process.env.EMAIL_FROM || null,
       twilioSidExists: Boolean(process.env.TWILIO_ACCOUNT_SID),
       twilioFromExists: Boolean(process.env.TWILIO_WHATSAPP_FROM),
       destino,
       telefono: telefono || null
     });
 
-    const smtp = await verifyEmailProviders();
+    const resend = await verifyEmailProviders();
     const emailTest = await sendTestEmail({ to: destino });
     const whatsappTest = telefono
       ? await enviarWhatsApp({
@@ -600,7 +601,7 @@ export const diagnosticoAlertasChecklistCamionetaController = async (req, res) =
     return res.json({
       ok: Boolean(emailTest.ok),
       destino,
-      smtp,
+      resend,
       emailTest,
       whatsappTest,
       emailEnv: emailConfigStatus(),

@@ -4,6 +4,9 @@
   "description": "",
   "main": "src/app.js",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "seed:users": "node src/scripts/seedUsers.js",
     "dev": "nodemon src/server.js",
@@ -26,8 +29,8 @@
     "mongoose": "^9.2.1",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
-    "nodemailer": "^8.0.7",
     "pdfkit": "^0.17.2",
+    "resend": "^6.12.3",
     "twilio": "^6.0.2"
   },
   "devDependencies": {
