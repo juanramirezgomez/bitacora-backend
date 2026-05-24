@@ -4,6 +4,14 @@ import mongoose from "mongoose";
 const userSchema = new mongoose.Schema(
   {
     username: { type: String, unique: true, sparse: true, trim: true },
+    operadorId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      uppercase: true,
+      match: /^[A-Z0-9]{3,12}$/
+    },
     nombre: { type: String, required: true, trim: true },
     email: { type: String, unique: true, sparse: true, trim: true, lowercase: true },
     correoCorporativo: { type: String, trim: true, lowercase: true, default: "" },

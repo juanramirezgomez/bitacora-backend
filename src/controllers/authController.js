@@ -23,6 +23,28 @@ const ESTADOS = ["PENDIENTE", "ACTIVO", "BLOQUEADO", "INACTIVO"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
 const GMAIL_REGEX = /^[^\s@]+@gmail\.com$/i;
+const OPERADOR_ID_REGEX = /^[A-Z0-9]{3,12}$/;
+
+const normalizarOperadorId = (value = "") => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+const generarOperadorId = async (nombre = "OP", rol = "OPERADOR") => {
+  const parts = String(nombre || "OP")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  const iniciales = (parts.slice(0, 2).map((part) => part.charAt(0)).join("") || "OP").padEnd(2, "X").slice(0, 3);
+  const prefix = ["SUPERVISION", "SUPERVISOR"].includes(rol) ? "SUP" : iniciales;
+
+  for (let i = 1; i <= 999; i++) {
+    const candidate = `${prefix}${String(i).padStart(2, "0")}`.slice(0, 12);
+    const exists = await User.exists({ operadorId: candidate });
+    if (!exists) return candidate;
+  }
+
+  return `${prefix}${Date.now().toString().slice(-4)}`.slice(0, 12);
+};
 
 const normalizarPreferenciasAlertas = (preferencias = {}) => ({
   whatsapp: preferencias.whatsapp !== false,
@@ -76,6 +98,7 @@ const modulosPorRol = (rol) => {
 const publicUser = (user) => ({
   id: user._id,
   username: user.username,
+  operadorId: user.operadorId || "",
   nombre: user.nombre,
   email: user.email,
   correoCorporativo: user.correoCorporativo || user.email || "",
@@ -102,6 +125,7 @@ const signToken = (user) => {
       rol: user.rol,
       nombre: user.nombre,
       username: user.username,
+      operadorId: user.operadorId || "",
       email: user.email,
       correoCorporativo: user.correoCorporativo || user.email || "",
       correoRespaldo: user.correoRespaldo || "",
@@ -124,6 +148,7 @@ export const register = async (req, res) => {
       correoCorporativo = "",
       correoRespaldo = "",
       telefono = "",
+      operadorId = "",
       password,
       confirmPassword,
       rol,
@@ -151,13 +176,26 @@ export const register = async (req, res) => {
       return res.status(400).json({ message: erroresContactos.join(". ") });
     }
 
-    const exists = await User.findOne({ email: contactos.email });
+    let operadorIdFinal = normalizarOperadorId(operadorId);
+    if (operadorIdFinal && !OPERADOR_ID_REGEX.test(operadorIdFinal)) {
+      return res.status(400).json({ message: "ID operador invalido. Usa formato corto, ejemplo JR023" });
+    }
+    if (!operadorIdFinal) operadorIdFinal = await generarOperadorId(nombre, rolUp);
+
+    const exists = await User.findOne({
+      $or: [
+        { email: contactos.email },
+        { username: contactos.username },
+        { operadorId: operadorIdFinal }
+      ]
+    });
     if (exists) return res.status(409).json({ message: "El correo ya está registrado" });
 
     const passwordHash = await bcrypt.hash(String(password), 10);
 
     const nuevo = await User.create({
       username: contactos.username,
+      operadorId: operadorIdFinal,
       nombre: String(nombre).trim(),
       email: contactos.email,
       correoCorporativo: contactos.correoCorporativo,
@@ -187,6 +225,7 @@ export const login = async (req, res) => {
   try {
     const { username, email, password } = req.body || {};
     const identificador = String(username || email || "").trim().toLowerCase();
+    const operadorLookup = normalizarOperadorId(username || email || "");
 
     if (!identificador || !password) {
       return res.status(400).json({ message: "usuario/correo y password son obligatorios" });
@@ -197,7 +236,8 @@ export const login = async (req, res) => {
         { username: identificador },
         { email: identificador },
         { correoCorporativo: identificador },
-        { correoRespaldo: identificador }
+        { correoRespaldo: identificador },
+        { operadorId: operadorLookup }
       ]
     });
 
@@ -234,7 +274,7 @@ export const login = async (req, res) => {
 export const me = async (req, res) => {
   try {
     const user = await User.findById(req.user?.uid)
-      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
 
     if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -287,7 +327,7 @@ export const actualizarMiPerfil = async (req, res) => {
     if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
 
     const user = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
 
     return res.json({ message: "Perfil actualizado", user: publicUser(user) });
   } catch (e) {
@@ -328,10 +368,17 @@ export const crearUsuario = async (req, res) => {
       return res.status(400).json({ message: "rol inválido" });
     }
 
+    let operadorIdFinal = normalizarOperadorId(operadorId);
+    if (operadorIdFinal && !OPERADOR_ID_REGEX.test(operadorIdFinal)) {
+      return res.status(400).json({ message: "ID operador invalido. Usa formato corto, ejemplo JR023" });
+    }
+    if (!operadorIdFinal) operadorIdFinal = await generarOperadorId(nombre, rolUp);
+
     const exists = await User.findOne({
       $or: [
         { username: identificador },
-        { email: identificador }
+        { email: identificador },
+        { operadorId: operadorIdFinal }
       ]
     });
     if (exists) return res.status(409).json({ message: "usuario ya existe" });
@@ -345,6 +392,7 @@ export const crearUsuario = async (req, res) => {
 
     const nuevo = await User.create({
       username: contactos.username,
+      operadorId: operadorIdFinal,
       nombre: String(nombre).trim(),
       email: contactos.email,
       correoCorporativo: contactos.correoCorporativo,
@@ -381,6 +429,7 @@ export const listarUsuarios = async (req, res) => {
         { email: { $regex: String(q), $options: "i" } },
         { correoCorporativo: { $regex: String(q), $options: "i" } },
         { correoRespaldo: { $regex: String(q), $options: "i" } },
+        { operadorId: { $regex: String(q), $options: "i" } },
         { nombre: { $regex: String(q), $options: "i" } },
         { telefono: { $regex: String(q), $options: "i" } }
       ];
@@ -397,7 +446,7 @@ export const listarUsuarios = async (req, res) => {
 
     const users = await User.find(filter)
       .sort({ createdAt: -1 })
-      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
     return res.json(users);
   } catch (e) {
     return res.status(500).json({ message: "Error listando usuarios" });
@@ -411,6 +460,13 @@ export const actualizarUsuario = async (req, res) => {
 
     const update = {};
     if (req.body.nombre !== undefined) update.nombre = String(req.body.nombre).trim();
+    if (req.body.operadorId !== undefined) {
+      const operadorId = normalizarOperadorId(req.body.operadorId);
+      if (!OPERADOR_ID_REGEX.test(operadorId)) {
+        return res.status(400).json({ message: "ID operador invalido. Usa formato corto, ejemplo JR023" });
+      }
+      update.operadorId = operadorId;
+    }
     if (req.body.telefono !== undefined) update.telefono = String(req.body.telefono).trim();
     if (req.body.correoCorporativo !== undefined) {
       update.correoCorporativo = String(req.body.correoCorporativo || "").trim().toLowerCase();
@@ -435,6 +491,10 @@ export const actualizarUsuario = async (req, res) => {
         ]
       });
       if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
+    }
+    if (update.operadorId) {
+      const duplicadoOperador = await User.findOne({ _id: { $ne: id }, operadorId: update.operadorId });
+      if (duplicadoOperador) return res.status(409).json({ message: "El ID operador ya esta registrado por otro usuario" });
     }
     const contactosActualizados = buildContactosAlerta({
       email: update.email,
@@ -475,7 +535,7 @@ export const actualizarUsuario = async (req, res) => {
     }
 
     const u = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -506,7 +566,7 @@ export const actualizarEstadoUsuario = async (req, res) => {
         activo: estadoUp === "ACTIVO"
       },
       { new: true }
-    ).select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -533,7 +593,7 @@ export const actualizarRolUsuario = async (req, res) => {
         modulosPermitidos: modulosPorRol(rolUp)
       },
       { new: true }
-    ).select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -554,7 +614,7 @@ export const resetPassword = async (req, res) => {
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 
     const u = await User.findByIdAndUpdate(id, { passwordHash }, { new: true })
-      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado activo");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -574,7 +634,7 @@ export const eliminarUsuario = async (req, res) => {
     }
 
     const deleted = await User.findByIdAndDelete(id)
-      .select("_id username nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta activo");
 
     if (!deleted) return res.status(404).json({ message: "Usuario no encontrado" });
 
