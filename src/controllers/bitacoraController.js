@@ -36,16 +36,61 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
+const CHILE_TZ = "America/Santiago";
+
+const getTimeZoneOffsetMinutes = (date, timeZone = CHILE_TZ) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).formatToParts(date);
+  const value = parts.find((part) => part.type === "timeZoneName")?.value || "GMT-4";
+  const match = value.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+  if (!match) return -240;
+  const sign = match[1] === "+" ? 1 : -1;
+  const hours = Number(match[2] || 0);
+  const minutes = Number(match[3] || 0);
+  return sign * (hours * 60 + minutes);
+};
+
+const chileDateTimeToUtc = (year, month, day, hour = 0, minute = 0, second = 0, ms = 0) => {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second, ms));
+  const offsetMinutes = getTimeZoneOffsetMinutes(utcGuess);
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, second, ms) - offsetMinutes * 60000);
+};
+
+const chileDateParts = (value) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CHILE_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(value));
+  return {
+    year: Number(parts.find((part) => part.type === "year")?.value),
+    month: Number(parts.find((part) => part.type === "month")?.value),
+    day: Number(parts.find((part) => part.type === "day")?.value)
+  };
+};
+
 const parseDateOnly = (value, fallback, endOfDay = false) => {
   if (!value) return new Date(fallback);
   const clean = String(value).trim();
   const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const date = match
-    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    ? chileDateTimeToUtc(
+        Number(match[1]),
+        Number(match[2]),
+        Number(match[3]),
+        endOfDay ? 23 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 999 : 0
+      )
     : new Date(clean);
 
   if (Number.isNaN(date.getTime())) return new Date(fallback);
-  date.setHours(endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
   return date;
 };
 
@@ -57,15 +102,20 @@ const normalizeLabel = (value) =>
     .toUpperCase();
 
 const fechaHoraOperacional = (fechaInicio, hora, turno) => {
-  const base = new Date(fechaInicio);
   const [hh = "0", mm = "0"] = String(hora || "00:00").split(":");
   const h = Number(hh);
   const m = Number(mm);
-
-  base.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
+  const parts = chileDateParts(fechaInicio);
+  const base = chileDateTimeToUtc(
+    parts.year,
+    parts.month,
+    parts.day,
+    Number.isFinite(h) ? h : 0,
+    Number.isFinite(m) ? m : 0
+  );
 
   if (String(turno || "").toUpperCase() === "NOCHE" && h >= 0 && h <= 6) {
-    base.setDate(base.getDate() + 1);
+    base.setTime(base.getTime() + 24 * 60 * 60 * 1000);
   }
 
   return base;
@@ -611,9 +661,11 @@ export const obtenerTendenciasHistoricas = async (req, res) => {
     const hastaDate = parseDateOnly(hasta, ahora, true);
     const queryDesdeDate = new Date(desdeDate);
     queryDesdeDate.setDate(queryDesdeDate.getDate() - 1);
+    const queryHastaDate = new Date(hastaDate);
+    queryHastaDate.setDate(queryHastaDate.getDate() + 1);
 
     const filtro = {
-      fechaInicio: { $gte: queryDesdeDate, $lte: hastaDate }
+      fechaInicio: { $gte: queryDesdeDate, $lte: queryHastaDate }
     };
 
     if (turno) filtro.turno = String(turno).toUpperCase();
@@ -629,6 +681,16 @@ export const obtenerTendenciasHistoricas = async (req, res) => {
       .sort({ fechaInicio: 1 })
       .limit(500)
       .lean();
+
+    console.log("📈 TENDENCIAS HISTORICAS FILTRO", {
+      desde,
+      hasta,
+      desdeDate,
+      hastaDate,
+      queryDesdeDate,
+      queryHastaDate,
+      bitacoras: bitacoras.length
+    });
 
     const ids = bitacoras.map(b => b._id);
     const registros = ids.length
