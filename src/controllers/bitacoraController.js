@@ -341,14 +341,10 @@ export const listarBitacoras = async (req, res) => {
     if (fecha) {
 
       const inicio =
-        new Date(fecha);
-
-      inicio.setHours(0, 0, 0, 0);
+        parseDateOnly(fecha, new Date());
 
       const fin =
-        new Date(fecha);
-
-      fin.setHours(23, 59, 59, 999);
+        parseDateOnly(fecha, new Date(), true);
 
       filtro.fechaInicio = {
 
