@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import mongoose from "mongoose";
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
 import User from "../models/user.js";
 import {
@@ -207,27 +208,35 @@ const normalizarEstado = (estado, permitidos, fallback) => {
 
 const normalizarEstadoChecklist = (estado) => normalizarEstado(estado, ESTADOS_CHECKLIST, "BORRADOR");
 
-const estadoChecklistAggregation = {
-  $toUpper: {
-    $trim: {
-      input: { $ifNull: ["$estado", "BORRADOR"] }
-    }
-  }
-};
-
 const calcularKpisChecklist = async (filter) => {
-  const rows = await ChecklistCamioneta.aggregate([
-    { $match: filter },
-    { $project: { estadoNormalizado: estadoChecklistAggregation } },
-    { $group: { _id: "$estadoNormalizado", total: { $sum: 1 } } }
+  const baseFilter = { ...filter };
+  delete baseFilter.estado;
+
+  const estadoFilter = (estado) => ({
+    ...baseFilter,
+    estado: { $regex: `^${estado}$`, $options: "i" }
+  });
+
+  const [borradores, finalizados, revisados, total] = await Promise.all([
+    ChecklistCamioneta.countDocuments({
+      ...baseFilter,
+      $or: [
+        { estado: { $regex: "^BORRADOR$", $options: "i" } },
+        { estado: { $exists: false } },
+        { estado: null },
+        { estado: "" }
+      ]
+    }),
+    ChecklistCamioneta.countDocuments(estadoFilter("FINALIZADO")),
+    ChecklistCamioneta.countDocuments(estadoFilter("REVISADO")),
+    ChecklistCamioneta.countDocuments(baseFilter)
   ]);
 
-  const map = new Map(rows.map((item) => [normalizarEstadoChecklist(item._id), item.total]));
   return {
-    borradores: map.get("BORRADOR") || 0,
-    finalizados: map.get("FINALIZADO") || 0,
-    revisados: map.get("REVISADO") || 0,
-    total: rows.reduce((sum, item) => sum + item.total, 0)
+    borradores,
+    finalizados,
+    revisados,
+    total
   };
 };
 
@@ -453,7 +462,7 @@ export const listarChecklistCamionetas = async (req, res) => {
       if (!autor) {
         return res.status(401).json({ message: "Sesion invalida. Vuelve a iniciar sesion." });
       }
-      filter.creadoPor = autor;
+      filter.creadoPor = new mongoose.Types.ObjectId(autor);
     }
 
     if (patente) filter.patente = { $regex: String(patente), $options: "i" };
