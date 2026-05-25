@@ -1,8 +1,13 @@
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
-import { cerrarAlertaCamioneta, resolverAlertaCamioneta } from "../services/alertaCamionetaService.js";
+import HistorialAlerta from "../models/HistorialAlerta.js";
 import { generarAlertasChecklist } from "../services/alertService.js";
-import { sincronizarAlertasOperacionalesChecklist } from "../services/alertaCamionetaService.js";
+import {
+  cerrarAlertaCamioneta,
+  resolverAlertaCamioneta,
+  sincronizarAlertasOperacionalesChecklist
+} from "../services/alertaCamionetaService.js";
+import { emitDashboardAlertasUpdate } from "../services/realtimeService.js";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
 const ACTIVAS = ["ABIERTA", "EN_PROCESO"];
@@ -40,6 +45,37 @@ const normalizePriority = (prioridad) => {
   if (value.includes("BAJ")) return "BAJA";
   return PRIORIDADES.includes(value) ? value : "MEDIA";
 };
+
+const normalizeEstado = (estado) => {
+  const value = String(estado || "ABIERTA").trim().toUpperCase();
+  if (value.includes("PROCESO")) return "EN_PROCESO";
+  if (value.includes("RESUEL")) return "RESUELTA";
+  if (value.includes("CERRA")) return "CERRADA";
+  return "ABIERTA";
+};
+
+const getChileDayRange = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+  const start = new Date(`${year}-${month}-${day}T00:00:00-04:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+};
+
+const normalizeAlertaDoc = (alerta) => ({
+  ...alerta,
+  prioridad: normalizePriority(alerta.prioridad),
+  estado: normalizeEstado(alerta.estado),
+  fechaCreacion: alerta.fechaCreacion || alerta.createdAt || alerta.fecha || new Date()
+});
 
 const estadoOperacionalCamioneta = (checklist, alertasActivasPorPatente) => {
   const patente = String(checklist.patente || "").trim().toUpperCase();
@@ -154,6 +190,90 @@ const asegurarAlertasOperacionalesRecientes = async (desde) => {
   }
 };
 
+const backfillAlertasDesdeHistorial = async (desde) => {
+  const historial = await HistorialAlerta.find({
+    checklistId: { $ne: null },
+    estado: { $ne: "omitido" },
+    createdAt: { $gte: desde }
+  })
+    .select("tipo prioridad mensaje checklistId patente operador createdAt fecha estadoOperacional error")
+    .sort({ createdAt: -1 })
+    .limit(300)
+    .lean();
+
+  if (!historial.length) return;
+
+  const ops = [];
+  for (const item of historial) {
+    const dedupeKey = [
+      item.checklistId,
+      item.tipo,
+      String(item.mensaje || item.error || "").slice(0, 90)
+    ].join(":");
+
+    ops.push({
+      updateOne: {
+        filter: { dedupeKey },
+        update: {
+          $setOnInsert: {
+            checklistId: item.checklistId,
+            tipo: item.tipo || "ALERTA_OPERACIONAL",
+            fechaCreacion: item.createdAt || item.fecha || new Date(),
+            estado: normalizeEstado(item.estadoOperacional),
+            dedupeKey
+          },
+          $set: {
+            patente: item.patente || "",
+            descripcion: item.mensaje || item.error || "Alerta operacional",
+            prioridad: normalizePriority(item.prioridad),
+            operador: item.operador || "",
+            observaciones: item.error || "",
+            activo: true
+          }
+        },
+        upsert: true
+      }
+    });
+  }
+
+  if (ops.length) {
+    await AlertaCamioneta.bulkWrite(ops, { ordered: false });
+    console.log("✅ ALERTAS HISTORICAS NORMALIZADAS", { total: ops.length });
+  }
+};
+
+const normalizarAlertasExistentes = async () => {
+  const existentes = await AlertaCamioneta.find({
+    $or: [
+      { estado: { $nin: ["ABIERTA", "EN_PROCESO", "RESUELTA", "CERRADA"] } },
+      { prioridad: { $nin: PRIORIDADES } },
+      { estado: { $exists: false } },
+      { prioridad: { $exists: false } }
+    ]
+  })
+    .select("estado prioridad")
+    .limit(100)
+    .lean();
+
+  if (!existentes.length) return;
+
+  await AlertaCamioneta.bulkWrite(
+    existentes.map((alerta) => ({
+      updateOne: {
+        filter: { _id: alerta._id },
+        update: {
+          $set: {
+            estado: normalizeEstado(alerta.estado),
+            prioridad: normalizePriority(alerta.prioridad)
+          }
+        }
+      }
+    })),
+    { ordered: false }
+  );
+  console.log("✅ ALERTAS NORMALIZADAS", { total: existentes.length });
+};
+
 export const obtenerDashboardAlertas = async (req, res) => {
   const inicio = Date.now();
   console.log("📊 DASHBOARD ALERTAS REQUEST", {
@@ -168,57 +288,27 @@ export const obtenerDashboardAlertas = async (req, res) => {
     const tomorrow = addDays(today, 1);
     const last7Start = addDays(today, -6);
     const last30Start = addDays(today, -29);
+    const chileToday = getChileDayRange(now);
 
     await asegurarAlertasOperacionalesRecientes(last30Start);
+    await backfillAlertasDesdeHistorial(last30Start);
+    await normalizarAlertasExistentes();
 
     const [
-      criticas,
-      activas,
       checklistsHoy,
-      alertasPorPrioridadRaw,
-      alertasTendenciaRaw,
-      alertasActivasRaw,
-      alertasRecientesRaw,
       checklistsPorDiaRaw,
       latestChecklists,
-      timelineChecklists
+      timelineChecklists,
+      alertasRaw
     ] = await Promise.all([
-      AlertaCamioneta.countDocuments({ estado: "ABIERTA", prioridad: "CRITICA", activo: { $ne: false } }),
-      AlertaCamioneta.countDocuments({ estado: { $in: ACTIVAS }, activo: { $ne: false } }),
       ChecklistCamioneta.countDocuments({
         eliminado: { $ne: true },
         $or: [
-          { fechaInspeccion: { $gte: today, $lt: tomorrow } },
-          { fechaCreacion: { $gte: today, $lt: tomorrow } },
-          { createdAt: { $gte: today, $lt: tomorrow } }
+          { fechaInspeccion: { $gte: chileToday.start, $lt: chileToday.end } },
+          { fechaCreacion: { $gte: chileToday.start, $lt: chileToday.end } },
+          { createdAt: { $gte: chileToday.start, $lt: chileToday.end } }
         ]
       }),
-      AlertaCamioneta.aggregate([
-        { $match: { fechaCreacion: { $gte: last30Start }, activo: { $ne: false } } },
-        { $group: { _id: "$prioridad", total: { $sum: 1 } } }
-      ]),
-      AlertaCamioneta.aggregate([
-        { $match: { fechaCreacion: { $gte: last7Start }, activo: { $ne: false } } },
-        {
-          $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$fechaCreacion" } },
-            total: { $sum: 1 }
-          }
-        },
-        { $sort: { _id: 1 } }
-      ]),
-      AlertaCamioneta.find({ estado: { $in: ACTIVAS }, activo: { $ne: false } })
-        .select("patente prioridad estado tipo descripcion operador responsable solucion observaciones fechaCreacion fechaResolucion checklistId fotos")
-        .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion")
-        .sort({ prioridad: 1, fechaCreacion: -1 })
-        .limit(80)
-        .lean(),
-      AlertaCamioneta.find({ activo: { $ne: false } })
-        .select("patente prioridad estado tipo descripcion operador responsable solucion observaciones fechaCreacion fechaResolucion fechaCierre checklistId fotos")
-        .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion")
-        .sort({ fechaCreacion: -1 })
-        .limit(16)
-        .lean(),
       ChecklistCamioneta.aggregate([
         { $match: { eliminado: { $ne: true }, createdAt: { $gte: last7Start } } },
         {
@@ -244,16 +334,38 @@ export const obtenerDashboardAlertas = async (req, res) => {
       })
         .select("patente aptaOperacion aptitudOperacion fechaInspeccion fechaCreacion createdAt")
         .sort({ createdAt: -1 })
-        .limit(60)
+        .limit(80)
+        .lean(),
+      AlertaCamioneta.find({ activo: { $ne: false }, fechaCreacion: { $gte: last30Start } })
+        .select("patente prioridad estado tipo descripcion operador responsable solucion observaciones fechaCreacion fechaResolucion fechaCierre checklistId fotos turno turnoNumero")
+        .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion")
+        .sort({ fechaCreacion: -1 })
+        .limit(500)
         .lean()
     ]);
 
     console.log("⚡ Tiempo Mongo dashboard:", `${Date.now() - mongoInicio}ms`);
 
+    const alertasNormalizadas = alertasRaw.map(normalizeAlertaDoc);
+    const alertasFiltradas = alertasNormalizadas.filter((alerta) => {
+      const patente = String(req.query?.patente || "").trim().toUpperCase();
+      const estado = String(req.query?.estado || "").trim().toUpperCase();
+      const prioridad = String(req.query?.prioridad || "").trim().toUpperCase();
+      const turno = String(req.query?.turno || "").trim().toUpperCase();
+      const fecha = String(req.query?.fecha || "").trim();
+
+      if (patente && !String(alerta.patente || "").toUpperCase().includes(patente)) return false;
+      if (estado && alerta.estado !== estado) return false;
+      if (prioridad && alerta.prioridad !== prioridad) return false;
+      const alertaTurno = String(alerta.turno || alerta.checklistId?.turno || "").toUpperCase();
+      if (turno && alertaTurno !== turno) return false;
+      if (fecha && toDayKey(alerta.fechaCreacion) !== fecha) return false;
+      return true;
+    });
+
     const prioridadMap = new Map();
-    for (const item of alertasPorPrioridadRaw) {
-      const key = normalizePriority(item._id);
-      prioridadMap.set(key, (prioridadMap.get(key) || 0) + item.total);
+    for (const alerta of alertasFiltradas) {
+      prioridadMap.set(alerta.prioridad, (prioridadMap.get(alerta.prioridad) || 0) + 1);
     }
     const alertasPorPrioridad = PRIORIDADES.map((prioridad) => ({
       prioridad,
@@ -261,10 +373,11 @@ export const obtenerDashboardAlertas = async (req, res) => {
     }));
 
     const tendencias = buildLastDays(7);
-    const tendenciaMap = new Map(alertasTendenciaRaw.map((item) => [item._id, item.total]));
-    tendencias.forEach((item) => {
-      item.total = tendenciaMap.get(item.fecha) || 0;
-    });
+    for (const alerta of alertasFiltradas) {
+      const key = toDayKey(alerta.fechaCreacion);
+      const item = tendencias.find((entry) => entry.fecha === key);
+      if (item) item.total += 1;
+    }
 
     const checklistsPorDia = buildLastDays(7);
     const checklistMap = new Map(checklistsPorDiaRaw.map((item) => [item._id, item.total]));
@@ -273,6 +386,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
     });
 
     const alertasActivasPorPatente = new Map();
+    const alertasActivasRaw = alertasFiltradas.filter((alerta) => ACTIVAS.includes(alerta.estado));
     for (const alerta of alertasActivasRaw) {
       const patente = String(alerta.patente || "").trim().toUpperCase();
       if (!patente) continue;
@@ -306,7 +420,10 @@ export const obtenerDashboardAlertas = async (req, res) => {
         };
       });
 
+    const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && alerta.estado === "ABIERTA").length;
+    const activas = alertasActivasRaw.length;
     const camionetasOperativas = estadosCamionetas.filter((item) => item.estado === "OPERATIVA").length;
+    const alertasRecientesRaw = alertasFiltradas.slice(0, 16);
     const alertasRecientes = alertasRecientesRaw.map(mapAlerta);
     const alertasActivas = alertasActivasRaw.map(mapAlerta);
 
@@ -325,6 +442,8 @@ export const obtenerDashboardAlertas = async (req, res) => {
       actualizadoEn: new Date()
     };
 
+    console.log("✅ KPI ACTUALIZADOS", { criticas, activas, checklistsHoy, camionetasOperativas });
+    console.log("✅ ALERTAS CARGADAS", { total: alertasFiltradas.length, activas: alertasActivas.length });
     console.log("⚡ Tiempo dashboard:", `${Date.now() - inicio}ms`);
     return res.json(response);
   } catch (error) {
@@ -359,6 +478,12 @@ export const gestionarAlertaDashboard = async (req, res) => {
 
     if (!alerta) return res.status(404).json({ message: "Alerta no encontrada" });
 
+    console.log("✅ ALERTA RESUELTA", {
+      alertaId: alerta._id,
+      estado: alerta.estado,
+      patente: alerta.patente
+    });
+    emitDashboardAlertasUpdate({ type: "alerta:gestionada", alertaId: alerta._id, estado: alerta.estado });
     return res.json({
       message: estado === "CERRADA" ? "Alerta cerrada" : "Alerta gestionada",
       alerta: mapAlerta(alerta)
@@ -390,6 +515,12 @@ export const cerrarAlertaDashboard = async (req, res) => {
     });
     if (!alerta) return res.status(404).json({ message: "Alerta no encontrada" });
 
+    console.log("✅ ALERTA RESUELTA", {
+      alertaId: alerta._id,
+      estado: alerta.estado,
+      patente: alerta.patente
+    });
+    emitDashboardAlertasUpdate({ type: "alerta:cerrada", alertaId: alerta._id, estado: alerta.estado });
     return res.json({ message: "Alerta cerrada", alerta: mapAlerta(alerta) });
   } catch (error) {
     console.error("❌ ERROR CERRANDO ALERTA:", error);

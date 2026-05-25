@@ -17,6 +17,12 @@ export const initRealtime = (httpServer) => {
       socket.emit("registro-datos:ready", { ok: true, actualizadoEn: new Date() });
     });
 
+    socket.on("dashboard-alertas:join", () => {
+      socket.join("dashboard-alertas");
+      socket.emit("dashboard-alertas:ready", { ok: true, actualizadoEn: new Date() });
+      console.log("✅ SOCKET ALERTAS OK", { socketId: socket.id });
+    });
+
     socket.on("disconnect", (reason) => {
       console.log("📡 Realtime desconectado", { socketId: socket.id, reason });
     });
@@ -33,6 +39,18 @@ export const emitRegistroDatosUpdate = (payload) => {
   }
 
   io.to("registro-datos").emit("registro-datos:updated", {
+    ...payload,
+    actualizadoEn: new Date()
+  });
+};
+
+export const emitDashboardAlertasUpdate = (payload = {}) => {
+  if (!io) {
+    console.log("📡 Realtime alertas omitido: Socket.IO aun no inicializado");
+    return;
+  }
+
+  io.to("dashboard-alertas").emit("dashboard-alertas:updated", {
     ...payload,
     actualizadoEn: new Date()
   });
