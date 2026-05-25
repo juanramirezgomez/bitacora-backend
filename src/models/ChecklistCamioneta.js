@@ -104,6 +104,8 @@ const checklistCamionetaSchema = new mongoose.Schema(
     cargoRevisadoPor: { type: String, trim: true, default: "" },
     fechaRevisadoPor: { type: Date, default: null },
     firmaRevisadoPor: { type: String, default: "" },
+    firmaRevision: { type: String, default: "" },
+    observacionRevision: { type: String, trim: true, default: "" },
 
     aptitudOperacion: {
       type: String,

@@ -201,9 +201,42 @@ const parseDate = (value) => {
 };
 
 const normalizarEstado = (estado, permitidos, fallback) => {
-  const value = String(estado || fallback).toUpperCase();
+  const value = String(estado || fallback).trim().toUpperCase();
   return permitidos.includes(value) ? value : fallback;
 };
+
+const normalizarEstadoChecklist = (estado) => normalizarEstado(estado, ESTADOS_CHECKLIST, "BORRADOR");
+
+const estadoChecklistAggregation = {
+  $toUpper: {
+    $trim: {
+      input: { $ifNull: ["$estado", "BORRADOR"] }
+    }
+  }
+};
+
+const calcularKpisChecklist = async (filter) => {
+  const rows = await ChecklistCamioneta.aggregate([
+    { $match: filter },
+    { $project: { estadoNormalizado: estadoChecklistAggregation } },
+    { $group: { _id: "$estadoNormalizado", total: { $sum: 1 } } }
+  ]);
+
+  const map = new Map(rows.map((item) => [normalizarEstadoChecklist(item._id), item.total]));
+  return {
+    borradores: map.get("BORRADOR") || 0,
+    finalizados: map.get("FINALIZADO") || 0,
+    revisados: map.get("REVISADO") || 0,
+    total: rows.reduce((sum, item) => sum + item.total, 0)
+  };
+};
+
+const normalizarChecklistListItem = (item) => ({
+  ...item,
+  estado: normalizarEstadoChecklist(item.estado),
+  aptitudOperacion: String(item.aptitudOperacion || (item.aptaOperacion === false ? "NO_APTA" : "APTA")).toUpperCase(),
+  aptaOperacion: item.aptaOperacion !== false && String(item.aptitudOperacion || "APTA").toUpperCase() !== "NO_APTA"
+});
 
 const crearItems = (nombres, input = []) => {
   const map = new Map((Array.isArray(input) ? input : []).map(item => [String(item.nombre || ""), item]));
@@ -434,7 +467,7 @@ export const listarChecklistCamionetas = async (req, res) => {
       if (!ESTADOS_CHECKLIST.includes(estadoUp)) {
         return res.status(400).json({ message: "Estado invalido" });
       }
-      filter.estado = estadoUp;
+      filter.estado = { $regex: `^${estadoUp}$`, $options: "i" };
     }
 
     if (desde || hasta) {
@@ -448,21 +481,32 @@ export const listarChecklistCamionetas = async (req, res) => {
     }
 
     const mongoInicio = Date.now();
-    const checklists = await ChecklistCamioneta.find(filter)
-      .select(CHECKLIST_LIST_FIELDS)
-      .sort({ fechaInspeccion: -1, createdAt: -1 })
-      .limit(250)
-      .populate("creadoPor", "nombre email rol")
-      .populate("revisadoPor", "nombre email rol")
-      .lean();
+    const [checklistsRaw, kpis] = await Promise.all([
+      ChecklistCamioneta.find(filter)
+        .select(CHECKLIST_LIST_FIELDS)
+        .sort({ fechaInspeccion: -1, createdAt: -1 })
+        .limit(250)
+        .populate("creadoPor", "nombre email rol")
+        .populate("revisadoPor", "nombre email rol")
+        .lean(),
+      calcularKpisChecklist(filter)
+    ]);
+    const checklists = checklistsRaw.map(normalizarChecklistListItem);
     console.log("⚡ Tiempo Mongo listar checklist:", `${Date.now() - mongoInicio}ms`, {
       total: checklists.length,
-      filtros: Object.keys(filter)
+      filtros: Object.keys(filter),
+      kpis
     });
+    console.log("✅ KPI CHECKLIST ACTUALIZADOS", kpis);
 
-    return res.json(checklists);
+    return res.json({
+      checklists,
+      kpis,
+      total: kpis.total
+    });
   } catch (error) {
-    console.error("Error listando checklist camioneta:", error);
+    console.error("❌ ERROR KPI CHECKLIST:", error);
+    console.error("❌ ERROR CONSULTA CHECKLIST:", error);
     return res.status(500).json({ message: "Error listando checklist camioneta" });
   } finally {
     console.timeEnd("⚡ Tiempo listar checklist");
@@ -713,6 +757,7 @@ export const finalizarChecklistCamioneta = async (req, res) => {
 
 export const revisarChecklistCamioneta = async (req, res) => {
   try {
+    console.log("🔥 REVISANDO CHECKLIST CAMIONETA", { checklistId: req.params.id });
     if (!(esAdmin(req) || esSupervision(req))) {
       return res.status(403).json({ message: "No autorizado para revisar" });
     }
@@ -741,10 +786,20 @@ export const revisarChecklistCamioneta = async (req, res) => {
     checklist.cargoRevisadoPor = String(req.body?.cargoRevisadoPor || "").trim();
     checklist.fechaRevisadoPor = parseDate(req.body?.fechaRevisadoPor);
     checklist.firmaRevisadoPor = String(req.body?.firmaRevisadoPor || "");
+    checklist.firmaRevision = String(req.body?.firmaRevision || req.body?.firmaRevisadoPor || req.body?.firmaRevisor || "");
+    checklist.observacionRevision = String(req.body?.observacionRevision || req.body?.observaciones || req.body?.observacion || "").trim();
     await checklist.save();
+
+    console.log("✅ CHECKLIST REVISADO", {
+      checklistId: checklist._id,
+      patente: checklist.patente,
+      estado: checklist.estado,
+      revisadoPor: autor
+    });
 
     return res.json({ message: "Checklist revisado", checklist });
   } catch (error) {
+    console.error("❌ ERROR ESTADOS CHECKLIST:", error);
     return res.status(500).json({ message: "Error revisando checklist camioneta" });
   }
 };
