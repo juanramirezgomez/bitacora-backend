@@ -209,7 +209,7 @@ const normalizarEstado = (estado, permitidos, fallback) => {
 const normalizarEstadoChecklist = (estado) => normalizarEstado(estado, ESTADOS_CHECKLIST, "BORRADOR");
 
 const normalizarEstadosChecklistAntiguos = async () => {
-  const result = await ChecklistCamioneta.updateMany(
+  const vacios = await ChecklistCamioneta.updateMany(
     {
       eliminado: { $ne: true },
       $or: [
@@ -221,8 +221,34 @@ const normalizarEstadosChecklistAntiguos = async () => {
     { $set: { estado: "BORRADOR" } }
   );
 
-  if (result.modifiedCount) {
-    console.log("✅ ESTADOS CHECKLIST NORMALIZADOS", { total: result.modifiedCount });
+  const variantes = await ChecklistCamioneta.find({
+    eliminado: { $ne: true },
+    estado: { $exists: true, $ne: null }
+  })
+    .select("estado")
+    .lean();
+
+  const operaciones = variantes
+    .map((item) => ({
+      id: item._id,
+      estadoActual: item.estado,
+      estadoNormalizado: normalizarEstadoChecklist(item.estado)
+    }))
+    .filter((item) => String(item.estadoActual || "") !== item.estadoNormalizado)
+    .map((item) => ({
+      updateOne: {
+        filter: { _id: item.id },
+        update: { $set: { estado: item.estadoNormalizado } }
+      }
+    }));
+
+  if (operaciones.length) {
+    await ChecklistCamioneta.bulkWrite(operaciones, { ordered: false });
+  }
+
+  const totalNormalizados = (vacios.modifiedCount || 0) + operaciones.length;
+  if (totalNormalizados) {
+    console.log("✅ ESTADOS CHECKLIST NORMALIZADOS", { total: totalNormalizados });
   }
 };
 

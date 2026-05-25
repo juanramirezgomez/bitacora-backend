@@ -76,6 +76,13 @@ const normalizeAlertaDoc = (alerta) => ({
   fechaCreacion: alerta.fechaCreacion || alerta.createdAt || alerta.fecha || new Date()
 });
 
+const esChecklistApto = (checklist) => {
+  const aptitud = String(checklist.aptitudOperacion || "").trim().toUpperCase();
+  const apta = String(checklist.aptaOperacion ?? "").trim().toUpperCase();
+  if (aptitud === "NO_APTA" || apta === "FALSE" || checklist.aptaOperacion === false) return false;
+  return aptitud === "APTA" || apta === "TRUE" || checklist.aptaOperacion === true;
+};
+
 const estadoOperacionalCamioneta = (checklist, alertasActivasPorPatente) => {
   const patente = String(checklist.patente || "").trim().toUpperCase();
   const tieneCriticaActiva = (alertasActivasPorPatente.get(patente) || [])
@@ -421,11 +428,8 @@ export const obtenerDashboardAlertas = async (req, res) => {
 
     const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && alerta.estado === "ABIERTA").length;
     const activas = alertasActivasRaw.length;
-    const camionetasOperativas = Array.from(latestByPatente.values())
-      .filter((checklist) =>
-        checklist.aptaOperacion === true ||
-        String(checklist.aptitudOperacion || "").toUpperCase() === "APTA"
-      ).length;
+    const camionetasOperativas = estadosCamionetas.filter((item) => item.estado === "OPERATIVA").length ||
+      Array.from(latestByPatente.values()).filter(esChecklistApto).length;
     const alertasRecientesRaw = alertasFiltradas.slice(0, 16);
     const alertasRecientes = alertasRecientesRaw.map(mapAlerta);
     const alertasActivas = alertasActivasRaw.map(mapAlerta);
