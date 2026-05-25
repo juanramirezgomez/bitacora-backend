@@ -41,6 +41,21 @@ const bitacoraSchema = new mongoose.Schema(
     pdfPath: {
       type: String,
     },
+
+    eliminado: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    fechaEliminacion: {
+      type: Date,
+    },
+
+    eliminadoPor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
   },
   { timestamps: true }
 );

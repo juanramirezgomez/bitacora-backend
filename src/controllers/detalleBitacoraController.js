@@ -57,7 +57,10 @@ export const obtenerDetalleBitacora = async (req, res) => {
   try {
     const { bitacoraId } = req.params;
 
-    const bitacora = await Bitacora.findById(bitacoraId);
+    const bitacora = await Bitacora.findOne({
+      _id: bitacoraId,
+      eliminado: { $ne: true }
+    });
     if (!bitacora) return res.status(404).json({ message: "Bitácora no encontrada" });
 
     const [checklistInicial, registrosOperacion] = await Promise.all([

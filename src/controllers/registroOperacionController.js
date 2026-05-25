@@ -39,7 +39,10 @@ export const crearRegistroOperacion = async (req, res) => {
       }
     }
 
-    const bitacora = await Bitacora.findById(objectId);
+    const bitacora = await Bitacora.findOne({
+      _id: objectId,
+      eliminado: { $ne: true }
+    });
     if (!bitacora) {
       return res.status(404).json({ message: "Bitácora no encontrada" });
     }

@@ -1,5 +1,4 @@
 import Bitacora from "../models/Bitacora.js";
-import ChecklistInicial from "../models/ChecklistInicial.js";
 import RegistroOperacion from "../models/RegistroOperacion.js";
 import CierreTurno from "../models/CierreTurno.js";
 
@@ -251,7 +250,8 @@ export const obtenerBitacoraAbierta = async (req, res) => {
 
     const abierta = await Bitacora.findOne({
       operador: new RegExp(`^\\s*${nombre}\\s*$`, "i"),
-      estado: "ABIERTA"
+      estado: "ABIERTA",
+      eliminado: { $ne: true }
     });
 
     return res.json({
@@ -286,7 +286,9 @@ export const listarBitacoras = async (req, res) => {
 
     nombre = String(nombre).trim();
 
-    const filtro = {};
+    const filtro = {
+      eliminado: { $ne: true }
+    };
 
     /* =========================================
        FILTRO OPERADOR
@@ -469,7 +471,10 @@ export const obtenerBitacora = async (req, res) => {
 
     const { bitacoraId } = req.params;
 
-    const bitacora = await Bitacora.findById(bitacoraId);
+    const bitacora = await Bitacora.findOne({
+      _id: bitacoraId,
+      eliminado: { $ne: true }
+    });
 
     if (!bitacora) {
       return res.status(404).json({
@@ -501,7 +506,10 @@ export const eliminarBitacora = async (req, res) => {
 
     const { bitacoraId } = req.params;
 
-    const bitacora = await Bitacora.findById(bitacoraId);
+    const bitacora = await Bitacora.findOne({
+      _id: bitacoraId,
+      eliminado: { $ne: true }
+    });
 
     if (!bitacora) {
       return res.status(404).json({
@@ -515,15 +523,22 @@ export const eliminarBitacora = async (req, res) => {
       });
     }
 
-    await Promise.all([
-      ChecklistInicial.deleteMany({ bitacoraId }),
-      RegistroOperacion.deleteMany({ bitacoraId }),
-      CierreTurno.deleteMany({ bitacoraId })
-    ]);
+    bitacora.eliminado = true;
+    bitacora.fechaEliminacion = new Date();
+    bitacora.eliminadoPor = req.user?._id || req.user?.id || null;
+    await bitacora.save();
 
-    await Bitacora.findByIdAndDelete(bitacoraId);
+    console.log("✅ BITÁCORA OCULTADA SIN BORRAR REGISTROS", {
+      bitacoraId,
+      operador: bitacora.operador,
+      turno: bitacora.turno,
+      turnoNumero: bitacora.turnoNumero
+    });
 
-    res.json({ message: "Eliminada correctamente" });
+    res.json({
+      message: "Bitácora ocultada correctamente. Los registros operacionales se conservaron.",
+      bitacoraId
+    });
 
   } catch (error) {
     console.error("Error eliminando:", error);
@@ -545,7 +560,10 @@ export const obtenerTendenciasBitacora = async (req, res) => {
       return res.status(403).json({ message: "No autorizado para ver tendencias" });
     }
 
-    const bitacora = await Bitacora.findById(bitacoraId);
+    const bitacora = await Bitacora.findOne({
+      _id: bitacoraId,
+      eliminado: { $ne: true }
+    });
     if (!bitacora) {
       return res.status(404).json({ message: "Bitacora no encontrada" });
     }
@@ -661,6 +679,7 @@ export const obtenerTendenciasHistoricas = async (req, res) => {
     queryHastaDate.setDate(queryHastaDate.getDate() + 1);
 
     const filtro = {
+      eliminado: { $ne: true },
       fechaInicio: { $gte: queryDesdeDate, $lte: queryHastaDate }
     };
 
@@ -814,6 +833,7 @@ export const obtenerTendenciasCombustible = async (req, res) => {
     hastaDate.setHours(23, 59, 59, 999);
 
     const filtroBitacora = {
+      eliminado: { $ne: true },
       estado: "CERRADA",
       fechaInicio: { $gte: desdeDate, $lte: hastaDate }
     };
