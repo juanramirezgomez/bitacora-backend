@@ -1,5 +1,10 @@
 import express from "express";
-import { obtenerDashboardAlertas, resolverAlertaDashboard } from "../controllers/dashboardAlertasController.js";
+import {
+  cerrarAlertaDashboard,
+  gestionarAlertaDashboard,
+  obtenerDashboardAlertas,
+  resolverAlertaDashboard
+} from "../controllers/dashboardAlertasController.js";
 import { requireRole } from "../middlewares/requireRole.js";
 
 const router = express.Router();
@@ -14,6 +19,18 @@ router.patch(
   "/alertas/:id/resolver",
   requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
   resolverAlertaDashboard
+);
+
+router.patch(
+  "/alertas/:id/gestionar",
+  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
+  gestionarAlertaDashboard
+);
+
+router.patch(
+  "/alertas/:id/cerrar",
+  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
+  cerrarAlertaDashboard
 );
 
 export default router;

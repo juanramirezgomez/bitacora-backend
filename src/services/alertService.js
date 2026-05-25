@@ -4,6 +4,7 @@ import User from "../models/user.js";
 import { getAlertTemplate } from "../config/alertTemplates.js";
 import { buildAlertEmailHtml, emailConfigured, emailConfigStatus, sendEmailAlert } from "./emailService.js";
 import { sendWhatsAppAlert, whatsappConfigured } from "./whatsappService.js";
+import { sincronizarAlertasOperacionalesChecklist } from "./alertaCamionetaService.js";
 
 const ALERTA_DIAS = 30;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -16,8 +17,7 @@ const ALERT_CHECKLIST_SELECT = [
   "-firmaConductor",
   "-firmaRevisor",
   "-firmaRealizadoPor",
-  "-firmaRevisadoPor",
-  "-fotosObservaciones"
+  "-firmaRevisadoPor"
 ].join(" ");
 
 const DOCUMENT_TYPE_MAP = {
@@ -228,6 +228,23 @@ const generarAlertasInspeccion = (checklist) => {
   );
 };
 
+const generarAlertasObservacionesCriticas = (checklist) => {
+  const texto = String(checklist.observacionesGenerales || checklist.observacionesDetectadas || "").trim();
+  if (!texto) return [];
+
+  const normalizado = normalizeText(texto);
+  const critica = ["CRITICO", "URGENTE", "NO OPERAR", "NO APTA", "FUERA DE SERVICIO", "RIESGO", "PELIGRO"]
+    .some((keyword) => normalizado.includes(keyword));
+  if (!critica) return [];
+
+  return [buildBaseAlert(checklist, "ALERTA_CRITICA", {
+    seccion: "Observaciones",
+    observacion: texto,
+    anomalias: [`Observacion critica registrada: ${texto}`],
+    mensaje: `Observacion critica en camioneta ${checklist.patente || "-"}: ${texto}`
+  })];
+};
+
 export const generarAlertasChecklist = async (checklistInput) => {
   const checklist = typeof checklistInput?.populate === "function"
     ? await checklistInput.populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
@@ -236,7 +253,8 @@ export const generarAlertasChecklist = async (checklistInput) => {
   return [
     ...generarAlertasDocumentos(checklist),
     ...generarAlertasMantencion(checklist),
-    ...generarAlertasInspeccion(checklist)
+    ...generarAlertasInspeccion(checklist),
+    ...generarAlertasObservacionesCriticas(checklist)
   ];
 };
 
@@ -464,6 +482,7 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
     }
 
     const alertasGeneradas = await generarAlertasChecklist(checklist);
+    const alertasOperacionales = await sincronizarAlertasOperacionalesChecklist(checklist, alertasGeneradas);
     const destinatarios = await obtenerDestinatariosAlertas(checklist);
     const notificaciones = [];
 
@@ -513,6 +532,7 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
 
     return {
       alertasGeneradas,
+      alertasOperacionales,
       notificaciones,
       destinatarios: destinatarios.map(plainUser),
       canalesActivos: canalesPreparados()
