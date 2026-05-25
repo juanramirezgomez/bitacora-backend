@@ -36,11 +36,25 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const parseDateOnly = (value, fallback) => {
-  if (!value) return fallback;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? fallback : date;
+const parseDateOnly = (value, fallback, endOfDay = false) => {
+  if (!value) return new Date(fallback);
+  const clean = String(value).trim();
+  const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(clean);
+
+  if (Number.isNaN(date.getTime())) return new Date(fallback);
+  date.setHours(endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
+  return date;
 };
+
+const normalizeLabel = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
 
 const fechaHoraOperacional = (fechaInicio, hora, turno) => {
   const base = new Date(fechaInicio);
@@ -594,13 +608,12 @@ export const obtenerTendenciasHistoricas = async (req, res) => {
     inicioDefault.setHours(0, 0, 0, 0);
 
     const desdeDate = parseDateOnly(desde, inicioDefault);
-    desdeDate.setHours(0, 0, 0, 0);
-
-    const hastaDate = parseDateOnly(hasta, ahora);
-    hastaDate.setHours(23, 59, 59, 999);
+    const hastaDate = parseDateOnly(hasta, ahora, true);
+    const queryDesdeDate = new Date(desdeDate);
+    queryDesdeDate.setDate(queryDesdeDate.getDate() - 1);
 
     const filtro = {
-      fechaInicio: { $gte: desdeDate, $lte: hastaDate }
+      fechaInicio: { $gte: queryDesdeDate, $lte: hastaDate }
     };
 
     if (turno) filtro.turno = String(turno).toUpperCase();
@@ -642,7 +655,11 @@ export const obtenerTendenciasHistoricas = async (req, res) => {
       unidad
     }));
 
-    const parametroFinal = String(parametro || parametrosDisponibles[0]?.label || "").trim();
+    const parametroSolicitado = String(parametro || "").trim();
+    const parametroMatch = parametroSolicitado
+      ? parametrosDisponibles.find((p) => normalizeLabel(p.label) === normalizeLabel(parametroSolicitado))
+      : null;
+    const parametroFinal = String(parametroMatch?.label || parametrosDisponibles[0]?.label || "").trim();
     const unidadFinal = parametrosMap.get(parametroFinal) || "";
 
     const datosGrafico = [];
@@ -651,11 +668,12 @@ export const obtenerTendenciasHistoricas = async (req, res) => {
       const bitacora = bitacoraMap.get(String(registro.bitacoraId));
       if (!bitacora) return;
 
-      const item = (registro.parametros || []).find(p => String(p.label || "").trim() === parametroFinal);
+      const item = (registro.parametros || []).find(p => normalizeLabel(p.label) === normalizeLabel(parametroFinal));
       const value = toNumber(item?.value);
       if (value === null) return;
 
       const fechaHora = fechaHoraOperacional(bitacora.fechaInicio, registro.hora, bitacora.turno);
+      if (fechaHora < desdeDate || fechaHora > hastaDate) return;
 
       datosGrafico.push({
         fecha: bitacora.fechaInicio,
