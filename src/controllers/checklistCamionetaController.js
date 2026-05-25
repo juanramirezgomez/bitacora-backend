@@ -208,36 +208,44 @@ const normalizarEstado = (estado, permitidos, fallback) => {
 
 const normalizarEstadoChecklist = (estado) => normalizarEstado(estado, ESTADOS_CHECKLIST, "BORRADOR");
 
-const calcularKpisChecklist = async (filter) => {
-  const baseFilter = { ...filter };
-  delete baseFilter.estado;
-
-  const estadoFilter = (estado) => ({
-    ...baseFilter,
-    estado: { $regex: `^${estado}$`, $options: "i" }
-  });
-
-  const [borradores, finalizados, revisados, total] = await Promise.all([
-    ChecklistCamioneta.countDocuments({
-      ...baseFilter,
+const normalizarEstadosChecklistAntiguos = async () => {
+  const result = await ChecklistCamioneta.updateMany(
+    {
+      eliminado: { $ne: true },
       $or: [
-        { estado: { $regex: "^BORRADOR$", $options: "i" } },
         { estado: { $exists: false } },
         { estado: null },
         { estado: "" }
       ]
-    }),
-    ChecklistCamioneta.countDocuments(estadoFilter("FINALIZADO")),
-    ChecklistCamioneta.countDocuments(estadoFilter("REVISADO")),
-    ChecklistCamioneta.countDocuments(baseFilter)
+    },
+    { $set: { estado: "BORRADOR" } }
+  );
+
+  if (result.modifiedCount) {
+    console.log("✅ ESTADOS CHECKLIST NORMALIZADOS", { total: result.modifiedCount });
+  }
+};
+
+const calcularKpisChecklist = async (filtroKpi) => {
+  const [borradores, finalizados, revisados, total] = await Promise.all([
+    ChecklistCamioneta.countDocuments({ ...filtroKpi, estado: "BORRADOR" }),
+    ChecklistCamioneta.countDocuments({ ...filtroKpi, estado: "FINALIZADO" }),
+    ChecklistCamioneta.countDocuments({ ...filtroKpi, estado: "REVISADO" }),
+    ChecklistCamioneta.countDocuments(filtroKpi)
   ]);
 
-  return {
+  const kpis = {
     borradores,
     finalizados,
     revisados,
     total
   };
+
+  console.log("✅ KPI CALCULADOS", kpis);
+  console.log("✅ BORRADORES", borradores);
+  console.log("✅ FINALIZADOS", finalizados);
+  console.log("✅ REVISADOS", revisados);
+  return kpis;
 };
 
 const normalizarChecklistListItem = (item) => ({
@@ -456,13 +464,16 @@ export const listarChecklistCamionetas = async (req, res) => {
     const { turno = "", turnoNumero = "" } = req.query;
     const { conductor = "", usuario = "", planta = "" } = req.query;
     const filter = { eliminado: { $ne: true } };
+    const filtroKpi = { eliminado: { $ne: true } };
 
     if (esOperadorPlanta(req) && !esAdmin(req)) {
       const autor = await resolverUserId(req);
       if (!autor) {
         return res.status(401).json({ message: "Sesion invalida. Vuelve a iniciar sesion." });
       }
-      filter.creadoPor = new mongoose.Types.ObjectId(autor);
+      const autorId = new mongoose.Types.ObjectId(autor);
+      filter.creadoPor = autorId;
+      filtroKpi.creadoPor = autorId;
     }
 
     if (patente) filter.patente = { $regex: String(patente), $options: "i" };
@@ -476,7 +487,7 @@ export const listarChecklistCamionetas = async (req, res) => {
       if (!ESTADOS_CHECKLIST.includes(estadoUp)) {
         return res.status(400).json({ message: "Estado invalido" });
       }
-      filter.estado = { $regex: `^${estadoUp}$`, $options: "i" };
+      filter.estado = estadoUp;
     }
 
     if (desde || hasta) {
@@ -490,6 +501,7 @@ export const listarChecklistCamionetas = async (req, res) => {
     }
 
     const mongoInicio = Date.now();
+    await normalizarEstadosChecklistAntiguos();
     const [checklistsRaw, kpis] = await Promise.all([
       ChecklistCamioneta.find(filter)
         .select(CHECKLIST_LIST_FIELDS)
@@ -498,12 +510,13 @@ export const listarChecklistCamionetas = async (req, res) => {
         .populate("creadoPor", "nombre email rol")
         .populate("revisadoPor", "nombre email rol")
         .lean(),
-      calcularKpisChecklist(filter)
+      calcularKpisChecklist(filtroKpi)
     ]);
     const checklists = checklistsRaw.map(normalizarChecklistListItem);
     console.log("⚡ Tiempo Mongo listar checklist:", `${Date.now() - mongoInicio}ms`, {
       total: checklists.length,
       filtros: Object.keys(filter),
+      filtrosKpi: Object.keys(filtroKpi),
       kpis
     });
     console.log("✅ KPI CHECKLIST ACTUALIZADOS", kpis);
