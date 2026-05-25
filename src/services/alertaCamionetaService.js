@@ -1,5 +1,4 @@
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
-import { emitDashboardAlertasUpdate } from "./realtimeService.js";
 
 const PRIORIDAD_ORDEN = {
   CRITICA: 4,
@@ -108,14 +107,6 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
     patente: checklist.patente,
     total: resultados.length
   });
-  if (resultados.length) {
-    emitDashboardAlertasUpdate({
-      type: "alertas:creadas",
-      checklistId: checklist._id,
-      patente: checklist.patente,
-      total: resultados.length
-    });
-  }
   return resultados;
 };
 
@@ -136,14 +127,6 @@ export const resolverAlertaCamioneta = async ({ id, user, estado = "RESUELTA", s
   }
 
   const alerta = await AlertaCamioneta.findByIdAndUpdate(id, update, { new: true }).lean();
-  if (alerta) {
-    emitDashboardAlertasUpdate({
-      type: "alerta:gestionada",
-      alertaId: alerta._id,
-      patente: alerta.patente,
-      estado: alerta.estado
-    });
-  }
   return alerta;
 };
 

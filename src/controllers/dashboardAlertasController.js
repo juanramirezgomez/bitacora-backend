@@ -7,7 +7,6 @@ import {
   resolverAlertaCamioneta,
   sincronizarAlertasOperacionalesChecklist
 } from "../services/alertaCamionetaService.js";
-import { emitDashboardAlertasUpdate } from "../services/realtimeService.js";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
 const ACTIVAS = ["ABIERTA", "EN_PROCESO"];
@@ -422,7 +421,11 @@ export const obtenerDashboardAlertas = async (req, res) => {
 
     const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && alerta.estado === "ABIERTA").length;
     const activas = alertasActivasRaw.length;
-    const camionetasOperativas = estadosCamionetas.filter((item) => item.estado === "OPERATIVA").length;
+    const camionetasOperativas = Array.from(latestByPatente.values())
+      .filter((checklist) =>
+        checklist.aptaOperacion === true ||
+        String(checklist.aptitudOperacion || "").toUpperCase() === "APTA"
+      ).length;
     const alertasRecientesRaw = alertasFiltradas.slice(0, 16);
     const alertasRecientes = alertasRecientesRaw.map(mapAlerta);
     const alertasActivas = alertasActivasRaw.map(mapAlerta);
@@ -447,6 +450,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
     console.log("⚡ Tiempo dashboard:", `${Date.now() - inicio}ms`);
     return res.json(response);
   } catch (error) {
+    console.error("❌ ERROR KPI:", error);
     console.error("❌ ERROR DASHBOARD ALERTAS:", error);
     return res.status(500).json({ message: "Error obteniendo dashboard de alertas" });
   }
@@ -483,7 +487,6 @@ export const gestionarAlertaDashboard = async (req, res) => {
       estado: alerta.estado,
       patente: alerta.patente
     });
-    emitDashboardAlertasUpdate({ type: "alerta:gestionada", alertaId: alerta._id, estado: alerta.estado });
     return res.json({
       message: estado === "CERRADA" ? "Alerta cerrada" : "Alerta gestionada",
       alerta: mapAlerta(alerta)
@@ -520,7 +523,6 @@ export const cerrarAlertaDashboard = async (req, res) => {
       estado: alerta.estado,
       patente: alerta.patente
     });
-    emitDashboardAlertasUpdate({ type: "alerta:cerrada", alertaId: alerta._id, estado: alerta.estado });
     return res.json({ message: "Alerta cerrada", alerta: mapAlerta(alerta) });
   } catch (error) {
     console.error("❌ ERROR CERRANDO ALERTA:", error);
