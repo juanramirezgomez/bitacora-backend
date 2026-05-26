@@ -186,8 +186,84 @@ export const generarReportePdfInterno = async (bitacoraId) => {
   const normalizar = (txt) =>
     txt
       ?.toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
       .replace(/\s+/g, "")
       .replace(/[^a-z0-9]/g, "");
+
+  const parametrosBase = [
+    {
+      label: "Presión caldera",
+      short: "P.cal",
+      keys: ["presioncaldera"]
+    },
+    {
+      label: "Vapor",
+      short: "Vapor",
+      keys: ["vapor"]
+    },
+    {
+      label: "F alimentacion",
+      short: "F.al",
+      keys: ["falimentacion", "flujoalimentacioncaldera"]
+    },
+    {
+      label: "T alimentación",
+      short: "T.al",
+      keys: ["talimentacion", "totalizadoralimentacion"]
+    },
+    {
+      label: "Tº gases",
+      short: "T.g",
+      keys: ["tgases", "temperaturagaseschimenea"]
+    },
+    {
+      label: "C diesel",
+      short: "C.d",
+      keys: ["cdiesel", "consumodiesel"]
+    },
+    {
+      label: "% Diesel",
+      short: "%D",
+      keys: ["diesel"]
+    },
+    {
+      label: "F agua/blanda",
+      short: "F.a",
+      keys: ["faguablanda", "flujoaguablanda"]
+    },
+    {
+      label: "T agua/blanda",
+      short: "T.a",
+      keys: ["taguablanda", "totalizadoraguablanda"]
+    },
+    {
+      label: "Flujo BBA41",
+      short: "FI41",
+      keys: ["flujobba41"]
+    },
+    {
+      label: "T BBA41",
+      short: "TB41",
+      keys: ["tbba41", "totalizadorbba41"]
+    },
+    {
+      label: "Tº ITC",
+      short: "ITC",
+      keys: ["titc", "temperaturasalidaitc"]
+    }
+  ];
+
+  const obtenerDefParametroBase = (label) => {
+    const normalized = normalizar(label);
+    return parametrosBase.find((p) => p.keys.includes(normalized));
+  };
+
+  const esParametroBase = (label) =>
+    Boolean(obtenerDefParametroBase(label));
+
+  const obtenerParametroRegistro = (registro, def) =>
+    registro.parametros?.find((p) => def.keys.includes(normalizar(p.label)));
 
   /* =====================================================
      HELPERS
@@ -544,57 +620,6 @@ checkY += 45;
   obsInicialHeight +
   60;
 
-  /* =====================================================
-     COLUMNAS DINÁMICAS
-  ===================================================== */
-
-  const columnasSet = new Set();
-
-  registros.forEach(r =>
-    r.parametros?.forEach(p =>
-      columnasSet.add(p.label)
-    )
-  );
-
-  const columnasDB =
-  Array.from(columnasSet);
-
-  const ordenPreferido = [
-
-    "presioncaldera",
-    "vapor",
-    "flujoalimentacioncaldera",
-    "totalizadoralimentacion",
-    "temperaturagaseschimenea",
-    "consumodiesel",
-    "diesel",
-    "flujoaguablanda",
-    "totalizadoraguablanda",
-    "flujobba41",
-    "totalizadorbba41",
-    "temperaturasalidaitc"
-
-  ];
-
-  columnasDB.sort((a, b) => {
-
-    const na = normalizar(a);
-    const nb = normalizar(b);
-
-    return (
-      (
-        ordenPreferido.indexOf(na) === -1
-          ? 999
-          : ordenPreferido.indexOf(na)
-      ) -
-      (
-        ordenPreferido.indexOf(nb) === -1
-          ? 999
-          : ordenPreferido.indexOf(nb)
-      )
-    );
-  });
-
   const columnas = [
 
     {
@@ -603,21 +628,9 @@ checkY += 45;
       width: 34
     },
 
-    ...columnasDB.map(c => {
+    ...parametrosBase.map(def => {
 
-      const label = c
-        .replace("Presión caldera", "P.cal")
-        .replace("Vapor", "Vapor")
-        .replace("Flujo alimentación caldera", "F.al")
-        .replace("Totalizador alimentación", "T.al")
-        .replace("Temperatura gases chimenea", "T.g")
-        .replace("Consumo diesel", "C.d")
-        .replace("% Diesel", "%D")
-        .replace("Flujo agua blanda", "F.a")
-        .replace("Totalizador agua blanda", "T.a")
-        .replace("Flujo BBA41", "FI41")
-        .replace("Totalizador BBA41", "TB41")
-        .replace("Temperatura salida ITC", "ITC");
+      const label = def.short;
 
       let width = 42;
 
@@ -645,9 +658,10 @@ checkY += 45;
 
       return {
 
-        key: c,
+        key: def.label,
         label,
-        width
+        width,
+        def
 
       };
 
@@ -732,18 +746,12 @@ checkY += 45;
       } else {
 
         const param =
-        reg.parametros?.find(p => {
-
-          return (
-            normalizar(p.label) ===
-            normalizar(col.key)
-          );
-        });
+        obtenerParametroRegistro(reg, col.def);
 
         if (param) {
 
           value =
-          `${param.value || "-"}${
+          `${param.value ?? "-"}${
             param.unidad
               ? ` ${param.unidad}`
               : ""
@@ -791,6 +799,104 @@ checkY += 45;
 
     tableY += rowHeight;
   });
+
+  const parametrosAdicionales = [];
+
+  registros.forEach((reg) => {
+    (reg.parametros || [])
+      .filter((p) => !esParametroBase(p.label))
+      .forEach((p) => {
+        parametrosAdicionales.push({
+          hora: reg.hora,
+          label: p.label || "-",
+          value: p.value ?? "-",
+          unidad: p.unidad || ""
+        });
+      });
+  });
+
+  if (parametrosAdicionales.length > 0) {
+    tableY += 22;
+
+    if (tableY > 690) {
+      drawFooter();
+      doc.addPage();
+      drawHeader();
+      tableY = 120;
+    }
+
+    sectionTitle(
+      "PARÁMETROS ADICIONALES",
+      tableY,
+      COLORS.blue
+    );
+
+    tableY += 42;
+
+    const extraCols = [
+      { key: "hora", label: "Hora", width: 70 },
+      { key: "label", label: "Parámetro", width: 250 },
+      { key: "value", label: "Valor", width: 120 },
+      { key: "unidad", label: "Unidad", width: 100 }
+    ];
+
+    const drawExtraHeader = () => {
+      let x = 28;
+
+      extraCols.forEach((col) => {
+        doc.rect(x, tableY, col.width, rowHeight)
+          .fill(COLORS.violet);
+
+        doc.fillColor("#ffffff")
+          .font("Helvetica-Bold")
+          .fontSize(7)
+          .text(col.label, x + 4, tableY + 6, {
+            width: col.width - 8,
+            align: "center"
+          });
+
+        x += col.width;
+      });
+
+      tableY += rowHeight;
+    };
+
+    drawExtraHeader();
+
+    parametrosAdicionales.forEach((param, index) => {
+      if (tableY > 760) {
+        drawFooter();
+        doc.addPage();
+        drawHeader();
+        tableY = 120;
+        drawExtraHeader();
+      }
+
+      let x = 28;
+
+      extraCols.forEach((col) => {
+        const value = param[col.key] || "-";
+
+        doc.rect(x, tableY, col.width, rowHeight)
+          .fillAndStroke(
+            index % 2 === 0 ? COLORS.row1 : COLORS.row2,
+            COLORS.border
+          );
+
+        doc.fillColor(COLORS.dark)
+          .font("Helvetica")
+          .fontSize(7)
+          .text(String(value), x + 4, tableY + 6, {
+            width: col.width - 8,
+            align: col.key === "label" ? "left" : "center"
+          });
+
+        x += col.width;
+      });
+
+      tableY += rowHeight;
+    });
+  }
 
   drawFooter();
 
@@ -1138,8 +1244,36 @@ export const descargarReportePdf = async (req, res) => {
 
 const normalizar = (txt) =>
   txt?.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, "")
     .replace(/[^a-z0-9]/g, "");
+
+const parametrosBaseReporte = [
+  { label: "Presión caldera", short: "P.cal", keys: ["presioncaldera"] },
+  { label: "Vapor", short: "Vapor", keys: ["vapor"] },
+  { label: "F alimentacion", short: "F.al", keys: ["falimentacion", "flujoalimentacioncaldera"] },
+  { label: "T alimentación", short: "T.al", keys: ["talimentacion", "totalizadoralimentacion"] },
+  { label: "Tº gases", short: "T.g", keys: ["tgases", "temperaturagaseschimenea"] },
+  { label: "C diesel", short: "C.d", keys: ["cdiesel", "consumodiesel"] },
+  { label: "% Diesel", short: "%D", keys: ["diesel"] },
+  { label: "F agua/blanda", short: "F.a", keys: ["faguablanda", "flujoaguablanda"] },
+  { label: "T agua/blanda", short: "T.a", keys: ["taguablanda", "totalizadoraguablanda"] },
+  { label: "Flujo BBA41", short: "Fl41", keys: ["flujobba41"] },
+  { label: "T BBA41", short: "TB41", keys: ["tbba41", "totalizadorbba41"] },
+  { label: "Tº ITC", short: "ITC", keys: ["titc", "temperaturasalidaitc"] }
+];
+
+const obtenerDefParametroBaseReporte = (label) => {
+  const normalized = normalizar(label);
+  return parametrosBaseReporte.find((p) => p.keys.includes(normalized));
+};
+
+const esParametroBaseReporte = (label) =>
+  Boolean(obtenerDefParametroBaseReporte(label));
+
+const obtenerParametroBaseReporte = (registro, def) =>
+  registro.parametros?.find((p) => def.keys.includes(normalizar(p.label)));
 
 /* =====================================================
    DESCARGAR EXCEL
@@ -1525,74 +1659,11 @@ export const descargarReporteExcel = async (req, res) => {
 
     rowIndex++;
 
-    const columnasSet =
-      new Set();
-
-    registros.forEach(r =>
-      r.parametros?.forEach(p =>
-        columnasSet.add(p.label)
-      )
-    );
-
-    const columnasDB =
-      Array.from(columnasSet);
-
-    const ordenPreferido = [
-
-      "presioncaldera",
-
-      "vapor",
-
-      "flujoalimentacioncaldera",
-
-      "totalizadoralimentacion",
-
-      "temperaturagaseschimenea",
-
-      "consumodiesel",
-
-      "diesel",
-
-      "flujoaguablanda",
-
-      "totalizadoraguablanda",
-
-      "flujobba41",
-
-      "totalizadorbba41",
-
-      "temperaturasalidaitc"
-    ];
-
-    columnasDB.sort((a, b) => {
-
-      const na = normalizar(a);
-
-      const nb = normalizar(b);
-
-      return (
-
-        (
-          ordenPreferido.indexOf(na) === -1
-            ? 999
-            : ordenPreferido.indexOf(na)
-        )
-
-        -
-
-        (
-          ordenPreferido.indexOf(nb) === -1
-            ? 999
-            : ordenPreferido.indexOf(nb)
-        )
-      );
-    });
-
     const columnas = [
 
       "Hora",
 
-      ...columnasDB,
+      ...parametrosBaseReporte.map((p) => p.short),
 
       "P"
     ];
@@ -1606,33 +1677,6 @@ export const descargarReporteExcel = async (req, res) => {
         i === 0 ? 10 : 14;
     });
 
-    const nombres = {
-
-      "Presión caldera": "P.cal",
-
-      "Vapor": "Vapor",
-
-      "Flujo alimentación caldera": "F.al",
-
-      "Totalizador alimentación": "T.al",
-
-      "Temperatura gases chimenea": "T.g",
-
-      "Consumo diesel": "C.d",
-
-      "% Diesel": "%D",
-
-      "Flujo agua blanda": "F.a",
-
-      "Totalizador agua blanda": "T.a",
-
-      "Flujo BBA41": "Fl41",
-
-      "Totalizador BBA41": "TB41",
-
-      "Temperatura salida ITC": "ITC"
-    };
-
     const headerRow =
       sheet.getRow(rowIndex++);
 
@@ -1643,8 +1687,7 @@ export const descargarReporteExcel = async (req, res) => {
       const celda =
         headerRow.getCell(i + 1);
 
-      celda.value =
-        nombres[c] || c;
+      celda.value = c;
 
       celda.fill = {
 
@@ -1684,19 +1727,15 @@ export const descargarReporteExcel = async (req, res) => {
         r.hora || "-"
       ];
 
-      columnasDB.forEach(col => {
+      parametrosBaseReporte.forEach(def => {
 
         const p =
-          r.parametros?.find(
-            x =>
-              normalizar(x.label) ===
-              normalizar(col)
-          );
+          obtenerParametroBaseReporte(r, def);
 
         fila.push(
 
           p
-            ? `${p.value}${p.unidad ? " " + p.unidad : ""}`
+            ? `${p.value ?? "-"}${p.unidad ? " " + p.unidad : ""}`
             : "-"
         );
       });
@@ -1739,6 +1778,77 @@ export const descargarReporteExcel = async (req, res) => {
         };
       });
     });
+
+    const parametrosExtraExcel = [];
+
+    registros.forEach((r) => {
+      (r.parametros || [])
+        .filter((p) => !esParametroBaseReporte(p.label))
+        .forEach((p) => {
+          parametrosExtraExcel.push([
+            r.hora || "-",
+            p.label || "-",
+            p.value ?? "-",
+            p.unidad || ""
+          ]);
+        });
+    });
+
+    if (parametrosExtraExcel.length > 0) {
+      rowIndex += 2;
+
+      sheet.mergeCells(`A${rowIndex}:D${rowIndex}`);
+      const extraTitle = sheet.getCell(`A${rowIndex}`);
+      extraTitle.value = "PARÁMETROS ADICIONALES";
+      extraTitle.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: COLORS.primary }
+      };
+      extraTitle.font = {
+        bold: true,
+        size: 12,
+        color: { argb: COLORS.white }
+      };
+      extraTitle.alignment = center;
+      extraTitle.border = border;
+      rowIndex++;
+
+      const extraHeader = sheet.getRow(rowIndex++);
+      ["Hora", "Parámetro", "Valor", "Unidad"].forEach((h, i) => {
+        const c = extraHeader.getCell(i + 1);
+        c.value = h;
+        c.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: COLORS.secondary }
+        };
+        c.font = {
+          bold: true,
+          color: { argb: COLORS.white }
+        };
+        c.alignment = center;
+        c.border = border;
+      });
+
+      parametrosExtraExcel.forEach((fila, idx) => {
+        const row = sheet.getRow(rowIndex++);
+        row.height = 22;
+
+        fila.forEach((v, i) => {
+          const c = row.getCell(i + 1);
+          c.value = v;
+          c.border = border;
+          c.alignment = i === 1 ? left : center;
+          c.font = { size: 9 };
+          c.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: idx % 2 === 0 ? COLORS.row1 : COLORS.row2 }
+          };
+        });
+      });
+    }
 
     /* =====================================================
    REFERENCIA PARÁMETROS
@@ -1952,16 +2062,26 @@ referencias.forEach((r, idx) => {
 
 /* ================= RANGOS ================= */
 
-async function obtenerRegistrosPorRango(desde, hasta) {
+async function obtenerRegistrosPorRango(desde, hasta, user = {}) {
 
   const inicio = new Date(desde);
   const fin = new Date(hasta);
   fin.setHours(23, 59, 59, 999);
 
-  const bitacoras = await Bitacora.find({
+  const filtroBitacoras = {
+    eliminado: { $ne: true },
     estado: "CERRADA",
     fechaInicio: { $gte: inicio, $lte: fin }
-  });
+  };
+
+  const rol = String(user?.rol || "").toUpperCase();
+  const nombre = String(user?.nombre || "").trim();
+
+  if (["OPERADOR", "OPERADOR_CALDERA"].includes(rol)) {
+    filtroBitacoras.operador = new RegExp(`^\\s*${nombre}\\s*$`, "i");
+  }
+
+  const bitacoras = await Bitacora.find(filtroBitacoras);
 
   let todosRegistros = [];
 
@@ -2006,7 +2126,7 @@ export const descargarExcelRango = async (req, res) => {
     const { desde, hasta } = req.query;
 
     const registros =
-      await obtenerRegistrosPorRango(desde, hasta);
+      await obtenerRegistrosPorRango(desde, hasta, req.user);
 
     if (!registros.length) {
 
@@ -2401,7 +2521,7 @@ export const descargarPdfRango = async (req, res) => {
     const { desde, hasta } = req.query;
 
     const registros =
-      await obtenerRegistrosPorRango(desde, hasta);
+      await obtenerRegistrosPorRango(desde, hasta, req.user);
 
     if (!registros.length) {
 

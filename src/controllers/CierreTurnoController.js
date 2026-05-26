@@ -29,7 +29,10 @@ export const crearCierreTurno = async (req, res) => {
 
     const objectId = new mongoose.Types.ObjectId(bitacoraId);
 
-    const bitacora = await Bitacora.findById(objectId);
+    const bitacora = await Bitacora.findOne({
+      _id: objectId,
+      eliminado: { $ne: true }
+    });
     if (!bitacora)
       return res.status(404).json({ message: "Bitácora no encontrada" });
 
@@ -132,12 +135,15 @@ export const crearCierreTurno = async (req, res) => {
     bitacora.fechaCierre = new Date();
     await bitacora.save();
 
-    // 🔥 Generar PDF automático
-    try {
-      await generarReportePdfInterno(objectId);
-    } catch (pdfError) {
-      console.error("Error generando PDF automático:", pdfError);
-    }
+    setImmediate(async () => {
+      try {
+        console.log("PDF DE BITACORA EN SEGUNDO PLANO", String(objectId));
+        await generarReportePdfInterno(objectId);
+        console.log("PDF DE BITACORA GENERADO", String(objectId));
+      } catch (pdfError) {
+        console.error("Error generando PDF automatico:", pdfError);
+      }
+    });
 
     return res.json({
       message: "Turno cerrado correctamente",
