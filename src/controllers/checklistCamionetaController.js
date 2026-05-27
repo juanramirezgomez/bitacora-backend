@@ -633,7 +633,7 @@ export const enviarAlertasChecklistCamionetaController = async (req, res) => {
     }
 
     const checklists = await ChecklistCamioneta.find({ eliminado: { $ne: true } })
-      .populate("creadoPor", "nombre email telefono rol estado activo")
+      .populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
       .sort({ fechaInspeccion: -1, createdAt: -1 });
     const resultados = [];
 

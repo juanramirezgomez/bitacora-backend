@@ -12,7 +12,7 @@ import { requireRole } from "../middlewares/requireRole.js";
 
 const router = express.Router();
 
-router.use(requireRole("ADMIN", "SUPERVISION", "SUPERVISOR", "OPERADOR_PLANTA"));
+router.use(requireRole("ADMIN"));
 
 router.post("/", crearRegistroDatos);
 router.get("/", listarRegistroDatos);

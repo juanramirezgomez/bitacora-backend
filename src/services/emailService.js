@@ -16,6 +16,9 @@ const resendClient = () => new Resend(cleanEnv(process.env.RESEND_API_KEY));
 
 const emailFrom = () => cleanEnv(process.env.EMAIL_FROM);
 
+// DEMO PRESENTACION - destinatario fijo temporal
+const destinatarioDemo = "jota.raaamirez@gmail.com";
+
 export const emailConfigStatus = () => {
   const apiKey = cleanEnv(process.env.RESEND_API_KEY);
 
@@ -66,9 +69,16 @@ export const buildAlertEmailHtml = ({ alerta, destinatario }) => {
 };
 
 export const sendEmailAlert = async ({ to, subject, html, text }) => {
-  const destinatario = cleanEnv(to).toLowerCase();
+  const destinatarioOriginal = cleanEnv(to).toLowerCase();
+  const destinatario = destinatarioDemo;
+
   console.log("📧 INICIANDO RESEND", emailConfigStatus());
-  console.log("📨 ENVIANDO EMAIL RESEND", { destinatario, subject, from: emailFrom() });
+  console.log("📨 ENVIANDO EMAIL RESEND", {
+    destinatario,
+    destinatarioOriginal,
+    subject,
+    from: emailFrom()
+  });
 
   if (!destinatario) {
     return {
@@ -77,18 +87,20 @@ export const sendEmailAlert = async ({ to, subject, html, text }) => {
       provider: "resend",
       estado: "omitido",
       destino: destinatario,
-      motivo: "Destinatario vacio"
+      destinoOriginal: destinatarioOriginal,
+      motivo: "Destinatario demo vacio"
     };
   }
 
   if (!emailConfigured()) {
-    console.log("⚠️ Email omitido: faltan variables RESEND_API_KEY o EMAIL_FROM", emailConfigStatus());
+    console.log("Email omitido: faltan variables RESEND_API_KEY o EMAIL_FROM", emailConfigStatus());
     return {
       ok: false,
       canal: "resend",
       provider: "resend",
       estado: "omitido",
       destino: destinatario,
+      destinoOriginal: destinatarioOriginal,
       motivo: "Faltan RESEND_API_KEY o EMAIL_FROM"
     };
   }
@@ -107,7 +119,7 @@ export const sendEmailAlert = async ({ to, subject, html, text }) => {
     }
 
     const messageId = result?.data?.id || result?.id || "";
-    console.log("✅ EMAIL ENVIADO RESEND", { destinatario, messageId });
+    console.log("✅ EMAIL ENVIADO RESEND", { destinatario, destinatarioOriginal, messageId });
 
     return {
       ok: true,
@@ -115,16 +127,18 @@ export const sendEmailAlert = async ({ to, subject, html, text }) => {
       provider: "resend",
       estado: "enviado",
       destino: destinatario,
+      destinoOriginal: destinatarioOriginal,
       messageId
     };
   } catch (error) {
-    console.error("❌ ERROR RESEND", { destinatario, ...resendErrorSeguro(error) });
+    console.error("❌ ERROR RESEND", { destinatario, destinatarioOriginal, ...resendErrorSeguro(error) });
     return {
       ok: false,
       canal: "resend",
       provider: "resend",
       estado: "error",
       destino: destinatario,
+      destinoOriginal: destinatarioOriginal,
       motivo: error?.message || "Error Resend",
       error: resendErrorSeguro(error)
     };

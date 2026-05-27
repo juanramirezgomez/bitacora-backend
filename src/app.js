@@ -25,6 +25,7 @@ import bitacoraDiariaRoutes from "./routes/bitacoraDiariaRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import registroDatosRoutes from "./routes/registroDatosRoutes.js";
 import inicioSeguroRoutes from "./routes/inicioSeguroRoutes.js";
+import { sendTestEmail } from "./services/emailService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -91,6 +92,34 @@ app.get("/health", (req, res) => {
 
 app.get("/", (req, res) => {
   res.send("API Superintendencia Operaciones Litio funcionando correctamente");
+});
+
+app.get("/api/test-email", async (req, res) => {
+  try {
+    console.log("📧 TEST EMAIL RESEND INICIADO");
+    const result = await sendTestEmail();
+    console.log("📧 TEST EMAIL RESEND RESULTADO", result);
+
+    if (!result?.ok) {
+      return res.status(500).json({
+        ok: false,
+        enviado: false,
+        result
+      });
+    }
+
+    return res.json({
+      ok: true,
+      enviado: true
+    });
+  } catch (error) {
+    console.error("❌ TEST EMAIL RESEND ERROR:", error);
+    return res.status(500).json({
+      ok: false,
+      enviado: false,
+      error: error?.message || "Error enviando correo de prueba"
+    });
+  }
 });
 
 /* =========================================
