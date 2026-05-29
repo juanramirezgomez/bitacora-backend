@@ -7,7 +7,15 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 const users = [
   // ✅ ADMIN (dueño)
-  { username: "admin", nombre: "Administrador", rol: "ADMIN", password: "Admin1234!" },
+  {
+    username: "admin",
+    operadorId: "ADMIN01",
+    email: "admin@novandino.local",
+    correoCorporativo: "admin@novandino.local",
+    nombre: "Administrador",
+    rol: "ADMIN",
+    password: "Admin1234!"
+  },
 
   // ✅ OPERADORES (4)
   { username: "jramirez", nombre: "Juan Ramirez", rol: "OPERADOR", password: "juanramirez" },
@@ -38,8 +46,12 @@ async function run() {
 
     await User.create({
       username: u.username,
+      operadorId: u.operadorId,
+      email: u.email,
+      correoCorporativo: u.correoCorporativo,
       nombre: u.nombre,
       rol: u.rol,
+      estado: "ACTIVO",
       passwordHash,
       activo: true,
     });

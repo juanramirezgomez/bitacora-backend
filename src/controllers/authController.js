@@ -2,6 +2,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
+import HistorialUsuario from "../models/HistorialUsuario.js";
 
 const ROLES = [
   "ADMIN",
@@ -112,6 +113,52 @@ const publicUser = (user) => ({
   activo: user.activo,
   fechaCreacion: user.fechaCreacion || user.createdAt
 });
+
+const snapshotUsuario = (user = {}) => ({
+  nombre: user?.nombre || "",
+  email: user?.email || user?.username || "",
+  operadorId: user?.operadorId || "",
+  rol: user?.rol || "",
+  estado: user?.estado || "",
+  planta: user?.planta || ""
+});
+
+const snapshotActor = (req) => ({
+  nombre: req.user?.nombre || "",
+  email: req.user?.email || req.user?.correoCorporativo || "",
+  operadorId: req.user?.operadorId || "",
+  rol: req.user?.rol || ""
+});
+
+const cambiosEntre = (antes = {}, despues = {}, campos = []) => {
+  const cambios = {};
+  for (const campo of campos) {
+    const anterior = antes?.[campo];
+    const nuevo = despues?.[campo];
+    if (JSON.stringify(anterior ?? "") !== JSON.stringify(nuevo ?? "")) {
+      cambios[campo] = { anterior: anterior ?? "", nuevo: nuevo ?? "" };
+    }
+  }
+  return cambios;
+};
+
+const registrarHistorialUsuario = async (req, { usuario, accion, cambios = {}, comentario = "" }) => {
+  try {
+    if (!usuario?._id) return;
+    await HistorialUsuario.create({
+      usuario: usuario._id,
+      usuarioSnapshot: snapshotUsuario(usuario),
+      actor: req.user?.uid || null,
+      actorSnapshot: snapshotActor(req),
+      accion,
+      cambios,
+      comentario,
+      fecha: new Date()
+    });
+  } catch (error) {
+    console.error("ERROR registrando historial de usuario:", error);
+  }
+};
 
 const signToken = (user) => {
   const secret = process.env.JWT_SECRET;
@@ -347,6 +394,7 @@ export const crearUsuario = async (req, res) => {
       telefono = "",
       rol,
       password,
+      operadorId = "",
       estado = "ACTIVO",
       planta = "PC1",
       preferenciasAlertas = {}
@@ -408,6 +456,17 @@ export const crearUsuario = async (req, res) => {
       fechaCreacion: new Date()
     });
 
+    await registrarHistorialUsuario(req, {
+      usuario: nuevo,
+      accion: "USUARIO_CREADO",
+      cambios: {
+        estado: { anterior: "", nuevo: nuevo.estado },
+        rol: { anterior: "", nuevo: nuevo.rol },
+        planta: { anterior: "", nuevo: nuevo.planta }
+      },
+      comentario: "Usuario creado desde panel administrador"
+    });
+
     return res.status(201).json({
       message: "Usuario creado",
       user: publicUser(nuevo)
@@ -453,10 +512,29 @@ export const listarUsuarios = async (req, res) => {
   }
 };
 
+// GET /api/auth/users/:id/historial
+export const listarHistorialUsuario = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(Number(req.query?.limit || 30), 100);
+
+    const historial = await HistorialUsuario.find({ usuario: id })
+      .sort({ fecha: -1 })
+      .limit(limit)
+      .lean();
+
+    return res.json({ historial });
+  } catch (e) {
+    return res.status(500).json({ message: "Error listando historial de usuario" });
+  }
+};
+
 // PATCH /api/auth/users/:id
 export const actualizarUsuario = async (req, res) => {
   try {
     const { id } = req.params;
+    const antes = await User.findById(id).lean();
+    if (!antes) return res.status(404).json({ message: "Usuario no encontrado" });
 
     const update = {};
     if (req.body.nombre !== undefined) update.nombre = String(req.body.nombre).trim();
@@ -539,6 +617,28 @@ export const actualizarUsuario = async (req, res) => {
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
+    const cambios = cambiosEntre(antes, u.toObject(), [
+      "nombre",
+      "operadorId",
+      "email",
+      "correoCorporativo",
+      "correoRespaldo",
+      "telefono",
+      "planta",
+      "rol",
+      "estado",
+      "activo",
+      "modulosPermitidos",
+      "preferenciasAlertas"
+    ]);
+
+    await registrarHistorialUsuario(req, {
+      usuario: u,
+      accion: "USUARIO_ACTUALIZADO",
+      cambios,
+      comentario: "Usuario actualizado desde panel administrador"
+    });
+
     return res.json({ message: "Usuario actualizado", user: u });
   } catch (e) {
     return res.status(500).json({ message: "Error actualizando usuario" });
@@ -550,6 +650,8 @@ export const actualizarEstadoUsuario = async (req, res) => {
   try {
     const { id } = req.params;
     const estadoUp = String(req.body?.estado || "").toUpperCase();
+    const antes = await User.findById(id).lean();
+    if (!antes) return res.status(404).json({ message: "Usuario no encontrado" });
 
     if (!ESTADOS.includes(estadoUp)) {
       return res.status(400).json({ message: "estado inválido" });
@@ -570,6 +672,16 @@ export const actualizarEstadoUsuario = async (req, res) => {
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
+    await registrarHistorialUsuario(req, {
+      usuario: u,
+      accion: "ESTADO_CAMBIADO",
+      cambios: {
+        estado: { anterior: antes.estado || "", nuevo: u.estado || "" },
+        activo: { anterior: antes.activo ?? "", nuevo: u.activo ?? "" }
+      },
+      comentario: `Estado cambiado a ${estadoUp}`
+    });
+
     return res.json({ message: "Estado actualizado", user: u });
   } catch (e) {
     return res.status(500).json({ message: "Error actualizando estado" });
@@ -581,6 +693,8 @@ export const actualizarRolUsuario = async (req, res) => {
   try {
     const { id } = req.params;
     const rolUp = normalizarRol(req.body?.rol);
+    const antes = await User.findById(id).lean();
+    if (!antes) return res.status(404).json({ message: "Usuario no encontrado" });
 
     if (!ROLES.includes(rolUp)) {
       return res.status(400).json({ message: "rol inválido" });
@@ -596,6 +710,16 @@ export const actualizarRolUsuario = async (req, res) => {
     ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    await registrarHistorialUsuario(req, {
+      usuario: u,
+      accion: "ROL_CAMBIADO",
+      cambios: {
+        rol: { anterior: antes.rol || "", nuevo: u.rol || "" },
+        modulosPermitidos: { anterior: antes.modulosPermitidos || [], nuevo: u.modulosPermitidos || [] }
+      },
+      comentario: `Rol cambiado a ${rolUp}`
+    });
 
     return res.json({ message: "Rol actualizado", user: u });
   } catch (e) {
@@ -618,6 +742,13 @@ export const resetPassword = async (req, res) => {
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
+    await registrarHistorialUsuario(req, {
+      usuario: u,
+      accion: "PASSWORD_RESETEADA",
+      cambios: { password: { anterior: "********", nuevo: "********" } },
+      comentario: "Password reseteado desde panel administrador"
+    });
+
     return res.json({ message: "Password actualizado", user: u });
   } catch (e) {
     return res.status(500).json({ message: "Error reseteando password" });
@@ -637,6 +768,13 @@ export const eliminarUsuario = async (req, res) => {
       .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta activo");
 
     if (!deleted) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    await registrarHistorialUsuario(req, {
+      usuario: deleted,
+      accion: "USUARIO_ELIMINADO",
+      cambios: { eliminado: { anterior: false, nuevo: true } },
+      comentario: "Usuario eliminado desde panel administrador"
+    });
 
     return res.json({ message: "Usuario eliminado", user: deleted });
   } catch (e) {

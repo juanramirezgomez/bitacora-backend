@@ -10,6 +10,7 @@ import {
   actualizarUsuario,
   actualizarEstadoUsuario,
   actualizarRolUsuario,
+  listarHistorialUsuario,
   resetPassword,
   eliminarUsuario
 } from "../controllers/authController.js";
@@ -27,6 +28,7 @@ router.patch("/me", requireAuth, actualizarMiPerfil);
 // ✅ Admin users
 router.post("/users", requireAuth, requireAdmin, crearUsuario);
 router.get("/users", requireAuth, requireAdmin, listarUsuarios);
+router.get("/users/:id/historial", requireAuth, requireAdmin, listarHistorialUsuario);
 router.patch("/users/:id/estado", requireAuth, requireAdmin, actualizarEstadoUsuario);
 router.patch("/users/:id/rol", requireAuth, requireAdmin, actualizarRolUsuario);
 router.patch("/users/:id", requireAuth, requireAdmin, actualizarUsuario);
