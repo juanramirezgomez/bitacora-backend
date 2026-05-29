@@ -1,4 +1,5 @@
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
+import { registrarEvento } from "./operationalAuditService.js";
 
 const PRIORIDAD_ORDEN = {
   CRITICA: 4,
@@ -59,6 +60,8 @@ const buildDedupeKey = (checklist, alerta) => [
   normalizeText(alerta.item || alerta.documento || descripcionAlerta(alerta)).slice(0, 90)
 ].join(":");
 
+const userId = (user = {}) => user?.uid || user?._id || user?.id || null;
+
 export const sincronizarAlertasOperacionalesChecklist = async (checklist, alertas = []) => {
   if (!checklist?._id || !Array.isArray(alertas) || !alertas.length) return [];
 
@@ -74,6 +77,7 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
   for (const alerta of alertas) {
     const descripcion = descripcionAlerta(alerta);
     const dedupeKey = buildDedupeKey(checklist, alerta);
+    const existente = await AlertaCamioneta.exists({ dedupeKey });
     const update = {
       $setOnInsert: {
         checklistId: checklist._id,
@@ -99,6 +103,16 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
       update,
       { new: true, upsert: true, setDefaultsOnInsert: true }
     ).lean();
+    if (!existente) {
+      await registrarEvento({
+        usuario: checklist.creadoPor || {},
+        modulo: "ALERTAS",
+        entidad: "AlertaCamioneta",
+        entidadId: doc?._id,
+        accion: "ALERTA_CREADA",
+        observacion: `Alerta ${doc?.tipo || alerta.tipo || ""} para patente ${doc?.patente || checklist.patente || ""}`.trim()
+      });
+    }
     resultados.push(doc);
   }
 
@@ -110,19 +124,47 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
   return resultados;
 };
 
+export const asignarAlertaCamioneta = async ({ id, user, responsable }) => {
+  const responsableFinal = String(responsable || user?.nombre || user?.username || "").trim();
+  return AlertaCamioneta.findByIdAndUpdate(
+    id,
+    {
+      responsable: responsableFinal,
+      fechaAsignacion: new Date()
+    },
+    { new: true }
+  ).lean();
+};
+
+export const marcarAlertaEnProceso = async ({ id, user, responsable, observaciones }) => {
+  const responsableFinal = String(responsable || user?.nombre || user?.username || "").trim();
+  return AlertaCamioneta.findByIdAndUpdate(
+    id,
+    {
+      estado: "EN_PROCESO",
+      responsable: responsableFinal,
+      fechaAsignacion: new Date(),
+      observaciones: String(observaciones || "").trim()
+    },
+    { new: true }
+  ).lean();
+};
+
 export const resolverAlertaCamioneta = async ({ id, user, estado = "RESUELTA", solucion, responsable, observaciones }) => {
   const estadoFinal = String(estado || "RESUELTA").toUpperCase();
+  const accionCorrectiva = String(solucion || "").trim();
   const update = {
     estado: estadoFinal,
-    solucion: String(solucion || "").trim(),
+    accionCorrectiva,
+    solucion: accionCorrectiva,
     responsable: String(responsable || user?.nombre || user?.username || "").trim(),
     observaciones: String(observaciones || "").trim(),
-    resueltoPor: user?.uid || user?._id || null,
-    fechaResolucion: new Date()
+    resueltoPor: userId(user),
+    fechaResolucion: estadoFinal === "RESUELTA" || estadoFinal === "CERRADA" ? new Date() : null
   };
 
   if (estadoFinal === "CERRADA") {
-    update.cerradoPor = user?.uid || user?._id || null;
+    update.cerradoPor = userId(user);
     update.fechaCierre = new Date();
   }
 

@@ -1,6 +1,10 @@
 import Bitacora from "../models/Bitacora.js";
 import RegistroOperacion from "../models/RegistroOperacion.js";
 import CierreTurno from "../models/CierreTurno.js";
+import {
+  registrarBitacoraCreada,
+  registrarRegistroEliminado
+} from "../services/operationalAuditService.js";
 
 const puedeOperarCaldera = (rol) =>
   ["ADMIN", "OPERADOR", "OPERADOR_CALDERA"].includes(String(rol || "").toUpperCase());
@@ -218,6 +222,8 @@ export const iniciarTurno = async (req, res) => {
       estado: "ABIERTA",
       fechaInicio: fechaFinal
     });
+
+    await registrarBitacoraCreada(req, nuevaBitacora);
 
     return res.status(201).json({
       message: "Turno iniciado correctamente",
@@ -527,6 +533,13 @@ export const eliminarBitacora = async (req, res) => {
     bitacora.fechaEliminacion = new Date();
     bitacora.eliminadoPor = req.user?._id || req.user?.id || null;
     await bitacora.save();
+    await registrarRegistroEliminado({
+      req,
+      modulo: "BITACORA_CALDERA",
+      entidad: "Bitacora",
+      entidadId: bitacora._id,
+      observacion: `Bitacora eliminada/ocultada turno ${bitacora.turno || ""} ${bitacora.turnoNumero || ""}`.trim()
+    });
 
     console.log("✅ BITÁCORA OCULTADA SIN BORRAR REGISTROS", {
       bitacoraId,

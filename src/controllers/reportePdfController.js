@@ -8,6 +8,10 @@ import Bitacora from "../models/Bitacora.js";
 import ChecklistInicial from "../models/ChecklistInicial.js";
 import RegistroOperacion from "../models/RegistroOperacion.js";
 import CierreTurno from "../models/CierreTurno.js";
+import {
+  registrarExcelDescargado,
+  registrarPdfDescargado
+} from "../services/operationalAuditService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1228,6 +1232,14 @@ export const descargarReportePdf = async (req, res) => {
     if (!generado)
       return res.status(500).json({ error: "No se generó PDF" });
 
+    await registrarPdfDescargado({
+      req,
+      modulo: "BITACORA_CALDERA",
+      entidad: "Bitacora",
+      entidadId: bitacora._id,
+      observacion: `PDF bitacora caldera turno ${bitacora.turnoNumero || ""}`.trim()
+    });
+
     return res.download(filePath, nombre);
 
   } catch (error) {
@@ -2038,6 +2050,14 @@ referencias.forEach((r, idx) => {
     const buffer =
       await workbook.xlsx.writeBuffer();
 
+    await registrarExcelDescargado({
+      req,
+      modulo: "BITACORA_CALDERA",
+      entidad: "Bitacora",
+      entidadId: bitacora._id,
+      observacion: `Excel bitacora caldera turno ${bitacora.turnoNumero || ""}`.trim()
+    });
+
     res.setHeader(
       "Content-Disposition",
       `attachment; filename=bitacora_${bitacora.turnoNumero}.xlsx`
@@ -2488,6 +2508,14 @@ for (let i = 1; i <= 18; i++) {
     const buffer =
       await workbook.xlsx.writeBuffer();
 
+    await registrarExcelDescargado({
+      req,
+      modulo: "BITACORA_CALDERA",
+      entidad: "Bitacora",
+      entidadId: null,
+      observacion: `Excel rango bitacoras ${desde || "-"} a ${hasta || "-"}`.trim()
+    });
+
     res.setHeader(
       "Content-Disposition",
       "attachment; filename=reporte_rango.xlsx"
@@ -2555,6 +2583,13 @@ export const descargarPdfRango = async (req, res) => {
     );
 
     doc.pipe(res);
+    await registrarPdfDescargado({
+      req,
+      modulo: "BITACORA_CALDERA",
+      entidad: "Bitacora",
+      entidadId: null,
+      observacion: `PDF rango bitacoras ${desde || "-"} a ${hasta || "-"}`.trim()
+    });
 
     /* =====================================================
        COLORES

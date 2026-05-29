@@ -4,6 +4,7 @@ import ChecklistInicial from "../models/ChecklistInicial.js";
 import CierreTurno from "../models/CierreTurno.js";
 import RegistroOperacion from "../models/RegistroOperacion.js";
 import { generarReportePdfInterno } from "./reportePdfController.js";
+import { registrarBitacoraCerrada } from "../services/operationalAuditService.js";
 
 const puedeOperarCaldera = (rol) =>
   ["ADMIN", "OPERADOR", "OPERADOR_CALDERA"].includes(String(rol || "").toUpperCase());
@@ -134,6 +135,7 @@ export const crearCierreTurno = async (req, res) => {
     bitacora.estado = "CERRADA";
     bitacora.fechaCierre = new Date();
     await bitacora.save();
+    await registrarBitacoraCerrada(req, bitacora);
 
     setImmediate(async () => {
       try {

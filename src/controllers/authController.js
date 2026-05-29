@@ -3,6 +3,15 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 import HistorialUsuario from "../models/HistorialUsuario.js";
+import LoginAudit from "../models/LoginAudit.js";
+import {
+  registrarCambioPassword,
+  registrarLoginExitoso,
+  registrarLoginFallido,
+  registrarLogout,
+  registrarResetPassword
+} from "../services/loginAuditService.js";
+import { registrarEvento } from "../services/operationalAuditService.js";
 
 const ROLES = [
   "ADMIN",
@@ -160,6 +169,11 @@ const registrarHistorialUsuario = async (req, { usuario, accion, cambios = {}, c
   }
 };
 
+const comentarioAdmin = (req, fallback = "") => {
+  const motivo = String(req.body?.motivo || req.body?.comentario || "").trim();
+  return motivo || fallback;
+};
+
 const signToken = (user) => {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("Falta JWT_SECRET en .env");
@@ -288,7 +302,10 @@ export const login = async (req, res) => {
       ]
     });
 
-    if (!user) return res.status(401).json({ message: "Credenciales inválidas" });
+    if (!user) {
+      await registrarLoginFallido(req, identificador, "Credenciales incorrectas");
+      return res.status(401).json({ message: "Credenciales invalidas" });
+    }
 
     const estado = String(user.estado || (user.activo ? "ACTIVO" : "BLOQUEADO")).toUpperCase();
     if (!user.activo || estado !== "ACTIVO") {
@@ -299,7 +316,10 @@ export const login = async (req, res) => {
     }
 
     const ok = await bcrypt.compare(String(password), user.passwordHash);
-    if (!ok) return res.status(401).json({ message: "Credenciales inválidas" });
+    if (!ok) {
+      await registrarLoginFallido(req, identificador, "Credenciales incorrectas");
+      return res.status(401).json({ message: "Credenciales invalidas" });
+    }
 
     if (!user.modulosPermitidos?.length) {
       user.modulosPermitidos = modulosPorRol(user.rol);
@@ -307,6 +327,7 @@ export const login = async (req, res) => {
     }
 
     const token = signToken(user);
+    await registrarLoginExitoso(req, user);
 
     return res.json({
       token,
@@ -314,6 +335,16 @@ export const login = async (req, res) => {
     });
   } catch (e) {
     return res.status(500).json({ message: "Error en login" });
+  }
+};
+
+// POST /api/auth/logout
+export const logout = async (req, res) => {
+  try {
+    await registrarLogout(req);
+    return res.json({ ok: true, message: "Logout registrado" });
+  } catch (e) {
+    return res.status(500).json({ message: "Error registrando logout" });
   }
 };
 
@@ -379,6 +410,33 @@ export const actualizarMiPerfil = async (req, res) => {
     return res.json({ message: "Perfil actualizado", user: publicUser(user) });
   } catch (e) {
     return res.status(500).json({ message: "Error actualizando perfil" });
+  }
+};
+
+// POST /api/auth/me/password
+export const cambiarMiPassword = async (req, res) => {
+  try {
+    const id = req.user?.uid;
+    const { passwordActual, newPassword } = req.body || {};
+
+    if (!id) return res.status(401).json({ message: "Token invalido" });
+    if (!passwordActual || !newPassword) {
+      return res.status(400).json({ message: "passwordActual y newPassword son obligatorios" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    const ok = await bcrypt.compare(String(passwordActual), user.passwordHash);
+    if (!ok) return res.status(400).json({ message: "Password actual incorrecto" });
+
+    user.passwordHash = await bcrypt.hash(String(newPassword), 10);
+    await user.save();
+    await registrarCambioPassword(req, user);
+
+    return res.json({ ok: true, message: "Password cambiado" });
+  } catch (e) {
+    return res.status(500).json({ message: "Error cambiando password" });
   }
 };
 
@@ -529,6 +587,20 @@ export const listarHistorialUsuario = async (req, res) => {
   }
 };
 
+// GET /api/auth/login-audit
+export const listarLoginAudit = async (req, res) => {
+  try {
+    const registros = await LoginAudit.find({})
+      .sort({ fecha: -1 })
+      .limit(500)
+      .lean();
+
+    return res.json({ registros });
+  } catch (e) {
+    return res.status(500).json({ message: "Error listando auditoria de accesos" });
+  }
+};
+
 // PATCH /api/auth/users/:id
 export const actualizarUsuario = async (req, res) => {
   try {
@@ -636,7 +708,7 @@ export const actualizarUsuario = async (req, res) => {
       usuario: u,
       accion: "USUARIO_ACTUALIZADO",
       cambios,
-      comentario: "Usuario actualizado desde panel administrador"
+      comentario: comentarioAdmin(req, "Usuario actualizado desde panel administrador")
     });
 
     return res.json({ message: "Usuario actualizado", user: u });
@@ -679,7 +751,15 @@ export const actualizarEstadoUsuario = async (req, res) => {
         estado: { anterior: antes.estado || "", nuevo: u.estado || "" },
         activo: { anterior: antes.activo ?? "", nuevo: u.activo ?? "" }
       },
-      comentario: `Estado cambiado a ${estadoUp}`
+      comentario: comentarioAdmin(req, `Estado cambiado a ${estadoUp}`)
+    });
+    await registrarEvento({
+      req,
+      modulo: "USUARIOS",
+      entidad: "User",
+      entidadId: u._id,
+      accion: estadoUp === "ACTIVO" ? "USUARIO_APROBADO" : "USUARIO_BLOQUEADO",
+      observacion: comentarioAdmin(req, `Estado cambiado a ${estadoUp}`)
     });
 
     return res.json({ message: "Estado actualizado", user: u });
@@ -718,7 +798,15 @@ export const actualizarRolUsuario = async (req, res) => {
         rol: { anterior: antes.rol || "", nuevo: u.rol || "" },
         modulosPermitidos: { anterior: antes.modulosPermitidos || [], nuevo: u.modulosPermitidos || [] }
       },
-      comentario: `Rol cambiado a ${rolUp}`
+      comentario: comentarioAdmin(req, `Rol cambiado a ${rolUp}`)
+    });
+    await registrarEvento({
+      req,
+      modulo: "USUARIOS",
+      entidad: "User",
+      entidadId: u._id,
+      accion: "USUARIO_CAMBIO_ROL",
+      observacion: comentarioAdmin(req, `Rol cambiado a ${rolUp}`)
     });
 
     return res.json({ message: "Rol actualizado", user: u });
@@ -748,6 +836,15 @@ export const resetPassword = async (req, res) => {
       cambios: { password: { anterior: "********", nuevo: "********" } },
       comentario: "Password reseteado desde panel administrador"
     });
+    await registrarResetPassword(req, u);
+    await registrarEvento({
+      req,
+      modulo: "USUARIOS",
+      entidad: "User",
+      entidadId: u._id,
+      accion: "USUARIO_RESET_PASSWORD",
+      observacion: "Password reseteado desde panel administrador"
+    });
 
     return res.json({ message: "Password actualizado", user: u });
   } catch (e) {
@@ -774,6 +871,14 @@ export const eliminarUsuario = async (req, res) => {
       accion: "USUARIO_ELIMINADO",
       cambios: { eliminado: { anterior: false, nuevo: true } },
       comentario: "Usuario eliminado desde panel administrador"
+    });
+    await registrarEvento({
+      req,
+      modulo: "USUARIOS",
+      entidad: "User",
+      entidadId: deleted._id,
+      accion: "USUARIO_ELIMINADO",
+      observacion: "Usuario eliminado desde panel administrador"
     });
 
     return res.json({ message: "Usuario eliminado", user: deleted });

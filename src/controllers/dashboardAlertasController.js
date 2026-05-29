@@ -7,6 +7,7 @@ import {
   resolverAlertaCamioneta,
   sincronizarAlertasOperacionalesChecklist
 } from "../services/alertaCamionetaService.js";
+import { registrarEvento } from "../services/operationalAuditService.js";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
 const ACTIVAS = ["ABIERTA", "EN_PROCESO"];
@@ -110,9 +111,11 @@ const mapAlerta = (alerta) => ({
   operador: alerta.operador || "-",
   estado: alerta.estado || "ABIERTA",
   responsable: alerta.responsable || "-",
+  accionCorrectiva: alerta.accionCorrectiva || alerta.solucion || "",
   solucion: alerta.solucion || "",
   observaciones: alerta.observaciones || "",
   fecha: alerta.fechaCreacion || alerta.createdAt,
+  fechaAsignacion: alerta.fechaAsignacion || null,
   fechaResolucion: alerta.fechaResolucion || null,
   fechaCierre: alerta.fechaCierre || null,
   checklistId: alerta.checklistId?._id || alerta.checklistId || null,
@@ -358,6 +361,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
       const estado = String(req.query?.estado || "").trim().toUpperCase();
       const prioridad = String(req.query?.prioridad || "").trim().toUpperCase();
       const turno = String(req.query?.turno || "").trim().toUpperCase();
+      const responsable = String(req.query?.responsable || "").trim().toUpperCase();
       const fecha = String(req.query?.fecha || "").trim();
 
       if (patente && !String(alerta.patente || "").toUpperCase().includes(patente)) return false;
@@ -365,6 +369,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
       if (prioridad && alerta.prioridad !== prioridad) return false;
       const alertaTurno = String(alerta.turno || alerta.checklistId?.turno || "").toUpperCase();
       if (turno && alertaTurno !== turno) return false;
+      if (responsable && !String(alerta.responsable || "").toUpperCase().includes(responsable)) return false;
       if (fecha && toDayKey(alerta.fechaCreacion) !== fecha) return false;
       return true;
     });
@@ -427,6 +432,9 @@ export const obtenerDashboardAlertas = async (req, res) => {
       });
 
     const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && alerta.estado === "ABIERTA").length;
+    const enProceso = alertasFiltradas.filter((alerta) => alerta.estado === "EN_PROCESO").length;
+    const resueltas = alertasFiltradas.filter((alerta) => alerta.estado === "RESUELTA").length;
+    const cerradas = alertasFiltradas.filter((alerta) => alerta.estado === "CERRADA").length;
     const activas = alertasActivasRaw.length;
     const camionetasOperativas = estadosCamionetas.filter((item) => item.estado === "OPERATIVA").length ||
       Array.from(latestByPatente.values()).filter(esChecklistApto).length;
@@ -437,6 +445,9 @@ export const obtenerDashboardAlertas = async (req, res) => {
     const response = {
       criticas,
       activas,
+      enProceso,
+      resueltas,
+      cerradas,
       checklistsHoy,
       camionetasOperativas,
       alertasPorPrioridad,
@@ -485,6 +496,14 @@ export const gestionarAlertaDashboard = async (req, res) => {
     });
 
     if (!alerta) return res.status(404).json({ message: "Alerta no encontrada" });
+    await registrarEvento({
+      req,
+      modulo: "ALERTAS",
+      entidad: "AlertaCamioneta",
+      entidadId: alerta._id,
+      accion: estado === "CERRADA" ? "ALERTA_CERRADA" : "ALERTA_RESUELTA",
+      observacion: solucion || observaciones || `Alerta ${estado.toLowerCase()}`
+    });
 
     console.log("✅ ALERTA RESUELTA", {
       alertaId: alerta._id,
@@ -521,6 +540,14 @@ export const cerrarAlertaDashboard = async (req, res) => {
       observaciones
     });
     if (!alerta) return res.status(404).json({ message: "Alerta no encontrada" });
+    await registrarEvento({
+      req,
+      modulo: "ALERTAS",
+      entidad: "AlertaCamioneta",
+      entidadId: alerta._id,
+      accion: "ALERTA_CERRADA",
+      observacion: solucion || observaciones || "Alerta cerrada"
+    });
 
     console.log("✅ ALERTA RESUELTA", {
       alertaId: alerta._id,

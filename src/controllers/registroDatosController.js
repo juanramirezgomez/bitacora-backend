@@ -2,6 +2,10 @@ import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import RegistroDatos, { HORARIOS_TURNO, VARIABLES_REGISTRO_DATOS } from "../models/RegistroDatos.js";
 import { emitRegistroDatosUpdate } from "../services/realtimeService.js";
+import {
+  registrarExcelDescargado,
+  registrarPdfDescargado
+} from "../services/operationalAuditService.js";
 
 const TURNOS_VALIDOS = Object.keys(HORARIOS_TURNO);
 
@@ -309,6 +313,13 @@ export const obtenerDashboardRegistroDatos = async (req, res) => {
 export const exportarRegistroDatosPdf = async (req, res) => {
   try {
     const registros = await RegistroDatos.find(buildFilter(req.query)).select(registroSelect).sort({ fechaHora: -1 }).limit(250).lean();
+    await registrarPdfDescargado({
+      req,
+      modulo: "REGISTRO_DATOS",
+      entidad: "RegistroDatos",
+      entidadId: null,
+      observacion: `PDF registro datos PAM (${registros.length} registros)`
+    });
     const doc = new PDFDocument({ margin: 36, size: "A4", layout: "landscape" });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=registro-datos-pam.pdf");
@@ -335,6 +346,13 @@ export const exportarRegistroDatosPdf = async (req, res) => {
 export const exportarRegistroDatosExcel = async (req, res) => {
   try {
     const registros = await RegistroDatos.find(buildFilter(req.query)).select(registroSelect).sort({ fechaHora: -1 }).limit(500).lean();
+    await registrarExcelDescargado({
+      req,
+      modulo: "REGISTRO_DATOS",
+      entidad: "RegistroDatos",
+      entidadId: null,
+      observacion: `Excel registro datos PAM (${registros.length} registros)`
+    });
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Registro Datos PAM");
     sheet.columns = [

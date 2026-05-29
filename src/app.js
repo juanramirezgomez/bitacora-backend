@@ -25,6 +25,8 @@ import bitacoraDiariaRoutes from "./routes/bitacoraDiariaRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import registroDatosRoutes from "./routes/registroDatosRoutes.js";
 import inicioSeguroRoutes from "./routes/inicioSeguroRoutes.js";
+import operationalAuditRoutes from "./routes/operationalAuditRoutes.js";
+import alertasRoutes from "./routes/alertasRoutes.js";
 import { sendTestEmail } from "./services/emailService.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -140,8 +142,10 @@ app.use("/api/users", usersRoutes);
 app.use("/api/checklist-camionetas", checklistCamionetaRoutes);
 app.use("/api/bitacoras-diarias", bitacoraDiariaRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/alertas", alertasRoutes);
 app.use("/api/registro-datos", registroDatosRoutes);
 app.use("/api/inicio-seguro", inicioSeguroRoutes);
+app.use("/api/auditoria-operacional", operationalAuditRoutes);
 
 app.use("/api/bitacoras", checklistRoutes);
 app.use("/api/bitacoras", registroOperacionRoutes);

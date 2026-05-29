@@ -15,6 +15,14 @@ import {
 } from "../services/alertService.js";
 import { emailConfigStatus, sendTestEmail, verifyEmailProviders } from "../services/emailService.js";
 import { enviarWhatsApp, whatsappConfigStatus } from "../services/whatsappService.js";
+import {
+  registrarChecklistCreado,
+  registrarChecklistFinalizado,
+  registrarChecklistRevisado,
+  registrarExcelDescargado,
+  registrarEvento,
+  registrarPdfDescargado
+} from "../services/operationalAuditService.js";
 
 const ESTADOS_CHECKLIST = ["BORRADOR", "FINALIZADO", "REVISADO"];
 const ESTADOS_DOCUMENTO = ["VIGENTE", "VENCIDO", "NO_APLICA"];
@@ -454,6 +462,7 @@ export const crearChecklistCamioneta = async (req, res) => {
       creadoPor: autor,
       fechaCreacion: new Date()
     });
+    await registrarChecklistCreado(req, checklist);
     console.log("⚡ Tiempo Mongo crear checklist:", `${Date.now() - mongoInicio}ms`);
 
     return res.status(201).json({
@@ -772,6 +781,7 @@ export const finalizarChecklistCamioneta = async (req, res) => {
 
     const mongoInicio = Date.now();
     await checklist.save();
+    await registrarChecklistFinalizado(req, checklist);
     console.log("⚡ Tiempo Mongo finalizar checklist:", `${Date.now() - mongoInicio}ms`);
     console.log("✅ CHECKLIST GUARDADO", {
       checklistId: checklist._id,
@@ -837,6 +847,7 @@ export const revisarChecklistCamioneta = async (req, res) => {
     checklist.firmaRevision = String(req.body?.firmaRevision || req.body?.firmaRevisadoPor || req.body?.firmaRevisor || "");
     checklist.observacionRevision = String(req.body?.observacionRevision || req.body?.observaciones || req.body?.observacion || "").trim();
     await checklist.save();
+    await registrarChecklistRevisado(req, checklist);
 
     console.log("✅ CHECKLIST REVISADO", {
       checklistId: checklist._id,
@@ -864,6 +875,14 @@ export const eliminarChecklistCamioneta = async (req, res) => {
       { new: true }
     );
     if (!deleted) return res.status(404).json({ message: "Checklist no encontrado" });
+    await registrarEvento({
+      req,
+      modulo: "CHECKLIST_CAMIONETA",
+      entidad: "ChecklistCamioneta",
+      entidadId: deleted._id,
+      accion: "CHECKLIST_ELIMINADO",
+      observacion: `Checklist eliminado patente ${deleted.patente || ""}`.trim()
+    });
 
     return res.json({ message: "Checklist eliminado", checklist: deleted });
   } catch (error) {
@@ -1042,6 +1061,13 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
   try {
     const checklist = await getChecklistOr404(req, res);
     if (!checklist) return;
+    await registrarPdfDescargado({
+      req,
+      modulo: "CHECKLIST_CAMIONETA",
+      entidad: "ChecklistCamioneta",
+      entidadId: checklist._id,
+      observacion: `PDF checklist camioneta ${checklist.patente || ""}`.trim()
+    });
 
     const doc = new PDFDocument({ size: "A4", margin: 35 });
     res.setHeader("Content-Type", "application/pdf");
@@ -1194,6 +1220,13 @@ export const descargarChecklistCamionetaExcel = async (req, res) => {
   try {
     const checklist = await getChecklistOr404(req, res);
     if (!checklist) return;
+    await registrarExcelDescargado({
+      req,
+      modulo: "CHECKLIST_CAMIONETA",
+      entidad: "ChecklistCamioneta",
+      entidadId: checklist._id,
+      observacion: `Excel checklist camioneta ${checklist.patente || ""}`.trim()
+    });
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Superintendencia Operaciones Litio";
