@@ -17,7 +17,7 @@ const resendClient = () => new Resend(cleanEnv(process.env.RESEND_API_KEY));
 const emailFrom = () => cleanEnv(process.env.EMAIL_FROM);
 
 // DEMO PRESENTACION - destinatario fijo temporal
-const destinatarioDemo = "jota.raaamirez@gmail.com";
+const destinatarioDemo = "gestion.alertas.camioneta@gmail.com";
 
 export const emailConfigStatus = () => {
   const apiKey = cleanEnv(process.env.RESEND_API_KEY);
