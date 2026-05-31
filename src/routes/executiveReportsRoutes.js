@@ -1,5 +1,5 @@
 import express from "express";
-import { requireRole } from "../middlewares/authJwt.js";
+import { requireRole } from "../middlewares/requireRole.js";
 import { authorizeModule } from "../middlewares/authorizeModule.js";
 import {
   descargarReporteEjecutivoPdf,
