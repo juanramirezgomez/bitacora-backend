@@ -76,6 +76,32 @@ export const registrarLoginFallido = async (req, identificador = "", observacion
   return doc;
 };
 
+export const registrarLoginBloqueado = async (
+  req,
+  user,
+  observacion = "Usuario bloqueado temporalmente por exceso de intentos fallidos"
+) => {
+  const doc = await registrarAudit(req, {
+    ...usuarioAudit(user),
+    accion: "LOGIN_BLOQUEADO",
+    resultado: "ERROR",
+    observacion
+  });
+  if (doc) console.log("\u{1F512} LOGIN BLOQUEADO REGISTRADO", { username: doc.username, ip: doc.ip });
+  return doc;
+};
+
+export const registrarDesbloqueoAutomatico = async (req, user) => {
+  const doc = await registrarAudit(req, {
+    ...usuarioAudit(user),
+    accion: "DESBLOQUEO_AUTOMATICO",
+    resultado: "OK",
+    observacion: "Usuario desbloqueado automaticamente al cumplirse el tiempo de bloqueo"
+  });
+  if (doc) console.log("\u{1F513} DESBLOQUEO AUTOMATICO REGISTRADO", { username: doc.username });
+  return doc;
+};
+
 export const registrarLogout = async (req) => {
   const doc = await registrarAudit(req, {
     ...usuarioAudit(req.user || {}),

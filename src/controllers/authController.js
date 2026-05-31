@@ -1,4 +1,4 @@
-// src/controllers/authController.js
+﻿// src/controllers/authController.js
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
@@ -6,6 +6,8 @@ import HistorialUsuario from "../models/HistorialUsuario.js";
 import LoginAudit from "../models/LoginAudit.js";
 import {
   registrarCambioPassword,
+  registrarDesbloqueoAutomatico,
+  registrarLoginBloqueado,
   registrarLoginExitoso,
   registrarLoginFallido,
   registrarLogout,
@@ -34,6 +36,8 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
 const GMAIL_REGEX = /^[^\s@]+@gmail\.com$/i;
 const OPERADOR_ID_REGEX = /^[A-Z0-9]{3,12}$/;
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCK_MINUTES = 5;
 
 const normalizarOperadorId = (value = "") => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -119,6 +123,9 @@ const publicUser = (user) => ({
   estado: user.estado,
   planta: user.planta,
   modulosPermitidos: user.modulosPermitidos || [],
+  failedLoginAttempts: Number(user.failedLoginAttempts || 0),
+  lockUntil: user.lockUntil || null,
+  lastFailedLogin: user.lastFailedLogin || null,
   activo: user.activo,
   fechaCreacion: user.fechaCreacion || user.createdAt
 });
@@ -223,12 +230,12 @@ export const register = async (req, res) => {
     }
 
     if (String(password) !== String(confirmPassword)) {
-      return res.status(400).json({ message: "Las contraseñas no coinciden" });
+      return res.status(400).json({ message: "Las contraseÃ±as no coinciden" });
     }
 
     const rolUp = normalizarRol(rol);
     if (!REGISTER_ROLES.includes(rolUp)) {
-      return res.status(400).json({ message: "Rol solicitado inválido" });
+      return res.status(400).json({ message: "Rol solicitado invÃ¡lido" });
     }
 
     const contactos = buildContactosAlerta({ email, correoCorporativo, correoRespaldo, telefono });
@@ -250,7 +257,7 @@ export const register = async (req, res) => {
         { operadorId: operadorIdFinal }
       ]
     });
-    if (exists) return res.status(409).json({ message: "El correo ya está registrado" });
+    if (exists) return res.status(409).json({ message: "El correo ya estÃ¡ registrado" });
 
     const passwordHash = await bcrypt.hash(String(password), 10);
 
@@ -273,7 +280,7 @@ export const register = async (req, res) => {
     });
 
     return res.status(201).json({
-      message: "Registro recibido. Tu usuario queda pendiente de aprobación.",
+      message: "Registro recibido. Tu usuario queda pendiente de aprobaciÃ³n.",
       user: publicUser(nuevo)
     });
   } catch (e) {
@@ -307,24 +314,66 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: "Credenciales invalidas" });
     }
 
+    const ahora = new Date();
+    if (user.lockUntil && new Date(user.lockUntil).getTime() > ahora.getTime()) {
+      await registrarLoginBloqueado(
+        req,
+        user,
+        "Usuario bloqueado temporalmente por exceso de intentos fallidos"
+      );
+      return res.status(423).json({
+        message: "Cuenta bloqueada temporalmente. Intente nuevamente en unos minutos.",
+        lockUntil: user.lockUntil
+      });
+    }
+
+    if (user.lockUntil && new Date(user.lockUntil).getTime() <= ahora.getTime()) {
+      user.failedLoginAttempts = 0;
+      user.lockUntil = null;
+      await user.save();
+      await registrarDesbloqueoAutomatico(req, user);
+    }
+
     const estado = String(user.estado || (user.activo ? "ACTIVO" : "BLOQUEADO")).toUpperCase();
     if (!user.activo || estado !== "ACTIVO") {
       const message = estado === "PENDIENTE"
-        ? "Tu cuenta está pendiente de aprobación por un administrador."
+        ? "Tu cuenta estÃ¡ pendiente de aprobaciÃ³n por un administrador."
         : "Usuario bloqueado o inactivo";
       return res.status(403).json({ message });
     }
 
     const ok = await bcrypt.compare(String(password), user.passwordHash);
     if (!ok) {
+      user.failedLoginAttempts = Number(user.failedLoginAttempts || 0) + 1;
+      user.lastFailedLogin = new Date();
       await registrarLoginFallido(req, identificador, "Credenciales incorrectas");
+
+      if (user.failedLoginAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+        user.lockUntil = new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000);
+        await user.save();
+        await registrarLoginBloqueado(
+          req,
+          user,
+          "Usuario bloqueado temporalmente por exceso de intentos fallidos"
+        );
+        return res.status(423).json({
+          message: "Cuenta bloqueada temporalmente. Intente nuevamente en unos minutos.",
+          lockUntil: user.lockUntil
+        });
+      }
+
+      await user.save();
       return res.status(401).json({ message: "Credenciales invalidas" });
     }
 
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+
     if (!user.modulosPermitidos?.length) {
       user.modulosPermitidos = modulosPorRol(user.rol);
-      await user.save();
     }
+
+    await user.save();
 
     const token = signToken(user);
     await registrarLoginExitoso(req, user);
@@ -352,7 +401,7 @@ export const logout = async (req, res) => {
 export const me = async (req, res) => {
   try {
     const user = await User.findById(req.user?.uid)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -405,7 +454,7 @@ export const actualizarMiPerfil = async (req, res) => {
     if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
 
     const user = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     return res.json({ message: "Perfil actualizado", user: publicUser(user) });
   } catch (e) {
@@ -471,7 +520,7 @@ export const crearUsuario = async (req, res) => {
 
     const rolUp = normalizarRol(rol);
     if (!ROLES.includes(rolUp)) {
-      return res.status(400).json({ message: "rol inválido" });
+      return res.status(400).json({ message: "rol invÃ¡lido" });
     }
 
     let operadorIdFinal = normalizarOperadorId(operadorId);
@@ -491,7 +540,7 @@ export const crearUsuario = async (req, res) => {
 
     const estadoUp = String(estado || "ACTIVO").toUpperCase();
     if (!ESTADOS.includes(estadoUp)) {
-      return res.status(400).json({ message: "estado inválido" });
+      return res.status(400).json({ message: "estado invÃ¡lido" });
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
@@ -556,14 +605,14 @@ export const listarUsuarios = async (req, res) => {
     if (estado) {
       const estadoUp = String(estado).toUpperCase();
       if (!ESTADOS.includes(estadoUp)) {
-        return res.status(400).json({ message: "estado inválido" });
+        return res.status(400).json({ message: "estado invÃ¡lido" });
       }
       filter.estado = estadoUp;
     }
 
     const users = await User.find(filter)
       .sort({ createdAt: -1 })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
     return res.json(users);
   } catch (e) {
     return res.status(500).json({ message: "Error listando usuarios" });
@@ -666,7 +715,7 @@ export const actualizarUsuario = async (req, res) => {
     if (req.body.estado !== undefined) {
       const estadoUp = String(req.body.estado).toUpperCase();
       if (!ESTADOS.includes(estadoUp)) {
-        return res.status(400).json({ message: "estado inválido" });
+        return res.status(400).json({ message: "estado invÃ¡lido" });
       }
       if (String(req.user?.uid || "") === String(id) && estadoUp !== "ACTIVO") {
         return res.status(400).json({ message: "No puedes bloquear o dejar pendiente tu propia cuenta ADMIN" });
@@ -678,14 +727,14 @@ export const actualizarUsuario = async (req, res) => {
     if (req.body.rol !== undefined) {
       const rolUp = normalizarRol(req.body.rol);
       if (!ROLES.includes(rolUp)) {
-        return res.status(400).json({ message: "rol inválido" });
+        return res.status(400).json({ message: "rol invÃ¡lido" });
       }
       update.rol = rolUp;
       update.modulosPermitidos = modulosPorRol(rolUp);
     }
 
     const u = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -726,7 +775,7 @@ export const actualizarEstadoUsuario = async (req, res) => {
     if (!antes) return res.status(404).json({ message: "Usuario no encontrado" });
 
     if (!ESTADOS.includes(estadoUp)) {
-      return res.status(400).json({ message: "estado inválido" });
+      return res.status(400).json({ message: "estado invÃ¡lido" });
     }
 
     if (String(req.user?.uid || "") === String(id) && estadoUp !== "ACTIVO") {
@@ -740,7 +789,7 @@ export const actualizarEstadoUsuario = async (req, res) => {
         activo: estadoUp === "ACTIVO"
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -777,7 +826,7 @@ export const actualizarRolUsuario = async (req, res) => {
     if (!antes) return res.status(404).json({ message: "Usuario no encontrado" });
 
     if (!ROLES.includes(rolUp)) {
-      return res.status(400).json({ message: "rol inválido" });
+      return res.status(400).json({ message: "rol invÃ¡lido" });
     }
 
     const u = await User.findByIdAndUpdate(
@@ -787,7 +836,7 @@ export const actualizarRolUsuario = async (req, res) => {
         modulosPermitidos: modulosPorRol(rolUp)
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -805,8 +854,16 @@ export const actualizarRolUsuario = async (req, res) => {
       modulo: "USUARIOS",
       entidad: "User",
       entidadId: u._id,
-      accion: "USUARIO_CAMBIO_ROL",
+      accion: "CAMBIO_ROL",
       observacion: comentarioAdmin(req, `Rol cambiado a ${rolUp}`)
+    });
+    await registrarEvento({
+      req,
+      modulo: "USUARIOS",
+      entidad: "User",
+      entidadId: u._id,
+      accion: "CAMBIO_PERMISO",
+      observacion: comentarioAdmin(req, `Permisos recalculados por rol ${rolUp}`)
     });
 
     return res.json({ message: "Rol actualizado", user: u });
@@ -826,7 +883,7 @@ export const resetPassword = async (req, res) => {
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 
     const u = await User.findByIdAndUpdate(id, { passwordHash }, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado failedLoginAttempts lockUntil lastFailedLogin activo");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -862,7 +919,7 @@ export const eliminarUsuario = async (req, res) => {
     }
 
     const deleted = await User.findByIdAndDelete(id)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta failedLoginAttempts lockUntil lastFailedLogin activo");
 
     if (!deleted) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -886,3 +943,4 @@ export const eliminarUsuario = async (req, res) => {
     return res.status(500).json({ message: "Error eliminando usuario" });
   }
 };
+

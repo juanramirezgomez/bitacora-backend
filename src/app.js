@@ -27,6 +27,9 @@ import registroDatosRoutes from "./routes/registroDatosRoutes.js";
 import inicioSeguroRoutes from "./routes/inicioSeguroRoutes.js";
 import operationalAuditRoutes from "./routes/operationalAuditRoutes.js";
 import alertasRoutes from "./routes/alertasRoutes.js";
+import systemHealthRoutes from "./routes/systemHealthRoutes.js";
+import systemBackupRoutes from "./routes/systemBackupRoutes.js";
+import executiveReportsRoutes from "./routes/executiveReportsRoutes.js";
 import { sendTestEmail } from "./services/emailService.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -146,6 +149,9 @@ app.use("/api/alertas", alertasRoutes);
 app.use("/api/registro-datos", registroDatosRoutes);
 app.use("/api/inicio-seguro", inicioSeguroRoutes);
 app.use("/api/auditoria-operacional", operationalAuditRoutes);
+app.use("/api/system-health", systemHealthRoutes);
+app.use("/api/system-backups", systemBackupRoutes);
+app.use("/api/executive-reports", executiveReportsRoutes);
 
 app.use("/api/bitacoras", checklistRoutes);
 app.use("/api/bitacoras", registroOperacionRoutes);

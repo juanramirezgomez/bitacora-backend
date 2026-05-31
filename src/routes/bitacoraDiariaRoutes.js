@@ -13,16 +13,16 @@ import {
   subirArchivoBitacoraDiaria,
   uploadBitacoraDiaria
 } from "../controllers/bitacoraDiariaController.js";
-import { requireRole } from "../middlewares/requireRole.js";
+import { authorizeModule } from "../middlewares/authorizeModule.js";
 
 const router = express.Router();
 
-router.use(requireRole("ADMIN"));
+router.use(authorizeModule("libro_diario"));
 
 router.post("/", crearBitacoraDiaria);
 router.get("/", listarBitacorasDiarias);
 router.post("/upload", uploadBitacoraDiaria.array("archivos", 10), subirArchivoBitacoraDiaria);
-router.get("/:id/pdf", descargarBitacoraDiariaPdf);
+router.get("/:id/pdf", authorizeModule("pdf"), descargarBitacoraDiariaPdf);
 router.get("/:id", obtenerBitacoraDiaria);
 router.patch("/:id", actualizarBitacoraDiaria);
 router.post("/:id/novedades", agregarNovedad);

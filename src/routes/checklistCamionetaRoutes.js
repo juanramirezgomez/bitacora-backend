@@ -16,8 +16,11 @@ import {
   subirFotoChecklistCamioneta,
   uploadChecklistCamioneta
 } from "../controllers/checklistCamionetaController.js";
+import { authorizeModule } from "../middlewares/authorizeModule.js";
 
 const router = express.Router();
+
+router.use(authorizeModule("checklist_camioneta"));
 
 router.post("/", crearChecklistCamioneta);
 router.get("/", listarChecklistCamionetas);
@@ -26,8 +29,8 @@ router.get("/alertas-vencimientos", obtenerAlertasVencimientosChecklistCamioneta
 router.get("/alertas", obtenerAlertasChecklistCamionetaController);
 router.post("/alertas/enviar", enviarAlertasChecklistCamionetaController);
 router.post("/alertas/diagnostico", diagnosticoAlertasChecklistCamionetaController);
-router.get("/:id/pdf", descargarChecklistCamionetaPdf);
-router.get("/:id/excel", descargarChecklistCamionetaExcel);
+router.get("/:id/pdf", authorizeModule("pdf"), descargarChecklistCamionetaPdf);
+router.get("/:id/excel", authorizeModule("excel"), descargarChecklistCamionetaExcel);
 router.get("/:id", obtenerChecklistCamioneta);
 router.patch("/:id/finalizar", finalizarChecklistCamioneta);
 router.patch("/:id/revisar", revisarChecklistCamioneta);

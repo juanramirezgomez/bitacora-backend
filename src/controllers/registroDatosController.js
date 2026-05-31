@@ -28,7 +28,7 @@ const buildFechaHora = (fecha, hora, turno) => {
 };
 
 const rolActual = (req) => String(req.user?.rol || "").toUpperCase();
-const puedeOperarRegistroDatos = (req) => ["ADMIN", "OPERADOR_PLANTA"].includes(rolActual(req));
+const puedeOperarRegistroDatos = (req) => ["ADMIN", "OPERADOR_PLANTA", "OPERADOR"].includes(rolActual(req));
 
 const normalizeLecturas = (lecturas = []) => {
   const input = new Map(

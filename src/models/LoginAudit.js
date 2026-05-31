@@ -10,7 +10,15 @@ const loginAuditSchema = new mongoose.Schema(
     planta: { type: String, default: "" },
     accion: {
       type: String,
-      enum: ["LOGIN_EXITOSO", "LOGIN_FALLIDO", "LOGOUT", "RESET_PASSWORD", "CAMBIO_PASSWORD"],
+      enum: [
+        "LOGIN_EXITOSO",
+        "LOGIN_FALLIDO",
+        "LOGIN_BLOQUEADO",
+        "DESBLOQUEO_AUTOMATICO",
+        "LOGOUT",
+        "RESET_PASSWORD",
+        "CAMBIO_PASSWORD"
+      ],
       required: true,
       index: true
     },

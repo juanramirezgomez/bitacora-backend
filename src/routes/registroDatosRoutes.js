@@ -8,18 +8,18 @@ import {
   obtenerRegistroDatos,
   obtenerRegistroDatosRealtime
 } from "../controllers/registroDatosController.js";
-import { requireRole } from "../middlewares/requireRole.js";
+import { authorizeModule } from "../middlewares/authorizeModule.js";
 
 const router = express.Router();
 
-router.use(requireRole("ADMIN"));
+router.use(authorizeModule("registro_datos"));
 
 router.post("/", crearRegistroDatos);
 router.get("/", listarRegistroDatos);
 router.get("/realtime", obtenerRegistroDatosRealtime);
 router.get("/dashboard", obtenerDashboardRegistroDatos);
-router.get("/export/pdf", exportarRegistroDatosPdf);
-router.get("/export/excel", exportarRegistroDatosExcel);
+router.get("/export/pdf", authorizeModule("pdf"), exportarRegistroDatosPdf);
+router.get("/export/excel", authorizeModule("excel"), exportarRegistroDatosExcel);
 router.get("/:id", obtenerRegistroDatos);
 
 export default router;

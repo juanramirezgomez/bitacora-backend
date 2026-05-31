@@ -183,7 +183,7 @@ export const uploadChecklistCamioneta = multer({
 const rolActual = (req) => String(req.user?.rol || "").toUpperCase();
 const esAdmin = (req) => rolActual(req) === "ADMIN";
 const esSupervision = (req) => ["SUPERVISION", "SUPERVISOR"].includes(rolActual(req));
-const esOperadorPlanta = (req) => rolActual(req) === "OPERADOR_PLANTA";
+const esOperadorPlanta = (req) => ["OPERADOR_PLANTA", "OPERADOR"].includes(rolActual(req));
 const userId = (req) => String(req.user?.uid || req.user?.id || req.user?._id || req.user?.sub || "");
 
 const resolverUserId = async (req) => {

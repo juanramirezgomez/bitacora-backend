@@ -10,6 +10,7 @@ import {
 } from "../controllers/usersController.js";
 
 import { requireAuth } from "../middlewares/authJwt.js";
+import { authorizeModule } from "../middlewares/authorizeModule.js";
 
 const router = express.Router();
 
@@ -23,7 +24,7 @@ const requireAdmin = (req, res, next) => {
 };
 
 // ✅ Todo /api/users requiere JWT + ADMIN
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth, requireAdmin, authorizeModule("usuarios"));
 
 // GET /api/users?q=&rol=&activo=
 router.get("/", listUsers);

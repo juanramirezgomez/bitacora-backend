@@ -43,10 +43,15 @@ const userSchema = new mongoose.Schema(
     planta: { type: String, default: "PC1" },
     modulosPermitidos: { type: [String], default: [] },
     passwordHash: { type: String, required: true },
+    failedLoginAttempts: { type: Number, default: 0 },
+    lockUntil: { type: Date, default: null },
+    lastFailedLogin: { type: Date, default: null },
     activo: { type: Boolean, default: true },
     fechaCreacion: { type: Date, default: Date.now }
   },
   { timestamps: true }
 );
+
+userSchema.index({ lockUntil: 1 });
 
 export default mongoose.model("User", userSchema);

@@ -19,6 +19,7 @@ import {
 } from "../controllers/authController.js";
 import { requireAuth } from "../middlewares/authJwt.js";
 import { requireAdmin } from "../middlewares/requireAdmin.js";
+import { authorizeModule } from "../middlewares/authorizeModule.js";
 
 const router = express.Router();
 
@@ -31,14 +32,14 @@ router.patch("/me", requireAuth, actualizarMiPerfil);
 router.post("/me/password", requireAuth, cambiarMiPassword);
 
 // ✅ Admin users
-router.post("/users", requireAuth, requireAdmin, crearUsuario);
-router.get("/users", requireAuth, requireAdmin, listarUsuarios);
-router.get("/login-audit", requireAuth, requireAdmin, listarLoginAudit);
-router.get("/users/:id/historial", requireAuth, requireAdmin, listarHistorialUsuario);
-router.patch("/users/:id/estado", requireAuth, requireAdmin, actualizarEstadoUsuario);
-router.patch("/users/:id/rol", requireAuth, requireAdmin, actualizarRolUsuario);
-router.patch("/users/:id", requireAuth, requireAdmin, actualizarUsuario);
-router.post("/users/:id/reset-password", requireAuth, requireAdmin, resetPassword);
-router.delete("/users/:id", requireAuth, requireAdmin, eliminarUsuario);
+router.post("/users", requireAuth, requireAdmin, authorizeModule("usuarios"), crearUsuario);
+router.get("/users", requireAuth, requireAdmin, authorizeModule("usuarios"), listarUsuarios);
+router.get("/login-audit", requireAuth, requireAdmin, authorizeModule("auditoria_accesos"), listarLoginAudit);
+router.get("/users/:id/historial", requireAuth, requireAdmin, authorizeModule("usuarios"), listarHistorialUsuario);
+router.patch("/users/:id/estado", requireAuth, requireAdmin, authorizeModule("usuarios"), actualizarEstadoUsuario);
+router.patch("/users/:id/rol", requireAuth, requireAdmin, authorizeModule("roles"), actualizarRolUsuario);
+router.patch("/users/:id", requireAuth, requireAdmin, authorizeModule("usuarios"), actualizarUsuario);
+router.post("/users/:id/reset-password", requireAuth, requireAdmin, authorizeModule("usuarios"), resetPassword);
+router.delete("/users/:id", requireAuth, requireAdmin, authorizeModule("usuarios"), eliminarUsuario);
 
 export default router;
