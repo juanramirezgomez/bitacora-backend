@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const ESTADOS_CHECKLIST = ["BORRADOR", "FINALIZADO", "REVISADO"];
 const ESTADOS_DOCUMENTO = ["VIGENTE", "VENCIDO", "NO_APLICA"];
 const ESTADOS_INSPECCION = ["BUENO", "MALO", "NA"];
+const ESTADOS_RESPUESTA = ["SI", "NO", "NA"];
 
 const documentoSchema = new mongoose.Schema(
   {
@@ -17,6 +18,15 @@ const itemInspeccionSchema = new mongoose.Schema(
   {
     nombre: { type: String, required: true, trim: true },
     estado: { type: String, enum: ESTADOS_INSPECCION, default: "NA" },
+    observacion: { type: String, trim: true, default: "" }
+  },
+  { _id: false }
+);
+
+const itemRespuestaSchema = new mongoose.Schema(
+  {
+    nombre: { type: String, required: true, trim: true },
+    estado: { type: String, enum: ESTADOS_RESPUESTA, default: "NA" },
     observacion: { type: String, trim: true, default: "" }
   },
   { _id: false }
@@ -77,6 +87,8 @@ const checklistCamionetaSchema = new mongoose.Schema(
     estadoCamioneta: { type: [itemInspeccionSchema], default: [] },
     frenosDireccion: { type: [itemInspeccionSchema], default: [] },
     luces: { type: [itemInspeccionSchema], default: [] },
+    sistemaAsistenciaConductor: { type: [itemRespuestaSchema], default: [] },
+    encuestaFatigaSomnolencia: { type: [itemRespuestaSchema], default: [] },
 
     abolladura: { type: Boolean, default: false },
     raya: { type: Boolean, default: false },
@@ -132,4 +144,4 @@ checklistCamionetaSchema.pre("save", function updateDates() {
 });
 
 export default mongoose.model("ChecklistCamioneta", checklistCamionetaSchema);
-export { ESTADOS_CHECKLIST, ESTADOS_DOCUMENTO, ESTADOS_INSPECCION };
+export { ESTADOS_CHECKLIST, ESTADOS_DOCUMENTO, ESTADOS_INSPECCION, ESTADOS_RESPUESTA };

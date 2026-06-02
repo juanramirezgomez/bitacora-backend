@@ -27,6 +27,7 @@ import {
 const ESTADOS_CHECKLIST = ["BORRADOR", "FINALIZADO", "REVISADO"];
 const ESTADOS_DOCUMENTO = ["VIGENTE", "VENCIDO", "NO_APLICA"];
 const ESTADOS_INSPECCION = ["BUENO", "MALO", "NA"];
+const ESTADOS_RESPUESTA = ["SI", "NO", "NA"];
 
 const ejecutarAlertasChecklistEnSegundoPlano = (checklistId) => {
   console.log("🚀 ALERTAS EN BACKGROUND", { checklistId });
@@ -108,6 +109,28 @@ const LUCES = [
   "Luces interiores"
 ];
 
+const SISTEMA_ASISTENCIA_CONDUCTOR = [
+  "Se enciende correctamente al arrancar el vehiculo",
+  "Soporte y base de equipo en buen estado y limpio",
+  "Alarma visual operativa",
+  "Alarma audible operativa",
+  "Dispositivo correctamente alineado"
+];
+
+const ENCUESTA_FATIGA_SOMNOLENCIA = [
+  "Ha tenido dificultades de lograr un sueno reparador?",
+  "Presenta algun evento que dificulte su buen dormir?",
+  "Sufre de insomnio ultimamente?",
+  "Durmio menos tiempo del necesario durante su ultimo periodo de sueno?",
+  "Esta consumiendo algun medicamento que provoque somnolencia o perdida de atencion?",
+  "Padece de alguna enfermedad que pudiese causar somnolencia?",
+  "Existen factores externos que afecten la calidad de su sueno?",
+  "Ha presentado eventos importantes de somnolencia?",
+  "Se siente en condiciones de conducir?",
+  "Tiene algun problema que afecte su normal desempeno?",
+  "Considera usted que descanso lo suficiente?"
+];
+
 const CRITICOS = [
   "Frenos",
   "Freno de mano",
@@ -144,6 +167,8 @@ const CHECKLIST_LIST_FIELDS = [
   "estadoCamioneta.estado",
   "frenosDireccion.estado",
   "luces.estado",
+  "sistemaAsistenciaConductor.estado",
+  "encuestaFatigaSomnolencia.estado",
   "fotosObservaciones.nombre",
   "fotosObservaciones.ruta",
   "fotosObservaciones.fecha",
@@ -301,6 +326,18 @@ const crearItems = (nombres, input = []) => {
   });
 };
 
+const crearRespuestas = (nombres, input = []) => {
+  const map = new Map((Array.isArray(input) ? input : []).map(item => [String(item.nombre || ""), item]));
+  return nombres.map(nombre => {
+    const item = map.get(nombre) || {};
+    return {
+      nombre,
+      estado: normalizarEstado(item.estado, ESTADOS_RESPUESTA, "NA"),
+      observacion: String(item.observacion || "").trim()
+    };
+  });
+};
+
 const crearDocumentos = (input = []) => {
   const map = new Map((Array.isArray(input) ? input : []).map(item => [String(item.nombre || ""), item]));
   return DOCUMENTOS.map(nombre => {
@@ -359,6 +396,8 @@ const buildPayload = (body = {}) => {
     estadoCamioneta: crearItems(ESTADO_CAMIONETA, body.estadoCamioneta),
     frenosDireccion: crearItems(FRENOS_DIRECCION, body.frenosDireccion),
     luces: crearItems(LUCES, body.luces),
+    sistemaAsistenciaConductor: crearRespuestas(SISTEMA_ASISTENCIA_CONDUCTOR, body.sistemaAsistenciaConductor),
+    encuestaFatigaSomnolencia: crearRespuestas(ENCUESTA_FATIGA_SOMNOLENCIA, body.encuestaFatigaSomnolencia),
     abolladura,
     raya,
     picadura,
@@ -1057,6 +1096,60 @@ const drawMiniInspectionTable = (doc, title, rows = [], x, startY, width = 255) 
   return y + 8;
 };
 
+const drawMiniResponseTable = (doc, title, rows = [], startY) => {
+  const colors = { purple: "#461D77", border: "#D7D8E8", row: "#F8FAFC", dark: "#111827" };
+  const x = 35;
+  const width = 525;
+  const titleHeight = 14;
+  const headerHeight = 10;
+  const rowHeight = 9.3;
+  const itemWidth = 292;
+  const stateWidth = 24;
+  const obsWidth = width - itemWidth - (stateWidth * 3);
+  let y = ensurePdfSpace(doc, startY, titleHeight + headerHeight + (rows.length * rowHeight) + 18);
+
+  doc.rect(x, y, width, titleHeight).fill(colors.purple);
+  doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(6.8).text(title, x + 6, y + 4);
+  y += titleHeight;
+
+  doc.rect(x, y, itemWidth, headerHeight).fillAndStroke("#EDE9FE", colors.border);
+  doc.rect(x + itemWidth, y, stateWidth, headerHeight).fillAndStroke("#DCFCE7", colors.border);
+  doc.rect(x + itemWidth + stateWidth, y, stateWidth, headerHeight).fillAndStroke("#FEE2E2", colors.border);
+  doc.rect(x + itemWidth + (stateWidth * 2), y, stateWidth, headerHeight).fillAndStroke("#E5E7EB", colors.border);
+  doc.rect(x + itemWidth + (stateWidth * 3), y, obsWidth, headerHeight).fillAndStroke("#EDE9FE", colors.border);
+  doc.fillColor(colors.dark).font("Helvetica-Bold").fontSize(5)
+    .text("ITEM", x + 4, y + 3)
+    .text("SI", x + itemWidth, y + 3, { width: stateWidth, align: "center" })
+    .text("NO", x + itemWidth + stateWidth, y + 3, { width: stateWidth, align: "center" })
+    .text("N/A", x + itemWidth + (stateWidth * 2), y + 3, { width: stateWidth, align: "center" })
+    .text("OBSERVACION", x + itemWidth + (stateWidth * 3) + 4, y + 3);
+  y += headerHeight;
+
+  rows.forEach((row, index) => {
+    const fill = index % 2 ? "#FFFFFF" : colors.row;
+    const siX = x + itemWidth;
+    const noX = siX + stateWidth;
+    const naX = noX + stateWidth;
+    const obsX = naX + stateWidth;
+    doc.rect(x, y, itemWidth, rowHeight).fillAndStroke(fill, colors.border);
+    doc.rect(siX, y, stateWidth, rowHeight).fillAndStroke(row.estado === "SI" ? "#DCFCE7" : fill, colors.border);
+    doc.rect(noX, y, stateWidth, rowHeight).fillAndStroke(row.estado === "NO" ? "#FEE2E2" : fill, colors.border);
+    doc.rect(naX, y, stateWidth, rowHeight).fillAndStroke(row.estado === "NA" ? "#E5E7EB" : fill, colors.border);
+    doc.rect(obsX, y, obsWidth, rowHeight).fillAndStroke(fill, colors.border);
+    doc.fillColor(colors.dark).font("Helvetica").fontSize(4.9)
+      .text(row.nombre || "-", x + 4, y + 2.4, { width: itemWidth - 8, height: rowHeight - 1 });
+    doc.font("Helvetica-Bold").fontSize(5.2)
+      .text(estadoMark(row.estado, "SI"), siX, y + 2.4, { width: stateWidth, align: "center" })
+      .text(estadoMark(row.estado, "NO"), noX, y + 2.4, { width: stateWidth, align: "center" })
+      .text(estadoMark(row.estado, "NA"), naX, y + 2.4, { width: stateWidth, align: "center" });
+    doc.font("Helvetica").fontSize(4.7)
+      .text(row.observacion || "-", obsX + 4, y + 2.4, { width: obsWidth - 8, height: rowHeight - 1 });
+    y += rowHeight;
+  });
+
+  return y + 8;
+};
+
 export const descargarChecklistCamionetaPdf = async (req, res) => {
   try {
     const checklist = await getChecklistOr404(req, res);
@@ -1137,12 +1230,20 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
       .text(`Observacion: ${checklist.observacionesCarroceria || "-"}`, 355, y + 70, { width: 190 });
     y += 166;
 
+    y = drawMiniResponseTable(doc, "REVISION SISTEMA DE ASISTENCIA AL CONDUCTOR", checklist.sistemaAsistenciaConductor || [], y);
+    y = drawMiniResponseTable(doc, "ENCUESTA DE FATIGA / SOMNOLENCIA", checklist.encuestaFatigaSomnolencia || [], y);
+
+    y = ensurePdfSpace(doc, y, 80);
     doc.rect(35, y, 525, 68).fillAndStroke("#F8FAFC", "#D7D8E8");
     doc.fillColor("#461D77").font("Helvetica-Bold").fontSize(9).text("OBSERVACIONES", 45, y + 10);
     doc.fillColor("#111827").font("Helvetica").fontSize(8)
       .text(checklist.observacionesGenerales || "-", 45, y + 30, { width: 500, height: 30 });
 
     y += 86;
+    if (y > 500 && checklist.fotosObservaciones?.length) {
+      doc.addPage();
+      y = 40;
+    }
 
     doc.fillColor("#461D77").font("Helvetica-Bold").fontSize(10).text("EVIDENCIAS FOTOGRAFICAS", 35, y);
     y += 18;
@@ -1205,8 +1306,10 @@ const paintEstado = (cell) => {
   const value = String(cell.value || "").toUpperCase();
   const colors = {
     BUENO: "FFDCFCE7",
+    SI: "FFDCFCE7",
     VIGENTE: "FFDCFCE7",
     MALO: "FFFEE2E2",
+    NO: "FFFEE2E2",
     VENCIDO: "FFFEE2E2",
     NA: "FFE5E7EB",
     NO_APLICA: "FFE5E7EB"
@@ -1265,6 +1368,8 @@ export const descargarChecklistCamionetaExcel = async (req, res) => {
     checklist.estadoCamioneta.forEach(i => addRow("Estado camioneta", i.nombre, i.estado, i.observacion));
     checklist.frenosDireccion.forEach(i => addRow("Frenos y direccion", i.nombre, i.estado, i.observacion));
     checklist.luces.forEach(i => addRow("Luces", i.nombre, i.estado, i.observacion));
+    (checklist.sistemaAsistenciaConductor || []).forEach(i => addRow("Sistema asistencia conductor", i.nombre, i.estado, i.observacion));
+    (checklist.encuestaFatigaSomnolencia || []).forEach(i => addRow("Encuesta fatiga / somnolencia", i.nombre, i.estado, i.observacion));
     addRow("Carroceria", "Abolladura / Raya / Picadura", "", `${checklist.abolladura ? "Abolladura " : ""}${checklist.raya ? "Raya " : ""}${checklist.picadura ? "Picadura" : ""}`.trim() || "Sin marcas");
     addRow("Observaciones", "Generales", "", checklist.observacionesGenerales);
     (checklist.fotosObservaciones || []).forEach((foto, index) => {
