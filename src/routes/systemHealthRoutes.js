@@ -7,7 +7,7 @@ const router = express.Router();
 
 router.get(
   "/",
-  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
+  requireRole("ADMIN"),
   authorizeModule("system_health"),
   obtenerSystemHealth
 );

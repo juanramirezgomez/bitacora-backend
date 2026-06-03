@@ -2,7 +2,19 @@
 import bcrypt from "bcryptjs";
 import User from "../models/user.js";
 
-const ROLES = ["ADMIN", "OPERADOR", "SUPERVISOR", "OPERADOR_CALDERA", "OPERADOR_PLANTA", "SUPERVISION"];
+const ROLES = [
+  "ADMIN",
+  "SUPERINTENDENTE",
+  "JEFE_PLANTA",
+  "JEFE_TURNO",
+  "ECM",
+  "OPERADOR_LIDER",
+  "OPERADOR",
+  "SUPERVISOR",
+  "OPERADOR_CALDERA",
+  "OPERADOR_PLANTA",
+  "SUPERVISION"
+];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GMAIL_REGEX = /^[^\s@]+@gmail\.com$/i;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;

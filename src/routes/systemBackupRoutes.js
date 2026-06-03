@@ -11,14 +11,14 @@ const router = express.Router();
 
 router.get(
   "/",
-  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
+  requireRole("ADMIN"),
   authorizeModule("backups"),
   listarBackups
 );
 
 router.get(
   "/latest",
-  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
+  requireRole("ADMIN"),
   authorizeModule("backups"),
   obtenerBackupLatest
 );

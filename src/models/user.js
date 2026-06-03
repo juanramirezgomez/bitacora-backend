@@ -27,6 +27,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: [
         "ADMIN",
+        "SUPERINTENDENTE",
+        "JEFE_PLANTA",
+        "JEFE_TURNO",
+        "ECM",
+        "OPERADOR_LIDER",
         "OPERADOR",
         "SUPERVISOR",
         "OPERADOR_CALDERA",

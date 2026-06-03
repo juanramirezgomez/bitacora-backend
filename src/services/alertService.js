@@ -10,8 +10,20 @@ import { sincronizarAlertasOperacionalesChecklist } from "./alertaCamionetaServi
 const ALERTA_DIAS = 30;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
-const ROLES_ALERTA = ["SUPERVISION", "SUPERVISOR", "ADMIN"];
-const ROLES_VALIDOS_ALERTA = ["ADMIN", "SUPERVISION", "SUPERVISOR", "OPERADOR", "OPERADOR_PLANTA", "OPERADOR_CALDERA"];
+const ROLES_ALERTA = ["SUPERVISION", "SUPERVISOR", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "ADMIN"];
+const ROLES_VALIDOS_ALERTA = [
+  "ADMIN",
+  "SUPERINTENDENTE",
+  "JEFE_PLANTA",
+  "JEFE_TURNO",
+  "ECM",
+  "OPERADOR_LIDER",
+  "SUPERVISION",
+  "SUPERVISOR",
+  "OPERADOR",
+  "OPERADOR_PLANTA",
+  "OPERADOR_CALDERA"
+];
 const ESTADOS_ACTIVOS = ["ACTIVO"];
 const ALERT_CHECKLIST_SELECT = [
   "-revisionCarroceria.imagenMarcada",

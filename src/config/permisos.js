@@ -22,17 +22,67 @@ const PERMISOS = {
     "roles"
   ],
 
+  SUPERINTENDENTE: [
+    "home",
+    "dashboard",
+    "alertas",
+    "checklist_camioneta",
+    "historial_bitacora",
+    "reportes_bitacora",
+    "reportes_ejecutivos",
+    "pdf",
+    "excel"
+  ],
+
+  JEFE_PLANTA: [
+    "home",
+    "dashboard",
+    "alertas",
+    "checklist_camioneta",
+    "historial_bitacora",
+    "reportes_bitacora",
+    "reportes_ejecutivos",
+    "pdf",
+    "excel"
+  ],
+
+  JEFE_TURNO: [
+    "home",
+    "dashboard",
+    "alertas",
+    "checklist_camioneta",
+    "historial_bitacora",
+    "reportes_bitacora",
+    "reportes_ejecutivos",
+    "pdf",
+    "excel"
+  ],
+
+  ECM: [
+    "home",
+    "dashboard",
+    "alertas",
+    "checklist_camioneta",
+    "historial_bitacora",
+    "reportes_bitacora",
+    "reportes_ejecutivos",
+    "pdf",
+    "excel"
+  ],
+
+  OPERADOR_LIDER: [
+    "home",
+    "alertas",
+    "checklist_camioneta"
+  ],
+
   SUPERVISION: [
     "home",
     "dashboard",
     "alertas",
     "checklist_camioneta",
+    "historial_bitacora",
     "reportes_bitacora",
-    "reportes_registro_datos",
-    "libro_diario_reportes",
-    "auditoria_operacional",
-    "system_health",
-    "backups",
     "reportes_ejecutivos",
     "pdf",
     "excel"
@@ -43,12 +93,8 @@ const PERMISOS = {
     "dashboard",
     "alertas",
     "checklist_camioneta",
+    "historial_bitacora",
     "reportes_bitacora",
-    "reportes_registro_datos",
-    "libro_diario_reportes",
-    "auditoria_operacional",
-    "system_health",
-    "backups",
     "reportes_ejecutivos",
     "pdf",
     "excel"
@@ -67,16 +113,14 @@ const PERMISOS = {
 
   OPERADOR_PLANTA: [
     "home",
-    "registro_datos",
     "checklist_camioneta",
-    "libro_diario"
+    "alertas"
   ],
 
   OPERADOR: [
     "home",
-    "registro_datos",
     "checklist_camioneta",
-    "libro_diario"
+    "alertas"
   ]
 };
 

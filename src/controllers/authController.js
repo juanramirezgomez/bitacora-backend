@@ -21,6 +21,11 @@ import { registrarEvento } from "../services/operationalAuditService.js";
 
 const ROLES = [
   "ADMIN",
+  "SUPERINTENDENTE",
+  "JEFE_PLANTA",
+  "JEFE_TURNO",
+  "ECM",
+  "OPERADOR_LIDER",
   "OPERADOR",
   "SUPERVISOR",
   "OPERADOR_CALDERA",
@@ -30,7 +35,12 @@ const ROLES = [
 
 const REGISTER_ROLES = [
   "OPERADOR_CALDERA",
+  "OPERADOR_LIDER",
   "OPERADOR_PLANTA",
+  "SUPERINTENDENTE",
+  "JEFE_PLANTA",
+  "JEFE_TURNO",
+  "ECM",
   "SUPERVISION"
 ];
 
@@ -58,7 +68,9 @@ const generarOperadorId = async (nombre = "OP", rol = "OPERADOR") => {
     .split(/\s+/)
     .filter(Boolean);
   const iniciales = (parts.slice(0, 2).map((part) => part.charAt(0)).join("") || "OP").padEnd(2, "X").slice(0, 3);
-  const prefix = ["SUPERVISION", "SUPERVISOR"].includes(rol) ? "SUP" : iniciales;
+  const prefix = ["SUPERVISION", "SUPERVISOR", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM"].includes(rol)
+    ? "SUP"
+    : iniciales;
 
   for (let i = 1; i <= 999; i++) {
     const candidate = `${prefix}${String(i).padStart(2, "0")}`.slice(0, 12);
@@ -109,10 +121,16 @@ const modulosPorRol = (rol) => {
     return ["CHECKLIST_CAMIONETA", "PLANTA_PC1"];
   }
 
-  if (["OPERADOR", "OPERADOR_CALDERA", "SUPERVISOR", "SUPERVISION"].includes(rol)) {
-    return rol === "OPERADOR_CALDERA" || rol === "OPERADOR"
-      ? ["BITACORA_CALDERA"]
-      : ["BITACORA_CALDERA", "CHECKLIST_CAMIONETA"];
+  if (["OPERADOR", "OPERADOR_LIDER"].includes(rol)) {
+    return ["CHECKLIST_CAMIONETA", "PLANTA_PC1"];
+  }
+
+  if (rol === "OPERADOR_CALDERA") {
+    return ["BITACORA_CALDERA"];
+  }
+
+  if (["SUPERVISOR", "SUPERVISION", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM"].includes(rol)) {
+    return ["CHECKLIST_CAMIONETA", "REPORTES_BITACORA", "REPORTES_EJECUTIVOS"];
   }
 
   return [];

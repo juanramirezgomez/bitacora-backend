@@ -49,8 +49,9 @@ export const uploadBitacoraDiaria = multer({
 
 const rolActual = (req) => String(req.user?.rol || "").toUpperCase();
 const esAdmin = (req) => rolActual(req) === "ADMIN";
-const esSupervision = (req) => ["SUPERVISION", "SUPERVISOR"].includes(rolActual(req));
-const esOperadorPlanta = (req) => ["OPERADOR_PLANTA", "OPERADOR"].includes(rolActual(req));
+const esSupervision = (req) =>
+  ["SUPERVISION", "SUPERVISOR", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM"].includes(rolActual(req));
+const esOperadorPlanta = (req) => ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER"].includes(rolActual(req));
 const puedeEntrar = (req) => esAdmin(req) || esSupervision(req) || esOperadorPlanta(req);
 
 const userId = (req) => String(req.user?.uid || req.user?.id || req.user?._id || req.user?.sub || "");
