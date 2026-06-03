@@ -68,9 +68,9 @@ export const buildAlertEmailHtml = ({ alerta, destinatario }) => {
   </div>`;
 };
 
-export const sendEmailAlert = async ({ to, subject, html, text }) => {
+export const sendEmailAlert = async ({ to, subject, html, text, usarDestinatarioDemo = true }) => {
   const destinatarioOriginal = cleanEnv(to).toLowerCase();
-  const destinatario = destinatarioDemo;
+  const destinatario = usarDestinatarioDemo ? destinatarioDemo : destinatarioOriginal;
 
   console.log("📧 INICIANDO RESEND", emailConfigStatus());
   console.log("📨 ENVIANDO EMAIL RESEND", {

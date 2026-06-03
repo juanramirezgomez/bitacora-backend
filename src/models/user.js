@@ -52,6 +52,7 @@ const userSchema = new mongoose.Schema(
     failedLoginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date, default: null },
     lastFailedLogin: { type: Date, default: null },
+    debeCambiarPassword: { type: Boolean, default: false },
     activo: { type: Boolean, default: true },
     fechaCreacion: { type: Date, default: Date.now }
   },

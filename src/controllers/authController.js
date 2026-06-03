@@ -1,5 +1,6 @@
-﻿// src/controllers/authController.js
+// src/controllers/authController.js
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 import HistorialUsuario from "../models/HistorialUsuario.js";
@@ -12,12 +13,16 @@ import {
   registrarLoginExitoso,
   registrarLoginFallido,
   registrarLogout,
+  registrarPasswordTemporalGenerada,
   registrarResetPassword,
   registrarResetPasswordAprobado,
   registrarResetPasswordRechazado,
+  registrarSolicitudRecuperacionAprobada,
   registrarSolicitudResetPassword
 } from "../services/loginAuditService.js";
 import { registrarEvento } from "../services/operationalAuditService.js";
+import { sendEmailAlert } from "../services/emailService.js";
+import { sendWhatsAppAlert } from "../services/whatsappService.js";
 
 const ROLES = [
   "ADMIN",
@@ -50,6 +55,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
 const GMAIL_REGEX = /^[^\s@]+@gmail\.com$/i;
 const OPERADOR_ID_REGEX = /^[A-Z0-9]{3,12}$/;
+const PASSWORD_SEGURA_REGEX = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MINUTES = 5;
 const TURNOS_USUARIO = ["", "39", "44"];
@@ -154,6 +160,7 @@ const publicUser = (user) => ({
   failedLoginAttempts: Number(user.failedLoginAttempts || 0),
   lockUntil: user.lockUntil || null,
   lastFailedLogin: user.lastFailedLogin || null,
+  debeCambiarPassword: user.debeCambiarPassword === true,
   activo: user.activo,
   fechaCreacion: user.fechaCreacion || user.createdAt
 });
@@ -230,6 +237,7 @@ const signToken = (user) => {
       estado: user.estado,
       planta: user.planta,
       turno: normalizarTurno(user.turno),
+      debeCambiarPassword: user.debeCambiarPassword === true,
       modulosPermitidos: user.modulosPermitidos || []
     },
     secret,
@@ -261,12 +269,12 @@ export const register = async (req, res) => {
     }
 
     if (String(password) !== String(confirmPassword)) {
-      return res.status(400).json({ message: "Las contraseÃ±as no coinciden" });
+      return res.status(400).json({ message: "Las contraseñas no coinciden" });
     }
 
     const rolUp = normalizarRol(rol);
     if (!REGISTER_ROLES.includes(rolUp)) {
-      return res.status(400).json({ message: "Rol solicitado invÃ¡lido" });
+      return res.status(400).json({ message: "Rol solicitado inválido" });
     }
 
     const contactos = buildContactosAlerta({ email, correoCorporativo, correoRespaldo, telefono });
@@ -288,7 +296,7 @@ export const register = async (req, res) => {
         { operadorId: operadorIdFinal }
       ]
     });
-    if (exists) return res.status(409).json({ message: "El correo ya estÃ¡ registrado" });
+    if (exists) return res.status(409).json({ message: "El correo ya está registrado" });
 
     const passwordHash = await bcrypt.hash(String(password), 10);
 
@@ -312,7 +320,7 @@ export const register = async (req, res) => {
     });
 
     return res.status(201).json({
-      message: "Registro recibido. Tu usuario queda pendiente de aprobaciÃ³n.",
+      message: "Registro recibido. Tu usuario queda pendiente de aprobación.",
       user: publicUser(nuevo)
     });
   } catch (e) {
@@ -369,7 +377,7 @@ export const login = async (req, res) => {
     const estado = String(user.estado || (user.activo ? "ACTIVO" : "BLOQUEADO")).toUpperCase();
     if (!user.activo || estado !== "ACTIVO") {
       const message = estado === "PENDIENTE"
-        ? "Tu cuenta estÃ¡ pendiente de aprobaciÃ³n por un administrador."
+        ? "Tu cuenta está pendiente de aprobación por un administrador."
         : "Usuario bloqueado o inactivo";
       return res.status(403).json({ message });
     }
@@ -433,7 +441,7 @@ export const logout = async (req, res) => {
 export const me = async (req, res) => {
   try {
     const user = await User.findById(req.user?.uid)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -486,7 +494,7 @@ export const actualizarMiPerfil = async (req, res) => {
     if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
 
     const user = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     return res.json({ message: "Perfil actualizado", user: publicUser(user) });
   } catch (e) {
@@ -498,24 +506,38 @@ export const actualizarMiPerfil = async (req, res) => {
 export const cambiarMiPassword = async (req, res) => {
   try {
     const id = req.user?.uid;
-    const { passwordActual, newPassword } = req.body || {};
+    const { passwordActual, newPassword, confirmPassword } = req.body || {};
 
     if (!id) return res.status(401).json({ message: "Token invalido" });
-    if (!passwordActual || !newPassword) {
-      return res.status(400).json({ message: "passwordActual y newPassword son obligatorios" });
+    if (!newPassword) {
+      return res.status(400).json({ message: "Nueva contrasena obligatoria" });
+    }
+    if (confirmPassword !== undefined && String(newPassword) !== String(confirmPassword)) {
+      return res.status(400).json({ message: "Las contrasenas no coinciden" });
+    }
+    if (!PASSWORD_SEGURA_REGEX.test(String(newPassword))) {
+      return res.status(400).json({ message: "La contrasena debe tener minimo 8 caracteres, 1 mayuscula y 1 numero" });
     }
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
 
-    const ok = await bcrypt.compare(String(passwordActual), user.passwordHash);
-    if (!ok) return res.status(400).json({ message: "Password actual incorrecto" });
+    if (user.debeCambiarPassword !== true) {
+      if (!passwordActual) {
+        return res.status(400).json({ message: "passwordActual es obligatorio" });
+      }
+      const ok = await bcrypt.compare(String(passwordActual), user.passwordHash);
+      if (!ok) return res.status(400).json({ message: "Password actual incorrecto" });
+    }
 
     user.passwordHash = await bcrypt.hash(String(newPassword), 10);
+    user.debeCambiarPassword = false;
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
     await user.save();
     await registrarCambioPassword(req, user);
 
-    return res.json({ ok: true, message: "Password cambiado" });
+    return res.json({ ok: true, message: "Password cambiado", user: publicUser(user) });
   } catch (e) {
     return res.status(500).json({ message: "Error cambiando password" });
   }
@@ -553,7 +575,7 @@ export const crearUsuario = async (req, res) => {
 
     const rolUp = normalizarRol(rol);
     if (!ROLES.includes(rolUp)) {
-      return res.status(400).json({ message: "rol invÃ¡lido" });
+      return res.status(400).json({ message: "rol inválido" });
     }
 
     let operadorIdFinal = normalizarOperadorId(operadorId);
@@ -573,7 +595,7 @@ export const crearUsuario = async (req, res) => {
 
     const estadoUp = String(estado || "ACTIVO").toUpperCase();
     if (!ESTADOS.includes(estadoUp)) {
-      return res.status(400).json({ message: "estado invÃ¡lido" });
+      return res.status(400).json({ message: "estado inválido" });
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
@@ -639,14 +661,14 @@ export const listarUsuarios = async (req, res) => {
     if (estado) {
       const estadoUp = String(estado).toUpperCase();
       if (!ESTADOS.includes(estadoUp)) {
-        return res.status(400).json({ message: "estado invÃ¡lido" });
+        return res.status(400).json({ message: "estado inválido" });
       }
       filter.estado = estadoUp;
     }
 
     const users = await User.find(filter)
       .sort({ createdAt: -1 })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
     return res.json(users);
   } catch (e) {
     return res.status(500).json({ message: "Error listando usuarios" });
@@ -700,8 +722,84 @@ const buscarUsuarioPorIdentificador = async (identificador = "") => {
 };
 
 const generarPasswordTemporal = () => {
-  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `Temp${random}!${new Date().getFullYear()}`;
+  const numero = crypto.randomInt(100, 999);
+  const letras = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `Nova${new Date().getFullYear()}!${numero}${letras.slice(0, 2)}`;
+};
+
+const passwordTemporalEmailHtml = ({ user, passwordTemporal }) => `
+  <div style="background:#07111f;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+    <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #d7d8e8;">
+      <div style="background:#461D77;color:#fff;padding:18px 22px;">
+        <h1 style="margin:0;font-size:20px;">Recuperacion de contrasena</h1>
+        <p style="margin:6px 0 0;font-size:13px;">Superintendencia Operaciones Litio</p>
+      </div>
+      <div style="padding:22px;">
+        <p>Hola ${user.nombre || "usuario"}, administracion aprobo tu solicitud de recuperacion.</p>
+        <p>Tu contrasena temporal es:</p>
+        <div style="font-size:24px;font-weight:800;letter-spacing:1px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:14px;text-align:center;">
+          ${passwordTemporal}
+        </div>
+        <p style="margin-top:18px;">Al iniciar sesion el sistema solicitara crear una nueva contrasena personal.</p>
+        <p style="font-size:12px;color:#64748b;margin-top:22px;">NOVANDINO | GESTION OPERACIONAL</p>
+      </div>
+    </div>
+  </div>`;
+
+const enviarPasswordTemporal = async (user, passwordTemporal) => {
+  const preferencias = normalizarPreferenciasAlertas(user.preferenciasAlertas);
+  const resultados = [];
+  const correos = new Set();
+
+  if (preferencias.correoCorporativo && (user.correoCorporativo || user.email)) {
+    correos.add(String(user.correoCorporativo || user.email).trim().toLowerCase());
+  }
+  if (preferencias.correoRespaldo && user.correoRespaldo) {
+    correos.add(String(user.correoRespaldo).trim().toLowerCase());
+  }
+
+  for (const correo of correos) {
+    if (!EMAIL_REGEX.test(correo)) {
+      resultados.push({ canal: "correo", destino: correo, estado: "omitido", motivo: "Correo invalido" });
+      continue;
+    }
+
+    resultados.push(await sendEmailAlert({
+      to: correo,
+      subject: "Contrasena temporal - Superintendencia Operaciones Litio",
+      html: passwordTemporalEmailHtml({ user, passwordTemporal }),
+      text: [
+        `Hola ${user.nombre || "usuario"}`,
+        "Administracion aprobo tu solicitud de recuperacion.",
+        `Contrasena temporal: ${passwordTemporal}`,
+        "Al iniciar sesion deberas crear una nueva contrasena personal.",
+        "NOVANDINO | GESTION OPERACIONAL"
+      ].join("\n"),
+      usarDestinatarioDemo: false
+    }));
+  }
+
+  if (preferencias.whatsapp && user.telefono) {
+    const telefono = String(user.telefono || "").trim();
+    if (TELEFONO_CL_REGEX.test(telefono)) {
+      resultados.push(await sendWhatsAppAlert({
+        to: telefono,
+        body: [
+          "?? RECUPERACION DE CONTRASENA",
+          "",
+          `Hola ${user.nombre || "usuario"}, administracion aprobo tu solicitud.`,
+          `Contrasena temporal: ${passwordTemporal}`,
+          "",
+          "Al iniciar sesion deberas crear una nueva contrasena personal.",
+          "NOVANDINO | GESTION OPERACIONAL"
+        ].join("\n")
+      }));
+    } else {
+      resultados.push({ canal: "whatsapp", destino: telefono, estado: "omitido", motivo: "Telefono invalido" });
+    }
+  }
+
+  return resultados;
 };
 
 // POST /api/auth/password-reset/request
@@ -785,6 +883,7 @@ export const aprobarPasswordResetRequest = async (req, res) => {
 
     const passwordTemporal = generarPasswordTemporal();
     user.passwordHash = await bcrypt.hash(passwordTemporal, 10);
+    user.debeCambiarPassword = true;
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
     await user.save();
@@ -796,13 +895,17 @@ export const aprobarPasswordResetRequest = async (req, res) => {
     solicitud.observacion = comentarioAdmin(req, "Reset aprobado por administrador");
     await solicitud.save();
 
+    const notificaciones = await enviarPasswordTemporal(user, passwordTemporal);
+
+    await registrarSolicitudRecuperacionAprobada(req, user);
+    await registrarPasswordTemporalGenerada(req, user);
     await registrarResetPasswordAprobado(req, user);
     await registrarResetPassword(req, user);
 
     return res.json({
       ok: true,
-      message: "Solicitud aprobada",
-      passwordTemporal,
+      message: "Contraseña temporal enviada correctamente.",
+      notificaciones,
       solicitud
     });
   } catch (e) {
@@ -907,7 +1010,7 @@ export const actualizarUsuario = async (req, res) => {
     if (req.body.estado !== undefined) {
       const estadoUp = String(req.body.estado).toUpperCase();
       if (!ESTADOS.includes(estadoUp)) {
-        return res.status(400).json({ message: "estado invÃ¡lido" });
+        return res.status(400).json({ message: "estado inválido" });
       }
       if (String(req.user?.uid || "") === String(id) && estadoUp !== "ACTIVO") {
         return res.status(400).json({ message: "No puedes bloquear o dejar pendiente tu propia cuenta ADMIN" });
@@ -919,14 +1022,14 @@ export const actualizarUsuario = async (req, res) => {
     if (req.body.rol !== undefined) {
       const rolUp = normalizarRol(req.body.rol);
       if (!ROLES.includes(rolUp)) {
-        return res.status(400).json({ message: "rol invÃ¡lido" });
+        return res.status(400).json({ message: "rol inválido" });
       }
       update.rol = rolUp;
       update.modulosPermitidos = modulosPorRol(rolUp);
     }
 
     const u = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -968,7 +1071,7 @@ export const actualizarEstadoUsuario = async (req, res) => {
     if (!antes) return res.status(404).json({ message: "Usuario no encontrado" });
 
     if (!ESTADOS.includes(estadoUp)) {
-      return res.status(400).json({ message: "estado invÃ¡lido" });
+      return res.status(400).json({ message: "estado inválido" });
     }
 
     if (String(req.user?.uid || "") === String(id) && estadoUp !== "ACTIVO") {
@@ -982,7 +1085,7 @@ export const actualizarEstadoUsuario = async (req, res) => {
         activo: estadoUp === "ACTIVO"
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1019,7 +1122,7 @@ export const actualizarRolUsuario = async (req, res) => {
     if (!antes) return res.status(404).json({ message: "Usuario no encontrado" });
 
     if (!ROLES.includes(rolUp)) {
-      return res.status(400).json({ message: "rol invÃ¡lido" });
+      return res.status(400).json({ message: "rol inválido" });
     }
 
     const u = await User.findByIdAndUpdate(
@@ -1029,7 +1132,7 @@ export const actualizarRolUsuario = async (req, res) => {
         modulosPermitidos: modulosPorRol(rolUp)
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1076,7 +1179,7 @@ export const resetPassword = async (req, res) => {
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 
     const u = await User.findByIdAndUpdate(id, { passwordHash }, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1112,7 +1215,7 @@ export const eliminarUsuario = async (req, res) => {
     }
 
     const deleted = await User.findByIdAndDelete(id)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
 
     if (!deleted) return res.status(404).json({ message: "Usuario no encontrado" });
 

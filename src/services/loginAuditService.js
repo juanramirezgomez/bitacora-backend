@@ -158,6 +158,30 @@ export const registrarResetPasswordAprobado = async (req, user) => {
   return doc;
 };
 
+export const registrarSolicitudRecuperacionAprobada = async (req, user) => {
+  const admin = req.user?.nombre || req.user?.username || req.user?.operadorId || "ADMIN";
+  const doc = await registrarAudit(req, {
+    ...usuarioAudit(user),
+    accion: "SOLICITUD_RECUPERACION_APROBADA",
+    resultado: "OK",
+    observacion: `Solicitud de recuperacion aprobada por administrador: ${admin}`
+  });
+  if (doc) console.log("✅ SOLICITUD RECUPERACION APROBADA", { usuarioId: String(doc.usuarioId || ""), admin });
+  return doc;
+};
+
+export const registrarPasswordTemporalGenerada = async (req, user) => {
+  const admin = req.user?.nombre || req.user?.username || req.user?.operadorId || "ADMIN";
+  const doc = await registrarAudit(req, {
+    ...usuarioAudit(user),
+    accion: "PASSWORD_TEMPORAL_GENERADA",
+    resultado: "OK",
+    observacion: `Password temporal generado por administrador: ${admin}`
+  });
+  if (doc) console.log("🔑 PASSWORD TEMPORAL GENERADA", { usuarioId: String(doc.usuarioId || ""), admin });
+  return doc;
+};
+
 export const registrarResetPasswordRechazado = async (req, user, observacion = "") => {
   const admin = req.user?.nombre || req.user?.username || req.user?.operadorId || "ADMIN";
   const doc = await registrarAudit(req, {
@@ -173,7 +197,7 @@ export const registrarResetPasswordRechazado = async (req, user, observacion = "
 export const registrarCambioPassword = async (req, user) => {
   const doc = await registrarAudit(req, {
     ...usuarioAudit(user),
-    accion: "CAMBIO_PASSWORD",
+    accion: "PASSWORD_CAMBIADA",
     resultado: "OK",
     observacion: "Contrasena cambiada por el usuario"
   });
