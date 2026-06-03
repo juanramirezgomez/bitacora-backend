@@ -1,6 +1,7 @@
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
 import HistorialAlerta from "../models/HistorialAlerta.js";
+import mongoose from "mongoose";
 import { generarAlertasChecklist } from "../services/alertService.js";
 import {
   cerrarAlertaCamioneta,
@@ -303,7 +304,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
     await backfillAlertasDesdeHistorial(last30Start);
     await normalizarAlertasExistentes();
 
-    const [
+    let [
       checklistsHoy,
       checklistsPorDiaRaw,
       latestChecklists,
@@ -352,6 +353,21 @@ export const obtenerDashboardAlertas = async (req, res) => {
         .limit(500)
         .lean()
     ]);
+
+    const alertaSeleccionadaId = String(req.query?.alerta || "").trim();
+    if (
+      alertaSeleccionadaId &&
+      mongoose.Types.ObjectId.isValid(alertaSeleccionadaId) &&
+      !alertasRaw.some((alerta) => String(alerta._id) === alertaSeleccionadaId)
+    ) {
+      const alertaSeleccionada = await AlertaCamioneta.findById(alertaSeleccionadaId)
+        .select("patente prioridad estado tipo descripcion operador responsable solucion observaciones fechaCreacion fechaResolucion fechaCierre checklistId fotos turno turnoNumero")
+        .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion")
+        .lean();
+      if (alertaSeleccionada) {
+        alertasRaw = [alertaSeleccionada, ...alertasRaw];
+      }
+    }
 
     console.log("⚡ Tiempo Mongo dashboard:", `${Date.now() - mongoInicio}ms`);
 

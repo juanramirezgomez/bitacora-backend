@@ -1,4 +1,5 @@
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
+import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import HistorialAlerta from "../models/HistorialAlerta.js";
 import User from "../models/user.js";
 import { getAlertTemplate } from "../config/alertTemplates.js";
@@ -60,6 +61,20 @@ const normalizeText = (value) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase();
+
+const descripcionAlerta = (alerta) => {
+  const anomalias = Array.isArray(alerta.anomalias) ? alerta.anomalias.filter(Boolean) : [];
+  return anomalias[0] || alerta.mensaje || alerta.titulo || alerta.tipo;
+};
+
+const buildDedupeKey = (checklist, alerta) => [
+  checklist?._id,
+  alerta.tipo,
+  normalizeText(alerta.item || alerta.documento || descripcionAlerta(alerta)).slice(0, 90)
+].join(":");
+
+const debeSincronizarOperacional = (checklist) =>
+  ["FINALIZADO", "REVISADO"].includes(String(checklist?.estado || "").trim().toUpperCase());
 
 const formatDate = (value) => {
   if (!value) return "-";
@@ -274,6 +289,30 @@ export const generarAlertasChecklist = async (checklistInput) => {
   ];
 };
 
+const enriquecerAlertasOperacionales = async (checklist, alertas = []) => {
+  if (!checklist?._id || !Array.isArray(alertas) || !alertas.length) return alertas;
+
+  const keys = alertas.map((alerta) => buildDedupeKey(checklist, alerta));
+  const operacionales = await AlertaCamioneta.find({ dedupeKey: { $in: keys } })
+    .select("_id dedupeKey estado prioridad responsable fechaAsignacion fechaResolucion fechaCierre")
+    .lean();
+  const byKey = new Map(operacionales.map((alerta) => [alerta.dedupeKey, alerta]));
+
+  return alertas.map((alerta) => {
+    const operacional = byKey.get(buildDedupeKey(checklist, alerta));
+    return {
+      ...alerta,
+      alertaOperacionalId: operacional?._id ? String(operacional._id) : "",
+      estadoOperacionAlerta: operacional?.estado || "ABIERTA",
+      prioridadOperacionAlerta: operacional?.prioridad || alerta.prioridad,
+      responsableAlerta: operacional?.responsable || "",
+      fechaAsignacionAlerta: operacional?.fechaAsignacion || null,
+      fechaResolucionAlerta: operacional?.fechaResolucion || null,
+      fechaCierreAlerta: operacional?.fechaCierre || null
+    };
+  });
+};
+
 export const obtenerAlertasVencimientosChecklistCamioneta = async (filter = {}) => {
   console.log("PASO 1 ALERT SERVICE: obtener alertas de vencimientos");
   const checklists = await ChecklistCamioneta.find({ eliminado: { $ne: true }, ...filter })
@@ -283,7 +322,11 @@ export const obtenerAlertasVencimientosChecklistCamioneta = async (filter = {}) 
   const alertas = [];
   for (const checklist of checklists) {
     const generadas = await generarAlertasChecklist(checklist);
-    alertas.push(...generadas.filter((alerta) =>
+    if (debeSincronizarOperacional(checklist)) {
+      await sincronizarAlertasOperacionalesChecklist(checklist, generadas);
+    }
+    const enriquecidas = await enriquecerAlertasOperacionales(checklist, generadas);
+    alertas.push(...enriquecidas.filter((alerta) =>
       ["LICENCIA_", "REVISION_", "PERMISO_", "SEGURO_", "CERTIFICACION_", "MANTENCION_", "DOCUMENTACION_"]
         .some((prefix) => alerta.tipo.startsWith(prefix))
     ));
@@ -301,7 +344,11 @@ export const obtenerAlertasChecklistCamioneta = async (filter = {}) => {
 
   const alertas = [];
   for (const checklist of checklists) {
-    alertas.push(...await generarAlertasChecklist(checklist));
+    const generadas = await generarAlertasChecklist(checklist);
+    if (debeSincronizarOperacional(checklist)) {
+      await sincronizarAlertasOperacionalesChecklist(checklist, generadas);
+    }
+    alertas.push(...await enriquecerAlertasOperacionales(checklist, generadas));
   }
 
   console.log("PASO 2 ALERT SERVICE: total alertas checklist camioneta", alertas.length);
