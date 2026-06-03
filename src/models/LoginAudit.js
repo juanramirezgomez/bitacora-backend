@@ -16,6 +16,9 @@ const loginAuditSchema = new mongoose.Schema(
         "LOGIN_BLOQUEADO",
         "DESBLOQUEO_AUTOMATICO",
         "LOGOUT",
+        "SOLICITUD_RESET_PASSWORD",
+        "RESET_PASSWORD_APROBADO",
+        "RESET_PASSWORD_RECHAZADO",
         "RESET_PASSWORD",
         "CAMBIO_PASSWORD"
       ],

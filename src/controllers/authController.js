@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 import HistorialUsuario from "../models/HistorialUsuario.js";
 import LoginAudit from "../models/LoginAudit.js";
+import PasswordResetRequest from "../models/PasswordResetRequest.js";
 import {
   registrarCambioPassword,
   registrarDesbloqueoAutomatico,
@@ -11,7 +12,10 @@ import {
   registrarLoginExitoso,
   registrarLoginFallido,
   registrarLogout,
-  registrarResetPassword
+  registrarResetPassword,
+  registrarResetPasswordAprobado,
+  registrarResetPasswordRechazado,
+  registrarSolicitudResetPassword
 } from "../services/loginAuditService.js";
 import { registrarEvento } from "../services/operationalAuditService.js";
 
@@ -38,8 +42,13 @@ const GMAIL_REGEX = /^[^\s@]+@gmail\.com$/i;
 const OPERADOR_ID_REGEX = /^[A-Z0-9]{3,12}$/;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MINUTES = 5;
+const TURNOS_USUARIO = ["", "39", "44"];
 
 const normalizarOperadorId = (value = "") => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+const normalizarTurno = (value = "") => {
+  const turno = String(value || "").trim();
+  return TURNOS_USUARIO.includes(turno) ? turno : "";
+};
 
 const generarOperadorId = async (nombre = "OP", rol = "OPERADOR") => {
   const parts = String(nombre || "OP")
@@ -122,6 +131,7 @@ const publicUser = (user) => ({
   rol: user.rol,
   estado: user.estado,
   planta: user.planta,
+  turno: normalizarTurno(user.turno),
   modulosPermitidos: user.modulosPermitidos || [],
   failedLoginAttempts: Number(user.failedLoginAttempts || 0),
   lockUntil: user.lockUntil || null,
@@ -136,7 +146,8 @@ const snapshotUsuario = (user = {}) => ({
   operadorId: user?.operadorId || "",
   rol: user?.rol || "",
   estado: user?.estado || "",
-  planta: user?.planta || ""
+  planta: user?.planta || "",
+  turno: user?.turno || ""
 });
 
 const snapshotActor = (req) => ({
@@ -200,6 +211,7 @@ const signToken = (user) => {
       preferenciasAlertas: normalizarPreferenciasAlertas(user.preferenciasAlertas),
       estado: user.estado,
       planta: user.planta,
+      turno: normalizarTurno(user.turno),
       modulosPermitidos: user.modulosPermitidos || []
     },
     secret,
@@ -217,6 +229,7 @@ export const register = async (req, res) => {
       correoRespaldo = "",
       telefono = "",
       operadorId = "",
+      turno = "",
       password,
       confirmPassword,
       rol,
@@ -273,6 +286,7 @@ export const register = async (req, res) => {
       rol: rolUp,
       estado: "PENDIENTE",
       planta: "PC1",
+      turno: normalizarTurno(turno),
       modulosPermitidos: modulosPorRol(rolUp),
       passwordHash,
       activo: false,
@@ -401,7 +415,7 @@ export const logout = async (req, res) => {
 export const me = async (req, res) => {
   try {
     const user = await User.findById(req.user?.uid)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -454,7 +468,7 @@ export const actualizarMiPerfil = async (req, res) => {
     if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
 
     const user = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     return res.json({ message: "Perfil actualizado", user: publicUser(user) });
   } catch (e) {
@@ -504,6 +518,7 @@ export const crearUsuario = async (req, res) => {
       operadorId = "",
       estado = "ACTIVO",
       planta = "PC1",
+      turno = "",
       preferenciasAlertas = {}
     } = req.body || {};
     const contactos = buildContactosAlerta({ email: email || username, correoCorporativo, correoRespaldo, telefono });
@@ -557,6 +572,7 @@ export const crearUsuario = async (req, res) => {
       rol: rolUp,
       estado: estadoUp,
       planta: String(planta || "PC1").trim() || "PC1",
+      turno: normalizarTurno(turno),
       modulosPermitidos: modulosPorRol(rolUp),
       passwordHash,
       activo: estadoUp === "ACTIVO",
@@ -612,7 +628,7 @@ export const listarUsuarios = async (req, res) => {
 
     const users = await User.find(filter)
       .sort({ createdAt: -1 })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
     return res.json(users);
   } catch (e) {
     return res.status(500).json({ message: "Error listando usuarios" });
@@ -647,6 +663,161 @@ export const listarLoginAudit = async (req, res) => {
     return res.json({ registros });
   } catch (e) {
     return res.status(500).json({ message: "Error listando auditoria de accesos" });
+  }
+};
+
+const buscarUsuarioPorIdentificador = async (identificador = "") => {
+  const value = String(identificador || "").trim();
+  const email = value.toLowerCase();
+  const operadorLookup = normalizarOperadorId(value);
+  return User.findOne({
+    $or: [
+      { username: email },
+      { email },
+      { correoCorporativo: email },
+      { correoRespaldo: email },
+      { operadorId: operadorLookup }
+    ]
+  });
+};
+
+const generarPasswordTemporal = () => {
+  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `Temp${random}!${new Date().getFullYear()}`;
+};
+
+// POST /api/auth/password-reset/request
+export const solicitarPasswordReset = async (req, res) => {
+  try {
+    const identificador = String(req.body?.identificador || req.body?.username || req.body?.email || "").trim();
+    if (!identificador) {
+      return res.status(400).json({ message: "Ingresa correo o ID operador" });
+    }
+
+    const user = await buscarUsuarioPorIdentificador(identificador);
+    if (!user) {
+      await registrarSolicitudResetPassword(req, null, identificador);
+      return res.status(404).json({ message: "No se encontro usuario asociado" });
+    }
+
+    const existente = await PasswordResetRequest.findOne({
+      usuarioId: user._id,
+      estado: "PENDIENTE"
+    });
+
+    if (existente) {
+      return res.json({
+        ok: true,
+        message: "Ya existe una solicitud pendiente para este usuario",
+        solicitud: existente
+      });
+    }
+
+    const solicitud = await PasswordResetRequest.create({
+      usuarioId: user._id,
+      nombreUsuario: user.nombre || "",
+      username: user.username || user.operadorId || "",
+      email: user.email || user.correoCorporativo || "",
+      operadorId: user.operadorId || "",
+      rol: user.rol || "",
+      planta: user.planta || "",
+      estado: "PENDIENTE",
+      solicitadoEn: new Date(),
+      observacion: "Solicitud creada desde login"
+    });
+
+    await registrarSolicitudResetPassword(req, user, identificador);
+
+    return res.status(201).json({
+      ok: true,
+      message: "Solicitud enviada. Un administrador debe aprobar el restablecimiento.",
+      solicitud
+    });
+  } catch (e) {
+    console.error("Error solicitando reset password:", e);
+    return res.status(500).json({ message: "Error creando solicitud de recuperacion" });
+  }
+};
+
+// GET /api/auth/password-reset/requests
+export const listarPasswordResetRequests = async (req, res) => {
+  try {
+    const solicitudes = await PasswordResetRequest.find({})
+      .sort({ solicitadoEn: -1, createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    return res.json({ solicitudes });
+  } catch (e) {
+    return res.status(500).json({ message: "Error listando solicitudes de recuperacion" });
+  }
+};
+
+// PATCH /api/auth/password-reset/:id/aprobar
+export const aprobarPasswordResetRequest = async (req, res) => {
+  try {
+    const solicitud = await PasswordResetRequest.findById(req.params.id);
+    if (!solicitud) return res.status(404).json({ message: "Solicitud no encontrada" });
+    if (solicitud.estado !== "PENDIENTE") {
+      return res.status(400).json({ message: "La solicitud ya fue resuelta" });
+    }
+
+    const user = await User.findById(solicitud.usuarioId);
+    if (!user) return res.status(404).json({ message: "Usuario asociado no encontrado" });
+
+    const passwordTemporal = generarPasswordTemporal();
+    user.passwordHash = await bcrypt.hash(passwordTemporal, 10);
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+    await user.save();
+
+    solicitud.estado = "APROBADO";
+    solicitud.resueltoEn = new Date();
+    solicitud.resueltoPor = req.user?.uid || null;
+    solicitud.resueltoPorNombre = req.user?.nombre || req.user?.username || req.user?.operadorId || "ADMIN";
+    solicitud.observacion = comentarioAdmin(req, "Reset aprobado por administrador");
+    await solicitud.save();
+
+    await registrarResetPasswordAprobado(req, user);
+    await registrarResetPassword(req, user);
+
+    return res.json({
+      ok: true,
+      message: "Solicitud aprobada",
+      passwordTemporal,
+      solicitud
+    });
+  } catch (e) {
+    console.error("Error aprobando reset password:", e);
+    return res.status(500).json({ message: "Error aprobando solicitud" });
+  }
+};
+
+// PATCH /api/auth/password-reset/:id/rechazar
+export const rechazarPasswordResetRequest = async (req, res) => {
+  try {
+    const solicitud = await PasswordResetRequest.findById(req.params.id);
+    if (!solicitud) return res.status(404).json({ message: "Solicitud no encontrada" });
+    if (solicitud.estado !== "PENDIENTE") {
+      return res.status(400).json({ message: "La solicitud ya fue resuelta" });
+    }
+
+    const user = solicitud.usuarioId ? await User.findById(solicitud.usuarioId) : null;
+    const observacion = comentarioAdmin(req, "Reset rechazado por administrador");
+
+    solicitud.estado = "RECHAZADO";
+    solicitud.resueltoEn = new Date();
+    solicitud.resueltoPor = req.user?.uid || null;
+    solicitud.resueltoPorNombre = req.user?.nombre || req.user?.username || req.user?.operadorId || "ADMIN";
+    solicitud.observacion = observacion;
+    await solicitud.save();
+
+    await registrarResetPasswordRechazado(req, user || solicitud, observacion);
+
+    return res.json({ ok: true, message: "Solicitud rechazada", solicitud });
+  } catch (e) {
+    console.error("Error rechazando reset password:", e);
+    return res.status(500).json({ message: "Error rechazando solicitud" });
   }
 };
 
@@ -708,6 +879,9 @@ export const actualizarUsuario = async (req, res) => {
     if (req.body.planta !== undefined) {
       update.planta = String(req.body.planta || "PC1").trim() || "PC1";
     }
+    if (req.body.turno !== undefined) {
+      update.turno = normalizarTurno(req.body.turno);
+    }
     if (req.body.activo !== undefined) {
       update.activo = !!req.body.activo;
       update.estado = update.activo ? "ACTIVO" : "BLOQUEADO";
@@ -734,7 +908,7 @@ export const actualizarUsuario = async (req, res) => {
     }
 
     const u = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -746,6 +920,7 @@ export const actualizarUsuario = async (req, res) => {
       "correoRespaldo",
       "telefono",
       "planta",
+      "turno",
       "rol",
       "estado",
       "activo",
@@ -789,7 +964,7 @@ export const actualizarEstadoUsuario = async (req, res) => {
         activo: estadoUp === "ACTIVO"
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -836,7 +1011,7 @@ export const actualizarRolUsuario = async (req, res) => {
         modulosPermitidos: modulosPorRol(rolUp)
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -883,7 +1058,7 @@ export const resetPassword = async (req, res) => {
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 
     const u = await User.findByIdAndUpdate(id, { passwordHash }, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado failedLoginAttempts lockUntil lastFailedLogin activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin activo");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -919,7 +1094,7 @@ export const eliminarUsuario = async (req, res) => {
     }
 
     const deleted = await User.findByIdAndDelete(id)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta failedLoginAttempts lockUntil lastFailedLogin activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin activo");
 
     if (!deleted) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -943,4 +1118,5 @@ export const eliminarUsuario = async (req, res) => {
     return res.status(500).json({ message: "Error eliminando usuario" });
   }
 };
+
 

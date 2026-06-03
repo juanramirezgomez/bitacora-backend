@@ -128,7 +128,7 @@ const buildBaseAlert = (checklist, tipo, data = {}) => {
   const template = getAlertTemplate(tipo);
   const alerta = {
     tipo,
-    prioridad: template.prioridad,
+    prioridad: data.prioridad || template.prioridad,
     titulo: template.whatsapp.title,
     subject: template.email.subject,
     checklistId: checklist._id,
@@ -157,6 +157,10 @@ const generarAlertasDocumentos = (checklist) => {
 
     if (!documento.fechaVencimiento) {
       alertas.push(buildBaseAlert(checklist, "DOCUMENTACION_INCOMPLETA", {
+        categoria: "DOCUMENTACION",
+        estadoAlerta: "DOCUMENTACION_INCOMPLETA",
+        estadoTexto: "Documentacion incompleta",
+        prioridad: "ALTA",
         documento: documento.nombre,
         anomalias: [`${documento.nombre}: sin fecha de vencimiento registrada`],
         mensaje: `${documento.nombre} sin fecha de vencimiento en camioneta ${checklist.patente || "-"}`
@@ -173,6 +177,10 @@ const generarAlertasDocumentos = (checklist) => {
     const estadoTexto = vencida ? `vencido hace ${Math.abs(diasRestantes)} dias` : `vence en ${diasRestantes} dias`;
 
     alertas.push(buildBaseAlert(checklist, tipo, {
+      categoria: "DOCUMENTACION",
+      estadoAlerta: vencida ? "VENCIDA" : "VENCE_PRONTO",
+      estadoTexto: vencida ? "Documento vencido" : "Vence pronto",
+      prioridad: vencida ? "CRITICA" : "ALTA",
       documento: documento.nombre,
       fechaVencimiento: documento.fechaVencimiento,
       diasRestantes,
@@ -191,6 +199,10 @@ const generarAlertasMantencion = (checklist) => {
   const estadoTexto = diasRestantes < 0 ? `vencida hace ${Math.abs(diasRestantes)} dias` : `vence en ${diasRestantes} dias`;
 
   return [buildBaseAlert(checklist, "MANTENCION_PROXIMA", {
+    categoria: "MANTENCION",
+    estadoAlerta: diasRestantes < 0 ? "VENCIDA" : "VENCE_PRONTO",
+    estadoTexto: diasRestantes < 0 ? "Mantencion vencida" : "Mantencion proxima",
+    prioridad: diasRestantes < 0 ? "CRITICA" : "ALTA",
     fechaVencimiento: checklist.fechaProximaMantencion,
     diasRestantes,
     anomalias: [`Proxima mantencion: ${estadoTexto}`],
@@ -219,6 +231,10 @@ const generarAlertasInspeccion = (checklist) => {
     items
       .filter((item) => item.estado === "MALO")
       .map((item) => buildBaseAlert(checklist, tipoInspeccionMala(seccion, item), {
+        categoria: "INSPECCION",
+        estadoAlerta: "ITEM_DEFICIENTE",
+        estadoTexto: "Inspeccion requerida",
+        prioridad: "ALTA",
         seccion,
         item: item.nombre,
         observacion: item.observacion || "",

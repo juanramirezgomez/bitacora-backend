@@ -41,6 +41,7 @@ const userSchema = new mongoose.Schema(
       default: "ACTIVO"
     },
     planta: { type: String, default: "PC1" },
+    turno: { type: String, enum: ["", "39", "44"], default: "" },
     modulosPermitidos: { type: [String], default: [] },
     passwordHash: { type: String, required: true },
     failedLoginAttempts: { type: Number, default: 0 },

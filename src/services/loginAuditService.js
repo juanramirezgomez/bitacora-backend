@@ -125,6 +125,51 @@ export const registrarResetPassword = async (req, user) => {
   return doc;
 };
 
+export const registrarSolicitudResetPassword = async (req, user, identificador = "") => {
+  const payload = user?._id
+    ? usuarioAudit(user)
+    : {
+        nombreUsuario: "",
+        username: identificador,
+        email: String(identificador || "").toLowerCase().includes("@") ? String(identificador).toLowerCase() : "",
+        rol: "",
+        planta: ""
+      };
+
+  const doc = await registrarAudit(req, {
+    ...payload,
+    accion: "SOLICITUD_RESET_PASSWORD",
+    resultado: "OK",
+    observacion: "Solicitud de recuperacion de contrasena creada por el usuario"
+  });
+  if (doc) console.log("🔄 SOLICITUD RESET PASSWORD REGISTRADA", { username: doc.username });
+  return doc;
+};
+
+export const registrarResetPasswordAprobado = async (req, user) => {
+  const admin = req.user?.nombre || req.user?.username || req.user?.operadorId || "ADMIN";
+  const doc = await registrarAudit(req, {
+    ...usuarioAudit(user),
+    accion: "RESET_PASSWORD_APROBADO",
+    resultado: "OK",
+    observacion: `Solicitud de reset aprobada por administrador: ${admin}`
+  });
+  if (doc) console.log("✅ RESET PASSWORD APROBADO", { usuarioId: String(doc.usuarioId || ""), admin });
+  return doc;
+};
+
+export const registrarResetPasswordRechazado = async (req, user, observacion = "") => {
+  const admin = req.user?.nombre || req.user?.username || req.user?.operadorId || "ADMIN";
+  const doc = await registrarAudit(req, {
+    ...usuarioAudit(user),
+    accion: "RESET_PASSWORD_RECHAZADO",
+    resultado: "ERROR",
+    observacion: observacion || `Solicitud de reset rechazada por administrador: ${admin}`
+  });
+  if (doc) console.log("❌ RESET PASSWORD RECHAZADO", { usuarioId: String(doc.usuarioId || ""), admin });
+  return doc;
+};
+
 export const registrarCambioPassword = async (req, user) => {
   const doc = await registrarAudit(req, {
     ...usuarioAudit(user),
