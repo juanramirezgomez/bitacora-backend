@@ -161,6 +161,7 @@ const publicUser = (user) => ({
   lockUntil: user.lockUntil || null,
   lastFailedLogin: user.lastFailedLogin || null,
   debeCambiarPassword: user.debeCambiarPassword === true,
+  requiereCambioPassword: user.debeCambiarPassword === true,
   activo: user.activo,
   fechaCreacion: user.fechaCreacion || user.createdAt
 });
@@ -420,6 +421,7 @@ export const login = async (req, res) => {
 
     return res.json({
       token,
+      requiereCambioPassword: user.debeCambiarPassword === true,
       user: publicUser(user)
     });
   } catch (e) {
@@ -1178,7 +1180,16 @@ export const resetPassword = async (req, res) => {
 
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 
-    const u = await User.findByIdAndUpdate(id, { passwordHash }, { new: true })
+    const u = await User.findByIdAndUpdate(
+      id,
+      {
+        passwordHash,
+        debeCambiarPassword: true,
+        failedLoginAttempts: 0,
+        lockUntil: null
+      },
+      { new: true }
+    )
       .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });

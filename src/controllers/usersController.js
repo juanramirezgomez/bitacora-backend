@@ -219,7 +219,16 @@ export const resetPassword = async (req, res) => {
 
     const passwordHash = await bcrypt.hash(p, 10);
 
-    const updated = await User.findByIdAndUpdate(id, { passwordHash }, { new: true });
+    const updated = await User.findByIdAndUpdate(
+      id,
+      {
+        passwordHash,
+        debeCambiarPassword: true,
+        failedLoginAttempts: 0,
+        lockUntil: null
+      },
+      { new: true }
+    );
     if (!updated) return res.status(404).json({ message: "Usuario no encontrado" });
 
     return res.json({ message: "Password actualizado", user: sanitizeUser(updated) });
