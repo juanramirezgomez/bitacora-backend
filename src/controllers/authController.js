@@ -775,9 +775,8 @@ const enviarPasswordTemporal = async (user, passwordTemporal) => {
         "Administracion aprobo tu solicitud de recuperacion.",
         `Contrasena temporal: ${passwordTemporal}`,
         "Al iniciar sesion deberas crear una nueva contrasena personal.",
-        "NOVANDINO | GESTION OPERACIONAL"
-      ].join("\n"),
-      usarDestinatarioDemo: false
+        "AURA PRIME | OPERACIONES LITIO"
+      ].join("\n")
     }));
   }
 

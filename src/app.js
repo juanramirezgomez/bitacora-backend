@@ -30,7 +30,7 @@ import alertasRoutes from "./routes/alertasRoutes.js";
 import systemHealthRoutes from "./routes/systemHealthRoutes.js";
 import systemBackupRoutes from "./routes/systemBackupRoutes.js";
 import executiveReportsRoutes from "./routes/executiveReportsRoutes.js";
-import { sendTestEmail } from "./services/emailService.js";
+import emailConfigRoutes from "./routes/emailConfigRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,34 +99,6 @@ app.get("/", (req, res) => {
   res.send("API Superintendencia Operaciones Litio funcionando correctamente");
 });
 
-app.get("/api/test-email", async (req, res) => {
-  try {
-    console.log("📧 TEST EMAIL RESEND INICIADO");
-    const result = await sendTestEmail();
-    console.log("📧 TEST EMAIL RESEND RESULTADO", result);
-
-    if (!result?.ok) {
-      return res.status(500).json({
-        ok: false,
-        enviado: false,
-        result
-      });
-    }
-
-    return res.json({
-      ok: true,
-      enviado: true
-    });
-  } catch (error) {
-    console.error("❌ TEST EMAIL RESEND ERROR:", error);
-    return res.status(500).json({
-      ok: false,
-      enviado: false,
-      error: error?.message || "Error enviando correo de prueba"
-    });
-  }
-});
-
 /* =========================================
    RUTAS PúBLICAS
 ========================================= */
@@ -152,6 +124,7 @@ app.use("/api/auditoria-operacional", operationalAuditRoutes);
 app.use("/api/system-health", systemHealthRoutes);
 app.use("/api/system-backups", systemBackupRoutes);
 app.use("/api/executive-reports", executiveReportsRoutes);
+app.use("/api", emailConfigRoutes);
 
 app.use("/api/bitacoras", checklistRoutes);
 app.use("/api/bitacoras", registroOperacionRoutes);

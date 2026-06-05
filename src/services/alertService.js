@@ -411,7 +411,7 @@ const buildWhatsappMessage = (alerta) => [
   "Anomalias detectadas:",
   ...(alerta.anomalias || [alerta.mensaje]).map((item) => `- ${item}`),
   "",
-  "NOVANDINO | GESTIÓN OPERACIONAL"
+  "AURA PRIME | OPERACIONES LITIO"
 ].join("\n");
 
 const buildPlainMessage = (alerta) => [
@@ -421,21 +421,22 @@ const buildPlainMessage = (alerta) => [
   `Fecha: ${alerta.fechaTexto || "-"}`,
   ...(alerta.anomalias || [alerta.mensaje]).map((item) => `- ${item}`),
   "",
-  "NOVANDINO | GESTIÓN OPERACIONAL"
+  "AURA PRIME | OPERACIONES LITIO"
 ].join("\n");
 
-export const registrarHistorialAlerta = async ({ alerta, destinatario, canal, estado, error = "" }) => {
-  console.log("🧾 REGISTRANDO HISTORIAL", {
+export const registrarHistorialAlerta = async ({ alerta, destinatario, canal, estado, error = "", provider = "", messageId = "", from = "" }) => {
+  console.log("REGISTRANDO HISTORIAL ALERTA", {
     tipo: alerta.tipo,
     canal,
     estado,
-    destinatario: destinatario.email || destinatario.telefono || destinatario.nombre
+    destinatario: destinatario.email || destinatario.telefono || destinatario.nombre,
+    messageId
   });
 
   const doc = await HistorialAlerta.create({
     tipo: alerta.tipo,
     prioridad: alerta.prioridad,
-    mensaje: `${alerta.mensaje} NOVANDINO | GESTIÓN OPERACIONAL`,
+    mensaje: `${alerta.mensaje} AURA PRIME | OPERACIONES LITIO`,
     destinatarios: [{
       userId: destinatario.userId || destinatario._id || null,
       nombre: destinatario.nombre || "",
@@ -449,6 +450,9 @@ export const registrarHistorialAlerta = async ({ alerta, destinatario, canal, es
     }],
     canal,
     estado,
+    provider,
+    messageId,
+    from,
     error,
     checklistId: alerta.checklistId,
     patente: alerta.patente,
@@ -456,10 +460,17 @@ export const registrarHistorialAlerta = async ({ alerta, destinatario, canal, es
     fecha: new Date()
   });
 
-  console.log("🧾 HISTORIAL REGISTRADO", { id: doc._id, tipo: alerta.tipo, canal, estado, destinatario: destinatario.email || destinatario.telefono, error });
+  console.log("HISTORIAL ALERTA REGISTRADO", {
+    id: doc._id,
+    tipo: alerta.tipo,
+    canal,
+    estado,
+    destinatario: destinatario.email || destinatario.telefono,
+    messageId,
+    error
+  });
   return doc;
 };
-
 const omitirCanal = async ({ alerta, user, canal, motivo }) => {
   const destinatario = plainUser(user);
   console.log(`Alerta omitida por ${canal}:`, { usuario: destinatario.nombre, motivo });
@@ -470,8 +481,8 @@ const omitirCanal = async ({ alerta, user, canal, motivo }) => {
 const enviarCorreoUsuario = async ({ alerta, user, tipoCorreo }) => {
   const preferencias = preferenciasAlertasDe(user);
   const canal = tipoCorreo === "respaldo" ? "correoRespaldo" : "correoCorporativo";
-  const etiqueta = tipoCorreo === "respaldo" ? "Gmail respaldo" : "correo corporativo";
-  console.log("📧 ENVIANDO ALERTA EMAIL", { usuario: user.email || user.nombre, etiqueta });
+  const etiqueta = tipoCorreo === "respaldo" ? "correo respaldo" : "correo corporativo";
+  console.log("ENVIANDO ALERTA EMAIL", { usuario: user.email || user.nombre, etiqueta });
 
   if (debeOmitirPorSoloCriticas(user, alerta)) {
     return omitirCanal({ alerta, user, canal, motivo: "Preferencia soloCriticas activa y alerta no critica" });
@@ -499,18 +510,38 @@ const enviarCorreoUsuario = async ({ alerta, user, tipoCorreo }) => {
   const subject = `[${alerta.prioridad}] ${alerta.subject} - ${alerta.patente}`;
   const html = buildAlertEmailHtml({ alerta, destinatario: validacion.destinatario });
   const text = buildPlainMessage(alerta);
-  console.log("📨 ENVIANDO CORREO", { tipo: alerta.tipo, canal, destinatario: destinoCorreo });
-  const result = await sendEmailAlert({ to: destinoCorreo, subject, html, text });
+  console.log("ENVIANDO CORREO", {
+    fecha: new Date().toISOString(),
+    tipo: alerta.tipo,
+    canal,
+    destinatario: destinoCorreo,
+    correoCorporativo: validacion.destinatario.correoCorporativo,
+    correoRespaldo: validacion.destinatario.correoRespaldo
+  });
+
+  const result = await sendEmailAlert({
+    to: destinoCorreo,
+    subject,
+    html,
+    text,
+    metadata: {
+      correoCorporativo: validacion.destinatario.correoCorporativo,
+      correoRespaldo: validacion.destinatario.correoRespaldo
+    }
+  });
+
   await registrarHistorialAlerta({
     alerta,
     destinatario: { ...validacion.destinatario, email: destinoCorreo },
     canal,
     estado: result.estado,
-    error: result.motivo || result.provider || ""
+    error: result.motivo || "",
+    provider: result.provider || "resend",
+    messageId: result.messageId || "",
+    from: result.from || ""
   });
   return { alerta: alerta.tipo, ...result, canal, provider: result.provider || result.canal };
 };
-
 const enviarWhatsappUsuario = async ({ alerta, user }) => {
   console.log("📲 ENVIANDO ALERTA WHATSAPP", { usuario: user.telefono || user.nombre });
   const preferencias = preferenciasAlertasDe(user);
@@ -575,15 +606,17 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
     for (const alerta of alertasGeneradas) {
       console.log("🔥 Alerta generada:", { tipo: alerta.tipo, prioridad: alerta.prioridad, mensaje: alerta.mensaje });
       for (const user of destinatarios) {
-        try {
-          notificaciones.push(await enviarCorreoUsuario({ alerta, user, tipoCorreo: "corporativo" }));
-          notificaciones.push(await enviarCorreoUsuario({ alerta, user, tipoCorreo: "respaldo" }));
-        } catch (error) {
-          console.error("❌ ERROR ALERTAS CORREO:", error.message);
-          console.error(error);
-          const destinatario = plainUser(user);
-          await registrarHistorialAlerta({ alerta, destinatario, canal: "correo", estado: "error", error: error.message });
-          notificaciones.push({ alerta: alerta.tipo, canal: "correo", estado: "error", destino: destinatario.email, motivo: error.message });
+        for (const tipoCorreo of ["corporativo", "respaldo"]) {
+          try {
+            notificaciones.push(await enviarCorreoUsuario({ alerta, user, tipoCorreo }));
+          } catch (error) {
+            console.error("ERROR ALERTAS CORREO:", { tipoCorreo, error: error.message });
+            console.error(error);
+            const destinatario = plainUser(user);
+            const canal = tipoCorreo === "respaldo" ? "correoRespaldo" : "correoCorporativo";
+            await registrarHistorialAlerta({ alerta, destinatario, canal, estado: "error", error: error.message });
+            notificaciones.push({ alerta: alerta.tipo, canal, estado: "error", destino: destinatario.email, motivo: error.message });
+          }
         }
 
         try {
@@ -628,7 +661,7 @@ export const canalesPreparados = () => ({
 
 export const variablesNotificacionChecklistCamioneta = [
   "RESEND_API_KEY",
-  "EMAIL_FROM=onboarding@resend.dev",
+  "EMAIL_FROM=Operaciones Litio <alertas@auraprime.cl>",
   "TWILIO_ACCOUNT_SID",
   "TWILIO_AUTH_TOKEN",
   "TWILIO_WHATSAPP_FROM=whatsapp:+14155238886"
