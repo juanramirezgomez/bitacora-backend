@@ -1,4 +1,6 @@
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
+import AlertaSeguimiento from "../models/AlertaSeguimiento.js";
+import User from "../models/user.js";
 import { registrarEvento } from "./operationalAuditService.js";
 
 const PRIORIDAD_ORDEN = {
@@ -7,6 +9,9 @@ const PRIORIDAD_ORDEN = {
   MEDIA: 2,
   BAJA: 1
 };
+
+export const ESTADOS_ALERTA_FLUJO = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
+const RESPONSABLE_ROLES = ["SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "OPERADOR_LIDER"];
 
 const normalizeText = (value) =>
   String(value || "")
@@ -21,6 +26,15 @@ const normalizePriority = (prioridad) => {
   if (value.includes("ALT")) return "ALTA";
   if (value.includes("BAJ")) return "BAJA";
   return "MEDIA";
+};
+
+const normalizeEstado = (estado = "ABIERTA") => {
+  const value = normalizeText(estado);
+  if (value === "ASIGNADA") return "ASIGNADA";
+  if (value.includes("PROCESO")) return "EN_PROCESO";
+  if (value.includes("RESUEL")) return "RESUELTA";
+  if (value.includes("CERRA")) return "CERRADA";
+  return "ABIERTA";
 };
 
 const prioridadItemMalo = (alerta) => {
@@ -61,6 +75,40 @@ const buildDedupeKey = (checklist, alerta) => [
 ].join(":");
 
 const userId = (user = {}) => user?.uid || user?._id || user?.id || null;
+const userName = (user = {}) => user?.nombre || user?.username || user?.email || "Usuario";
+const userRol = (user = {}) => user?.rol || "";
+
+const validarTransicion = (estadoActual, estadoNuevo) => {
+  const actual = normalizeEstado(estadoActual);
+  const nuevo = normalizeEstado(estadoNuevo);
+  if (actual === nuevo) return;
+  const actualIndex = ESTADOS_ALERTA_FLUJO.indexOf(actual);
+  const nuevoIndex = ESTADOS_ALERTA_FLUJO.indexOf(nuevo);
+  if (actualIndex < 0 || nuevoIndex < 0 || nuevoIndex !== actualIndex + 1) {
+    throw new Error(`Transicion no permitida: ${actual} -> ${nuevo}`);
+  }
+};
+
+const crearSeguimiento = async ({
+  alerta,
+  user,
+  comentario = "",
+  tipoEvento = "COMENTARIO",
+  estadoAnterior = "",
+  estadoNuevo = "",
+  evidencias = []
+}) => AlertaSeguimiento.create({
+  alertaId: alerta._id,
+  usuarioId: userId(user),
+  nombreUsuario: userName(user),
+  rol: userRol(user),
+  comentario,
+  tipoEvento,
+  estadoAnterior,
+  estadoNuevo,
+  evidencias,
+  fecha: new Date()
+});
 
 export const sincronizarAlertasOperacionalesChecklist = async (checklist, alertas = []) => {
   if (!checklist?._id || !Array.isArray(alertas) || !alertas.length) return [];
@@ -69,6 +117,7 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
     ? checklist.fotosObservaciones.slice(0, 4).map((foto) => ({
       nombre: foto.nombre || "",
       ruta: foto.ruta || "",
+      tipo: "GENERAL",
       fecha: foto.fecha || null
     }))
     : [];
@@ -83,6 +132,7 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
         checklistId: checklist._id,
         tipo: alerta.tipo,
         fechaCreacion: new Date(),
+        fechaUltimoMovimiento: new Date(),
         creadoPor: checklist.creadoPor?._id || checklist.creadoPor || null,
         estado: "ABIERTA",
         dedupeKey
@@ -112,11 +162,18 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
         accion: "ALERTA_CREADA",
         observacion: `Alerta ${doc?.tipo || alerta.tipo || ""} para patente ${doc?.patente || checklist.patente || ""}`.trim()
       });
+      await crearSeguimiento({
+        alerta: doc,
+        user: checklist.creadoPor || {},
+        tipoEvento: "CAMBIO_ESTADO",
+        estadoNuevo: "ABIERTA",
+        comentario: "Alerta creada automaticamente desde checklist"
+      });
     }
     resultados.push(doc);
   }
 
-  console.log("🚨 ALERTAS OPERACIONALES SINCRONIZADAS", {
+  console.log("ALERTAS OPERACIONALES SINCRONIZADAS", {
     checklistId: checklist._id,
     patente: checklist.patente,
     total: resultados.length
@@ -124,61 +181,194 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
   return resultados;
 };
 
-export const asignarAlertaCamioneta = async ({ id, user, responsable }) => {
-  const responsableFinal = String(responsable || user?.nombre || user?.username || "").trim();
-  return AlertaCamioneta.findByIdAndUpdate(
-    id,
-    {
-      responsable: responsableFinal,
-      fechaAsignacion: new Date()
-    },
-    { new: true }
-  ).lean();
+export const obtenerSeguimientoAlerta = async (alertaId) =>
+  AlertaSeguimiento.find({ alertaId }).sort({ fecha: 1, createdAt: 1 }).lean();
+
+export const agregarComentarioAlerta = async ({ id, user, comentario }) => {
+  const alerta = await AlertaCamioneta.findById(id);
+  if (!alerta) return null;
+  const texto = String(comentario || "").trim();
+  if (!texto) throw new Error("Comentario obligatorio");
+  alerta.fechaUltimoMovimiento = new Date();
+  await alerta.save();
+  await crearSeguimiento({ alerta, user, comentario: texto, tipoEvento: "COMENTARIO" });
+  return alerta.toObject();
 };
 
-export const marcarAlertaEnProceso = async ({ id, user, responsable, observaciones }) => {
-  const responsableFinal = String(responsable || user?.nombre || user?.username || "").trim();
-  return AlertaCamioneta.findByIdAndUpdate(
-    id,
-    {
-      estado: "EN_PROCESO",
-      responsable: responsableFinal,
-      fechaAsignacion: new Date(),
-      observaciones: String(observaciones || "").trim()
-    },
-    { new: true }
-  ).lean();
+export const adjuntarEvidenciaAlerta = async ({ id, user, files = [], tipo = "GENERAL", comentario = "" }) => {
+  const alerta = await AlertaCamioneta.findById(id);
+  if (!alerta) return null;
+  const evidencias = files.map((file) => ({
+    nombre: file.originalname || file.filename || "",
+    url: `/uploads/alertas/${file.filename}`,
+    ruta: `/uploads/alertas/${file.filename}`,
+    tipo,
+    fecha: new Date(),
+    usuarioId: userId(user),
+    usuarioNombre: userName(user)
+  }));
+  alerta.fotos.push(...evidencias.map((item) => ({
+    nombre: item.nombre,
+    ruta: item.url,
+    tipo: item.tipo,
+    fecha: item.fecha,
+    usuarioId: item.usuarioId,
+    usuarioNombre: item.usuarioNombre
+  })));
+  alerta.fechaUltimoMovimiento = new Date();
+  await alerta.save();
+  await crearSeguimiento({
+    alerta,
+    user,
+    comentario: comentario || `Evidencia ${tipo.toLowerCase()} adjunta`,
+    tipoEvento: "EVIDENCIA",
+    evidencias
+  });
+  return alerta.toObject();
 };
 
-export const resolverAlertaCamioneta = async ({ id, user, estado = "RESUELTA", solucion, responsable, observaciones }) => {
-  const estadoFinal = String(estado || "RESUELTA").toUpperCase();
-  const accionCorrectiva = String(solucion || "").trim();
-  const update = {
-    estado: estadoFinal,
-    accionCorrectiva,
-    solucion: accionCorrectiva,
-    responsable: String(responsable || user?.nombre || user?.username || "").trim(),
-    observaciones: String(observaciones || "").trim(),
-    resueltoPor: userId(user),
-    fechaResolucion: estadoFinal === "RESUELTA" || estadoFinal === "CERRADA" ? new Date() : null
-  };
+export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsable, fechaCompromiso }) => {
+  const alerta = await AlertaCamioneta.findById(id);
+  if (!alerta) return null;
+  validarTransicion(alerta.estado, "ASIGNADA");
 
-  if (estadoFinal === "CERRADA") {
-    update.cerradoPor = userId(user);
-    update.fechaCierre = new Date();
+  let responsableUser = null;
+  if (responsableId) {
+    responsableUser = await User.findById(responsableId).select("nombre rol estado activo").lean();
+  }
+  if (responsableUser && (!RESPONSABLE_ROLES.includes(responsableUser.rol) || responsableUser.estado !== "ACTIVO" || responsableUser.activo === false)) {
+    throw new Error("Responsable no habilitado para alertas");
   }
 
-  const alerta = await AlertaCamioneta.findByIdAndUpdate(id, update, { new: true }).lean();
-  return alerta;
+  alerta.estado = "ASIGNADA";
+  alerta.responsableId = responsableUser?._id || null;
+  alerta.responsableNombre = responsableUser?.nombre || String(responsable || userName(user)).trim();
+  alerta.responsableRol = responsableUser?.rol || "";
+  alerta.responsable = alerta.responsableNombre;
+  alerta.fechaAsignacion = new Date();
+  alerta.fechaUltimoMovimiento = new Date();
+  if (fechaCompromiso) alerta.fechaCompromiso = new Date(fechaCompromiso);
+  await alerta.save();
+  await crearSeguimiento({
+    alerta,
+    user,
+    tipoEvento: "ASIGNACION",
+    estadoAnterior: "ABIERTA",
+    estadoNuevo: "ASIGNADA",
+    comentario: `Alerta asignada a ${alerta.responsableNombre}`
+  });
+  return alerta.toObject();
+};
+
+export const marcarAlertaEnProceso = async ({ id, user, observaciones }) => {
+  const alerta = await AlertaCamioneta.findById(id);
+  if (!alerta) return null;
+  validarTransicion(alerta.estado, "EN_PROCESO");
+  alerta.estado = "EN_PROCESO";
+  alerta.observaciones = String(observaciones || alerta.observaciones || "").trim();
+  alerta.fechaUltimoMovimiento = new Date();
+  await alerta.save();
+  await crearSeguimiento({
+    alerta,
+    user,
+    tipoEvento: "CAMBIO_ESTADO",
+    estadoAnterior: "ASIGNADA",
+    estadoNuevo: "EN_PROCESO",
+    comentario: alerta.observaciones || "Alerta en proceso"
+  });
+  return alerta.toObject();
+};
+
+export const resolverAlertaCamioneta = async ({ id, user, solucion, observaciones }) => {
+  const alerta = await AlertaCamioneta.findById(id);
+  if (!alerta) return null;
+  validarTransicion(alerta.estado, "RESUELTA");
+  const accionCorrectiva = String(solucion || "").trim();
+  if (!accionCorrectiva) throw new Error("Accion correctiva obligatoria");
+  alerta.estado = "RESUELTA";
+  alerta.accionCorrectiva = accionCorrectiva;
+  alerta.solucion = accionCorrectiva;
+  alerta.observaciones = String(observaciones || alerta.observaciones || "").trim();
+  alerta.resueltoPor = userId(user);
+  alerta.fechaResolucion = new Date();
+  alerta.fechaUltimoMovimiento = new Date();
+  await alerta.save();
+  await crearSeguimiento({
+    alerta,
+    user,
+    tipoEvento: "CAMBIO_ESTADO",
+    estadoAnterior: "EN_PROCESO",
+    estadoNuevo: "RESUELTA",
+    comentario: accionCorrectiva
+  });
+  return alerta.toObject();
 };
 
 export const cerrarAlertaCamioneta = async ({ id, user, solucion, observaciones }) => {
-  return resolverAlertaCamioneta({
-    id,
+  const alerta = await AlertaCamioneta.findById(id);
+  if (!alerta) return null;
+  validarTransicion(alerta.estado, "CERRADA");
+  const cierre = String(solucion || alerta.solucion || "").trim();
+  if (!cierre) throw new Error("Solucion final obligatoria");
+  alerta.estado = "CERRADA";
+  alerta.solucion = cierre;
+  alerta.accionCorrectiva = alerta.accionCorrectiva || cierre;
+  alerta.observaciones = String(observaciones || alerta.observaciones || "").trim();
+  alerta.cerradoPor = userId(user);
+  alerta.fechaCierre = new Date();
+  alerta.fechaUltimoMovimiento = new Date();
+  await alerta.save();
+  await crearSeguimiento({
+    alerta,
     user,
-    estado: "CERRADA",
-    solucion,
-    observaciones,
-    responsable: user?.nombre || user?.username || ""
+    tipoEvento: "CAMBIO_ESTADO",
+    estadoAnterior: "RESUELTA",
+    estadoNuevo: "CERRADA",
+    comentario: cierre
   });
+  return alerta.toObject();
+};
+
+export const evaluarEscalamientoAlertas = async ({ notificar = false } = {}) => {
+  const ahora = new Date();
+  const hace48 = new Date(ahora.getTime() - 48 * 60 * 60 * 1000);
+  const hace72 = new Date(ahora.getTime() - 72 * 60 * 60 * 1000);
+  const hace7d = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const alertas = await AlertaCamioneta.find({
+    activo: { $ne: false },
+    prioridad: "CRITICA",
+    estado: { $in: ["ABIERTA", "ASIGNADA", "EN_PROCESO"] }
+  }).limit(200);
+
+  const resultados = [];
+  for (const alerta of alertas) {
+    const movimiento = alerta.fechaUltimoMovimiento || alerta.fechaCreacion || alerta.createdAt;
+    let nivel = alerta.nivelEscalamiento || 0;
+    let comentario = "";
+    if (movimiento <= hace7d && nivel < 3) {
+      nivel = 3;
+      alerta.escalada = true;
+      alerta.prioridad = "CRITICA";
+      comentario = "Alerta critica escalada por 7 dias abierta";
+    } else if (movimiento <= hace72 && nivel < 2) {
+      nivel = 2;
+      comentario = "Alerta critica escalada a Superintendente por 72 horas sin movimiento";
+    } else if (movimiento <= hace48 && nivel < 1) {
+      nivel = 1;
+      comentario = "Recordatorio por alerta critica 48 horas sin movimiento";
+    }
+    if (!comentario) continue;
+    alerta.nivelEscalamiento = nivel;
+    alerta.fechaEscalamiento = ahora;
+    alerta.fechaUltimoMovimiento = ahora;
+    await alerta.save();
+    await crearSeguimiento({
+      alerta,
+      user: {},
+      tipoEvento: "ESCALAMIENTO",
+      comentario
+    });
+    resultados.push({ alertaId: alerta._id, nivel, comentario, notificar });
+  }
+  return resultados;
 };

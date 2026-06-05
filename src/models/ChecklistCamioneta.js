@@ -78,6 +78,15 @@ const checklistCamionetaSchema = new mongoose.Schema(
     conductorResponsable: { type: String, trim: true, default: "" },
     areaTrabajo: { type: String, trim: true, default: "" },
     fechaInspeccion: { type: Date, default: null },
+    fechaProgramada: { type: Date, default: null, index: true },
+    fechaRealizacion: { type: Date, default: null, index: true },
+    checklistAtrasado: { type: Boolean, default: false, index: true },
+    cumplimientoEstado: {
+      type: String,
+      enum: ["PROGRAMADO", "REALIZADO", "ATRASADO"],
+      default: "PROGRAMADO",
+      index: true
+    },
     horaInspeccion: { type: String, trim: true, default: "" },
     turno: { type: String, enum: ["DIA", "NOCHE", ""], trim: true, default: "" },
     turnoNumero: { type: String, trim: true, default: "" },
@@ -138,6 +147,8 @@ checklistCamionetaSchema.index({ turno: 1, turnoNumero: 1, fechaInspeccion: -1 }
 checklistCamionetaSchema.index({ estado: 1, creadoPor: 1 });
 checklistCamionetaSchema.index({ eliminado: 1, estado: 1, fechaInspeccion: -1 });
 checklistCamionetaSchema.index({ conductorResponsable: 1, planta: 1, eliminado: 1 });
+checklistCamionetaSchema.index({ patente: 1, fechaProgramada: -1, eliminado: 1 });
+checklistCamionetaSchema.index({ cumplimientoEstado: 1, fechaProgramada: -1 });
 
 checklistCamionetaSchema.pre("save", function updateDates() {
   this.fechaActualizacion = new Date();

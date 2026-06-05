@@ -10,30 +10,33 @@ import { authorizeModule } from "../middlewares/authorizeModule.js";
 
 const router = express.Router();
 
+const gestoresAlertas = ["ADMIN", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION", "SUPERVISOR"];
+const lectoresAlertas = [...gestoresAlertas, "OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"];
+
 router.get(
   "/alertas",
-  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR", "OPERADOR_PLANTA"),
+  requireRole(...lectoresAlertas),
   authorizeModule("alertas"),
   obtenerDashboardAlertas
 );
 
 router.patch(
   "/alertas/:id/resolver",
-  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
+  requireRole(...gestoresAlertas),
   authorizeModule("alertas"),
   resolverAlertaDashboard
 );
 
 router.patch(
   "/alertas/:id/gestionar",
-  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
+  requireRole(...gestoresAlertas),
   authorizeModule("alertas"),
   gestionarAlertaDashboard
 );
 
 router.patch(
   "/alertas/:id/cerrar",
-  requireRole("ADMIN", "SUPERVISION", "SUPERVISOR"),
+  requireRole(...gestoresAlertas),
   authorizeModule("alertas"),
   cerrarAlertaDashboard
 );

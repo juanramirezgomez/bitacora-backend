@@ -11,6 +11,7 @@ import {
   listarChecklistCamionetas,
   obtenerAlertasChecklistCamionetaController,
   obtenerAlertasVencimientosChecklistCamionetaController,
+  obtenerCumplimientoChecklistCamionetaController,
   obtenerChecklistCamioneta,
   revisarChecklistCamioneta,
   subirFotoChecklistCamioneta,
@@ -29,6 +30,7 @@ router.get("/alertas-vencimientos", obtenerAlertasVencimientosChecklistCamioneta
 router.get("/alertas", obtenerAlertasChecklistCamionetaController);
 router.post("/alertas/enviar", enviarAlertasChecklistCamionetaController);
 router.post("/alertas/diagnostico", diagnosticoAlertasChecklistCamionetaController);
+router.get("/cumplimiento", obtenerCumplimientoChecklistCamionetaController);
 router.get("/:id/pdf", authorizeModule("pdf"), descargarChecklistCamionetaPdf);
 router.get("/:id/excel", authorizeModule("excel"), descargarChecklistCamionetaExcel);
 router.get("/:id", obtenerChecklistCamioneta);

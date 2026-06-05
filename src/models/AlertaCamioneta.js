@@ -1,13 +1,16 @@
 import mongoose from "mongoose";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
-const ESTADOS = ["ABIERTA", "EN_PROCESO", "RESUELTA", "CERRADA"];
+const ESTADOS = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
 
 const fotoSchema = new mongoose.Schema(
   {
     nombre: { type: String, trim: true, default: "" },
     ruta: { type: String, trim: true, default: "" },
-    fecha: { type: Date, default: null }
+    tipo: { type: String, enum: ["ANTES", "DURANTE", "DESPUES", "GENERAL"], default: "GENERAL" },
+    fecha: { type: Date, default: null },
+    usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    usuarioNombre: { type: String, trim: true, default: "" }
   },
   { _id: false }
 );
@@ -24,15 +27,23 @@ const alertaCamionetaSchema = new mongoose.Schema(
     fechaAsignacion: { type: Date, default: null },
     fechaResolucion: { type: Date, default: null },
     fechaCierre: { type: Date, default: null },
+    fechaCompromiso: { type: Date, default: null, index: true },
+    fechaUltimoMovimiento: { type: Date, default: Date.now, index: true },
     creadoPor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     resueltoPor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     cerradoPor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    responsableId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    responsableNombre: { type: String, trim: true, default: "" },
+    responsableRol: { type: String, trim: true, default: "" },
     responsable: { type: String, trim: true, default: "" },
     operador: { type: String, trim: true, default: "" },
     accionCorrectiva: { type: String, trim: true, default: "" },
     solucion: { type: String, trim: true, default: "" },
     observaciones: { type: String, trim: true, default: "" },
     fotos: { type: [fotoSchema], default: [] },
+    escalada: { type: Boolean, default: false, index: true },
+    nivelEscalamiento: { type: Number, default: 0 },
+    fechaEscalamiento: { type: Date, default: null },
     activo: { type: Boolean, default: true },
     origen: { type: String, trim: true, default: "CHECKLIST_CAMIONETA" },
     dedupeKey: { type: String, trim: true, required: true, unique: true }

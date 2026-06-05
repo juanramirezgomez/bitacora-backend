@@ -5,6 +5,9 @@ import OperationalAudit from "../models/OperationalAudit.js";
 import { registrarEvento } from "../services/operationalAuditService.js";
 import { obtenerEstadoBackup } from "../services/backupService.js";
 
+const EMAIL_CHANNELS = ["correo", "correoCorporativo", "correoRespaldo", "EMAIL_CORPORATIVO", "EMAIL_RESPALDO"];
+const WHATSAPP_CHANNELS = ["whatsapp", "WHATSAPP"];
+
 const formatUptime = (seconds = 0) => {
   const total = Math.floor(Number(seconds) || 0);
   const dias = Math.floor(total / 86400);
@@ -58,10 +61,10 @@ export const obtenerSystemHealth = async (req, res) => {
     ] = await Promise.all([
       LoginAudit.findOne({ accion: "LOGIN_EXITOSO", resultado: "OK" }).sort({ fecha: -1 }).lean(),
       LoginAudit.findOne({ accion: "LOGIN_FALLIDO", resultado: "ERROR" }).sort({ fecha: -1 }).lean(),
-      HistorialAlerta.findOne({ canal: { $in: ["correo", "correoCorporativo", "correoRespaldo"] }, estado: "enviado" }).sort({ fecha: -1, createdAt: -1 }).lean(),
-      HistorialAlerta.findOne({ canal: { $in: ["correo", "correoCorporativo", "correoRespaldo"] }, estado: "error" }).sort({ fecha: -1, createdAt: -1 }).lean(),
-      HistorialAlerta.findOne({ canal: "whatsapp", estado: "enviado" }).sort({ fecha: -1, createdAt: -1 }).lean(),
-      HistorialAlerta.findOne({ canal: "whatsapp", estado: "error" }).sort({ fecha: -1, createdAt: -1 }).lean(),
+      HistorialAlerta.findOne({ canal: { $in: EMAIL_CHANNELS }, estado: "enviado" }).sort({ fecha: -1, createdAt: -1 }).lean(),
+      HistorialAlerta.findOne({ canal: { $in: EMAIL_CHANNELS }, estado: "error" }).sort({ fecha: -1, createdAt: -1 }).lean(),
+      HistorialAlerta.findOne({ canal: { $in: WHATSAPP_CHANNELS }, estado: "enviado" }).sort({ fecha: -1, createdAt: -1 }).lean(),
+      HistorialAlerta.findOne({ canal: { $in: WHATSAPP_CHANNELS }, estado: "error" }).sort({ fecha: -1, createdAt: -1 }).lean(),
       OperationalAudit.countDocuments({ fecha: { $gte: hace24h } }),
       LoginAudit.countDocuments({ fecha: { $gte: hace24h } }),
       OperationalAudit.countDocuments({ fecha: { $gte: hace24h }, resultado: "ERROR" }),

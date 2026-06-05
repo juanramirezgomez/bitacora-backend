@@ -1,6 +1,8 @@
 import HistorialAlerta from "../models/HistorialAlerta.js";
 import { buildTestEmailHtml, emailConfigStatus, sendTestEmail } from "../services/emailService.js";
 
+const EMAIL_CHANNELS = ["correo", "correoCorporativo", "correoRespaldo", "EMAIL_CORPORATIVO", "EMAIL_RESPALDO"];
+
 const serializarHistorial = (doc) => {
   if (!doc) return null;
   const destinatario = Array.isArray(doc.destinatarios) && doc.destinatarios.length ? doc.destinatarios[0] : {};
@@ -24,10 +26,10 @@ const serializarHistorial = (doc) => {
 export const obtenerEstadoCorreo = async (req, res) => {
   try {
     const [ultimoEnviado, ultimoError] = await Promise.all([
-      HistorialAlerta.findOne({ canal: { $in: ["correo", "correoCorporativo", "correoRespaldo"] }, estado: "enviado" })
+      HistorialAlerta.findOne({ canal: { $in: EMAIL_CHANNELS }, estado: "enviado" })
         .sort({ fecha: -1, createdAt: -1 })
         .lean(),
-      HistorialAlerta.findOne({ canal: { $in: ["correo", "correoCorporativo", "correoRespaldo"] }, estado: "error" })
+      HistorialAlerta.findOne({ canal: { $in: EMAIL_CHANNELS }, estado: "error" })
         .sort({ fecha: -1, createdAt: -1 })
         .lean()
     ]);

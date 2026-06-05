@@ -21,7 +21,19 @@ const historialAlertaSchema = new mongoose.Schema(
     prioridad: { type: String, required: true, trim: true },
     mensaje: { type: String, required: true, trim: true },
     destinatarios: { type: [destinatarioSchema], default: [] },
-    canal: { type: String, enum: ["correo", "correoCorporativo", "correoRespaldo", "whatsapp"], required: true },
+    canal: {
+      type: String,
+      enum: [
+        "correo",
+        "correoCorporativo",
+        "correoRespaldo",
+        "whatsapp",
+        "EMAIL_CORPORATIVO",
+        "EMAIL_RESPALDO",
+        "WHATSAPP"
+      ],
+      required: true
+    },
     estado: { type: String, enum: ["enviado", "omitido", "error"], required: true },
     estadoOperacional: { type: String, enum: ["ABIERTA", "RESUELTA"], default: "ABIERTA" },
     provider: { type: String, trim: true, default: "" },

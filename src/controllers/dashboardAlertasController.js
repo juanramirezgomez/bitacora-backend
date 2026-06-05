@@ -1,17 +1,18 @@
-import AlertaCamioneta from "../models/AlertaCamioneta.js";
+﻿import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
 import HistorialAlerta from "../models/HistorialAlerta.js";
 import mongoose from "mongoose";
 import { generarAlertasChecklist } from "../services/alertService.js";
 import {
   cerrarAlertaCamioneta,
+  marcarAlertaEnProceso,
   resolverAlertaCamioneta,
   sincronizarAlertasOperacionalesChecklist
 } from "../services/alertaCamionetaService.js";
 import { registrarEvento } from "../services/operationalAuditService.js";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
-const ACTIVAS = ["ABIERTA", "EN_PROCESO"];
+const ACTIVAS = ["ABIERTA", "ASIGNADA", "EN_PROCESO"];
 
 const startOfDay = (date) => {
   const value = new Date(date);
@@ -49,6 +50,7 @@ const normalizePriority = (prioridad) => {
 
 const normalizeEstado = (estado) => {
   const value = String(estado || "ABIERTA").trim().toUpperCase();
+  if (value.includes("ASIGN")) return "ASIGNADA";
   if (value.includes("PROCESO")) return "EN_PROCESO";
   if (value.includes("RESUEL")) return "RESUELTA";
   if (value.includes("CERRA")) return "CERRADA";
@@ -111,7 +113,10 @@ const mapAlerta = (alerta) => ({
   descripcion: alerta.descripcion || alerta.observaciones || "",
   operador: alerta.operador || "-",
   estado: alerta.estado || "ABIERTA",
-  responsable: alerta.responsable || "-",
+  responsable: alerta.responsable || alerta.responsableNombre || "-",
+  responsableId: alerta.responsableId || null,
+  responsableNombre: alerta.responsableNombre || alerta.responsable || "",
+  responsableRol: alerta.responsableRol || "",
   accionCorrectiva: alerta.accionCorrectiva || alerta.solucion || "",
   solucion: alerta.solucion || "",
   observaciones: alerta.observaciones || "",
@@ -119,6 +124,10 @@ const mapAlerta = (alerta) => ({
   fechaAsignacion: alerta.fechaAsignacion || null,
   fechaResolucion: alerta.fechaResolucion || null,
   fechaCierre: alerta.fechaCierre || null,
+  fechaCompromiso: alerta.fechaCompromiso || null,
+  fechaUltimoMovimiento: alerta.fechaUltimoMovimiento || null,
+  escalada: alerta.escalada || false,
+  nivelEscalamiento: alerta.nivelEscalamiento || 0,
   checklistId: alerta.checklistId?._id || alerta.checklistId || null,
   fotos: alerta.fotos || [],
   checklist: alerta.checklistId && typeof alerta.checklistId === "object" ? {
@@ -248,14 +257,14 @@ const backfillAlertasDesdeHistorial = async (desde) => {
 
   if (ops.length) {
     await AlertaCamioneta.bulkWrite(ops, { ordered: false });
-    console.log("✅ ALERTAS HISTORICAS NORMALIZADAS", { total: ops.length });
+    console.log("âœ… ALERTAS HISTORICAS NORMALIZADAS", { total: ops.length });
   }
 };
 
 const normalizarAlertasExistentes = async () => {
   const existentes = await AlertaCamioneta.find({
     $or: [
-      { estado: { $nin: ["ABIERTA", "EN_PROCESO", "RESUELTA", "CERRADA"] } },
+      { estado: { $nin: ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"] } },
       { prioridad: { $nin: PRIORIDADES } },
       { estado: { $exists: false } },
       { prioridad: { $exists: false } }
@@ -281,12 +290,12 @@ const normalizarAlertasExistentes = async () => {
     })),
     { ordered: false }
   );
-  console.log("✅ ALERTAS NORMALIZADAS", { total: existentes.length });
+  console.log("âœ… ALERTAS NORMALIZADAS", { total: existentes.length });
 };
 
 export const obtenerDashboardAlertas = async (req, res) => {
   const inicio = Date.now();
-  console.log("📊 DASHBOARD ALERTAS REQUEST", {
+  console.log("ðŸ“Š DASHBOARD ALERTAS REQUEST", {
     user: req.user?.id || req.user?._id || null,
     rol: req.user?.rol || null
   });
@@ -299,6 +308,15 @@ export const obtenerDashboardAlertas = async (req, res) => {
     const last7Start = addDays(today, -6);
     const last30Start = addDays(today, -29);
     const chileToday = getChileDayRange(now);
+    const rolActual = String(req.user?.rol || "").toUpperCase();
+    const userActualId = req.user?.id || req.user?._id || req.user?.uid || null;
+    const filtroAlertasAcceso = {
+      activo: { $ne: false },
+      fechaCreacion: { $gte: last30Start }
+    };
+    if (["OPERADOR_PLANTA", "OPERADOR"].includes(rolActual) && userActualId && mongoose.Types.ObjectId.isValid(userActualId)) {
+      filtroAlertasAcceso.creadoPor = new mongoose.Types.ObjectId(userActualId);
+    }
 
     await asegurarAlertasOperacionalesRecientes(last30Start);
     await backfillAlertasDesdeHistorial(last30Start);
@@ -346,8 +364,8 @@ export const obtenerDashboardAlertas = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(80)
         .lean(),
-      AlertaCamioneta.find({ activo: { $ne: false }, fechaCreacion: { $gte: last30Start } })
-        .select("patente prioridad estado tipo descripcion operador responsable solucion observaciones fechaCreacion fechaResolucion fechaCierre checklistId fotos turno turnoNumero")
+      AlertaCamioneta.find(filtroAlertasAcceso)
+        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion observaciones fechaCreacion fechaAsignacion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero")
         .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion")
         .sort({ fechaCreacion: -1 })
         .limit(500)
@@ -361,7 +379,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
       !alertasRaw.some((alerta) => String(alerta._id) === alertaSeleccionadaId)
     ) {
       const alertaSeleccionada = await AlertaCamioneta.findById(alertaSeleccionadaId)
-        .select("patente prioridad estado tipo descripcion operador responsable solucion observaciones fechaCreacion fechaResolucion fechaCierre checklistId fotos turno turnoNumero")
+        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion observaciones fechaCreacion fechaAsignacion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero")
         .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion")
         .lean();
       if (alertaSeleccionada) {
@@ -369,7 +387,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
       }
     }
 
-    console.log("⚡ Tiempo Mongo dashboard:", `${Date.now() - mongoInicio}ms`);
+    console.log("âš¡ Tiempo Mongo dashboard:", `${Date.now() - mongoInicio}ms`);
 
     const alertasNormalizadas = alertasRaw.map(normalizeAlertaDoc);
     const alertasFiltradas = alertasNormalizadas.filter((alerta) => {
@@ -448,9 +466,11 @@ export const obtenerDashboardAlertas = async (req, res) => {
       });
 
     const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && alerta.estado === "ABIERTA").length;
+    const asignadas = alertasFiltradas.filter((alerta) => alerta.estado === "ASIGNADA").length;
     const enProceso = alertasFiltradas.filter((alerta) => alerta.estado === "EN_PROCESO").length;
     const resueltas = alertasFiltradas.filter((alerta) => alerta.estado === "RESUELTA").length;
     const cerradas = alertasFiltradas.filter((alerta) => alerta.estado === "CERRADA").length;
+    const escaladas = alertasFiltradas.filter((alerta) => alerta.escalada).length;
     const activas = alertasActivasRaw.length;
     const camionetasOperativas = estadosCamionetas.filter((item) => item.estado === "OPERATIVA").length ||
       Array.from(latestByPatente.values()).filter(esChecklistApto).length;
@@ -461,9 +481,11 @@ export const obtenerDashboardAlertas = async (req, res) => {
     const response = {
       criticas,
       activas,
+      asignadas,
       enProceso,
       resueltas,
       cerradas,
+      escaladas,
       checklistsHoy,
       camionetasOperativas,
       alertasPorPrioridad,
@@ -476,38 +498,23 @@ export const obtenerDashboardAlertas = async (req, res) => {
       actualizadoEn: new Date()
     };
 
-    console.log("✅ KPI ACTUALIZADOS", { criticas, activas, checklistsHoy, camionetasOperativas });
-    console.log("✅ ALERTAS CARGADAS", { total: alertasFiltradas.length, activas: alertasActivas.length });
-    console.log("⚡ Tiempo dashboard:", `${Date.now() - inicio}ms`);
+    console.log("âœ… KPI ACTUALIZADOS", { criticas, activas, checklistsHoy, camionetasOperativas });
+    console.log("âœ… ALERTAS CARGADAS", { total: alertasFiltradas.length, activas: alertasActivas.length });
+    console.log("âš¡ Tiempo dashboard:", `${Date.now() - inicio}ms`);
     return res.json(response);
   } catch (error) {
-    console.error("❌ ERROR KPI:", error);
-    console.error("❌ ERROR DASHBOARD ALERTAS:", error);
+    console.error("âŒ ERROR KPI:", error);
+    console.error("âŒ ERROR DASHBOARD ALERTAS:", error);
     return res.status(500).json({ message: "Error obteniendo dashboard de alertas" });
   }
 };
 
 export const gestionarAlertaDashboard = async (req, res) => {
   try {
-    const estado = String(req.body?.estado || "RESUELTA").toUpperCase();
-    if (!["EN_PROCESO", "RESUELTA", "CERRADA"].includes(estado)) {
-      return res.status(400).json({ message: "Estado de alerta invalido" });
-    }
-
-    const solucion = String(req.body?.solucion || req.body?.observacion || "").trim();
-    const responsable = String(req.body?.responsable || "").trim();
     const observaciones = String(req.body?.observaciones || "").trim();
-
-    if ((estado === "RESUELTA" || estado === "CERRADA") && !solucion) {
-      return res.status(400).json({ message: "La solucion es obligatoria para resolver o cerrar" });
-    }
-
-    const alerta = await resolverAlertaCamioneta({
+    const alerta = await marcarAlertaEnProceso({
       id: req.params.id,
       user: req.user,
-      estado,
-      solucion,
-      responsable,
       observaciones
     });
 
@@ -517,8 +524,44 @@ export const gestionarAlertaDashboard = async (req, res) => {
       modulo: "ALERTAS",
       entidad: "AlertaCamioneta",
       entidadId: alerta._id,
-      accion: estado === "CERRADA" ? "ALERTA_CERRADA" : "ALERTA_RESUELTA",
-      observacion: solucion || observaciones || `Alerta ${estado.toLowerCase()}`
+      accion: "ALERTA_CAMBIO_ESTADO",
+      observacion: observaciones || "Alerta en proceso"
+    });
+
+    console.log("✅ ALERTA EN PROCESO", {
+      alertaId: alerta._id,
+      estado: alerta.estado,
+      patente: alerta.patente
+    });
+    return res.json({ message: "Alerta en proceso", alerta: mapAlerta(alerta) });
+  } catch (error) {
+    console.error("❌ ERROR GESTIONANDO ALERTA:", error);
+    return res.status(400).json({ message: error?.message || "Error gestionando alerta" });
+  }
+};
+
+export const resolverAlertaDashboard = async (req, res) => {
+  try {
+    const solucion = String(req.body?.solucion || req.body?.accionCorrectiva || req.body?.observacion || "").trim();
+    const observaciones = String(req.body?.observaciones || "").trim();
+    if (!solucion) {
+      return res.status(400).json({ message: "La solucion es obligatoria" });
+    }
+
+    const alerta = await resolverAlertaCamioneta({
+      id: req.params.id,
+      user: req.user,
+      solucion,
+      observaciones
+    });
+    if (!alerta) return res.status(404).json({ message: "Alerta no encontrada" });
+    await registrarEvento({
+      req,
+      modulo: "ALERTAS",
+      entidad: "AlertaCamioneta",
+      entidadId: alerta._id,
+      accion: "ALERTA_RESUELTA",
+      observacion: solucion || observaciones || "Alerta resuelta"
     });
 
     console.log("✅ ALERTA RESUELTA", {
@@ -526,21 +569,12 @@ export const gestionarAlertaDashboard = async (req, res) => {
       estado: alerta.estado,
       patente: alerta.patente
     });
-    return res.json({
-      message: estado === "CERRADA" ? "Alerta cerrada" : "Alerta gestionada",
-      alerta: mapAlerta(alerta)
-    });
+    return res.json({ message: "Alerta resuelta", alerta: mapAlerta(alerta) });
   } catch (error) {
-    console.error("❌ ERROR GESTIONANDO ALERTA:", error);
-    return res.status(500).json({ message: "Error gestionando alerta" });
+    console.error("❌ ERROR RESOLVIENDO ALERTA:", error);
+    return res.status(400).json({ message: error?.message || "Error resolviendo alerta" });
   }
 };
-
-export const resolverAlertaDashboard = async (req, res) => {
-  req.body.estado = "RESUELTA";
-  return gestionarAlertaDashboard(req, res);
-};
-
 export const cerrarAlertaDashboard = async (req, res) => {
   try {
     const solucion = String(req.body?.solucion || req.body?.observacion || "").trim();
@@ -565,14 +599,15 @@ export const cerrarAlertaDashboard = async (req, res) => {
       observacion: solucion || observaciones || "Alerta cerrada"
     });
 
-    console.log("✅ ALERTA RESUELTA", {
+    console.log("âœ… ALERTA RESUELTA", {
       alertaId: alerta._id,
       estado: alerta.estado,
       patente: alerta.patente
     });
     return res.json({ message: "Alerta cerrada", alerta: mapAlerta(alerta) });
   } catch (error) {
-    console.error("❌ ERROR CERRANDO ALERTA:", error);
+    console.error("âŒ ERROR CERRANDO ALERTA:", error);
     return res.status(500).json({ message: "Error cerrando alerta" });
   }
 };
+

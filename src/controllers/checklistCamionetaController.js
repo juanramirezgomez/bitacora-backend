@@ -5,6 +5,7 @@ import path from "path";
 import fs from "fs";
 import mongoose from "mongoose";
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
+import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import User from "../models/user.js";
 import {
   canalesPreparados,
@@ -23,6 +24,10 @@ import {
   registrarEvento,
   registrarPdfDescargado
 } from "../services/operationalAuditService.js";
+import {
+  normalizarCumplimientoChecklist,
+  validarChecklistDiario
+} from "../services/checklistComplianceService.js";
 
 const ESTADOS_CHECKLIST = ["BORRADOR", "FINALIZADO", "REVISADO"];
 const ESTADOS_DOCUMENTO = ["VIGENTE", "VENCIDO", "NO_APLICA"];
@@ -159,6 +164,10 @@ const CHECKLIST_LIST_FIELDS = [
   "conductorResponsable",
   "areaTrabajo",
   "fechaInspeccion",
+  "fechaProgramada",
+  "fechaRealizacion",
+  "checklistAtrasado",
+  "cumplimientoEstado",
   "horaInspeccion",
   "turno",
   "turnoNumero",
@@ -359,7 +368,22 @@ const calcularAptitud = (payload) => {
     ...(payload.luces || [])
   ];
 
-  const noApta = grupos.some(item =>
+  const documentosCriticosVencidos = (payload.documentacion || []).some((item) => {
+    const nombre = String(item.nombre || "").toUpperCase();
+    const esDocumentoBloqueante = [
+      "LICENCIA MUNICIPAL",
+      "LICENCIA INTERNA",
+      "REVISION TECNICA",
+      "REVISIÓN TÉCNICA",
+      "SEGURO OBLIGATORIO",
+      "SOAP",
+      "PERMISO DE CIRCULACION",
+      "PERMISO DE CIRCULACIÓN"
+    ].some((doc) => nombre.includes(doc));
+    return esDocumentoBloqueante && String(item.estado || "").toUpperCase() === "VENCIDO";
+  });
+
+  const noApta = documentosCriticosVencidos || grupos.some(item =>
     CRITICOS.includes(item.nombre) && item.estado === "MALO"
   );
 
@@ -389,6 +413,8 @@ const buildPayload = (body = {}) => {
     conductorResponsable: String(body.conductorResponsable || "").trim(),
     areaTrabajo: String(body.areaTrabajo || "").trim(),
     fechaInspeccion: parseDate(body.fechaInspeccion),
+    fechaProgramada: parseDate(body.fechaProgramada || body.fechaInspeccion),
+    fechaRealizacion: parseDate(body.fechaRealizacion || body.fechaInspeccion || new Date()),
     horaInspeccion: String(body.horaInspeccion || "").trim(),
     turno: ["DIA", "NOCHE"].includes(String(body.turno || "").toUpperCase()) ? String(body.turno).toUpperCase() : "",
     turnoNumero: String(body.turnoNumero || "").trim(),
@@ -431,6 +457,7 @@ const buildPayload = (body = {}) => {
 
   payload.aptitudOperacion = calcularAptitud(payload);
   payload.aptaOperacion = payload.aptitudOperacion === "APTA";
+  Object.assign(payload, normalizarCumplimientoChecklist(payload));
   return payload;
 };
 
@@ -456,6 +483,31 @@ const canRead = (req, checklist) => {
   if (esAdmin(req) || esSupervision(req)) return true;
   if (esOperadorPlanta(req)) return String(checklist.creadoPor?._id || checklist.creadoPor) === userId(req);
   return false;
+};
+
+const tieneBloqueoOperacionPatente = async (patente = "") => {
+  const patenteClean = String(patente || "").trim().toUpperCase();
+  if (!patenteClean) return false;
+  const alertas = await AlertaCamioneta.find({
+    activo: { $ne: false },
+    patente: patenteClean,
+    estado: { $in: ["ABIERTA", "ASIGNADA", "EN_PROCESO"] }
+  }).select("tipo descripcion prioridad estado").lean();
+
+  return alertas.some((alerta) => {
+    const texto = `${alerta.tipo || ""} ${alerta.descripcion || ""}`.toUpperCase();
+    if (String(alerta.prioridad || "").toUpperCase() === "CRITICA") return true;
+    return [
+      "LICENCIA MUNICIPAL",
+      "LICENCIA INTERNA",
+      "REVISION TECNICA",
+      "REVISIÓN TÉCNICA",
+      "SOAP",
+      "SEGURO OBLIGATORIO",
+      "PERMISO DE CIRCULACION",
+      "PERMISO DE CIRCULACIÓN"
+    ].some((doc) => texto.includes(doc)) && texto.includes("VENC");
+  });
 };
 
 const getChecklistOr404 = async (req, res) => {
@@ -649,6 +701,21 @@ export const obtenerAlertasVencimientosChecklistCamionetaController = async (req
   }
 };
 
+export const obtenerCumplimientoChecklistCamionetaController = async (req, res) => {
+  try {
+    if (!(esAdmin(req) || esSupervision(req) || esOperadorPlanta(req))) {
+      return res.status(403).json({ message: "No autorizado" });
+    }
+
+    const fecha = req.query?.fecha ? parseDate(req.query.fecha) : new Date();
+    const cumplimiento = await validarChecklistDiario({ fecha: fecha || new Date(), user: req.user });
+    return res.json(cumplimiento);
+  } catch (error) {
+    console.error("❌ ERROR CUMPLIMIENTO CHECKLIST:", error);
+    return res.status(500).json({ message: "Error obteniendo cumplimiento checklist camioneta" });
+  }
+};
+
 export const obtenerAlertasChecklistCamionetaController = async (req, res) => {
   try {
     if (!(esAdmin(req) || esSupervision(req) || esOperadorPlanta(req))) {
@@ -808,7 +875,21 @@ export const finalizarChecklistCamioneta = async (req, res) => {
     }
 
     checklist.estado = "FINALIZADO";
+    if (!checklist.fechaProgramada) checklist.fechaProgramada = checklist.fechaInspeccion || new Date();
+    checklist.fechaRealizacion = checklist.fechaRealizacion || checklist.fechaInspeccion || new Date();
+    Object.assign(checklist, normalizarCumplimientoChecklist(checklist));
     checklist.aptitudOperacion = calcularAptitud(checklist);
+    if (await tieneBloqueoOperacionPatente(checklist.patente)) {
+      checklist.aptitudOperacion = "NO_APTA";
+      await registrarEvento({
+        req,
+        modulo: "CHECKLIST_CAMIONETA",
+        entidad: "ChecklistCamioneta",
+        entidadId: checklist._id,
+        accion: "VEHICULO_NO_APTO",
+        observacion: `Vehiculo ${checklist.patente || ""} no apto por alerta activa`.trim()
+      });
+    }
     checklist.aptaOperacion = checklist.aptitudOperacion === "APTA";
 
     const faltantes = validarRealizado(checklist);
@@ -822,6 +903,14 @@ export const finalizarChecklistCamioneta = async (req, res) => {
     const mongoInicio = Date.now();
     await checklist.save();
     await registrarChecklistFinalizado(req, checklist);
+    await registrarEvento({
+      req,
+      modulo: "CHECKLIST_CAMIONETA",
+      entidad: "ChecklistCamioneta",
+      entidadId: checklist._id,
+      accion: checklist.checklistAtrasado ? "CHECKLIST_ATRASADO" : "CHECKLIST_REALIZADO",
+      observacion: `${checklist.checklistAtrasado ? "Checklist atrasado" : "Checklist realizado"} patente ${checklist.patente || ""}`.trim()
+    });
     console.log("⚡ Tiempo Mongo finalizar checklist:", `${Date.now() - mongoInicio}ms`);
     console.log("✅ CHECKLIST GUARDADO", {
       checklistId: checklist._id,

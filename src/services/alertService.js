@@ -1,4 +1,4 @@
-import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
+﻿import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import HistorialAlerta from "../models/HistorialAlerta.js";
 import User from "../models/user.js";
@@ -10,7 +10,6 @@ import { sincronizarAlertasOperacionalesChecklist } from "./alertaCamionetaServi
 const ALERTA_DIAS = 30;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
-const ROLES_ALERTA = ["SUPERVISION", "SUPERVISOR", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "ADMIN"];
 const ROLES_VALIDOS_ALERTA = [
   "ADMIN",
   "SUPERINTENDENTE",
@@ -24,6 +23,16 @@ const ROLES_VALIDOS_ALERTA = [
   "OPERADOR_PLANTA",
   "OPERADOR_CALDERA"
 ];
+const MATRIZ_NOTIFICACION_ALERTAS = {
+  CRITICA: ["SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO"],
+  MEDIA: ["JEFE_PLANTA", "JEFE_TURNO"],
+  MENOR: ["JEFE_PLANTA", "JEFE_TURNO"]
+};
+const CANALES_HISTORIAL = {
+  correoCorporativo: "EMAIL_CORPORATIVO",
+  correoRespaldo: "EMAIL_RESPALDO",
+  whatsapp: "WHATSAPP"
+};
 const ESTADOS_ACTIVOS = ["ACTIVO"];
 const ALERT_CHECKLIST_SELECT = [
   "-revisionCarroceria.imagenMarcada",
@@ -150,6 +159,16 @@ export const validarUsuarioAlertas = (user, canal = "ambos") => {
 
 const debeOmitirPorSoloCriticas = (user, alerta) =>
   preferenciasAlertasDe(user).soloCriticas && alerta.prioridad !== "CRITICA";
+
+const nivelNotificacionAlerta = (alerta = {}) => {
+  const prioridad = String(alerta.prioridad || "").trim().toUpperCase();
+  if (prioridad === "CRITICA") return "CRITICA";
+  if (prioridad === "MEDIA") return "MEDIA";
+  return "MENOR";
+};
+
+const rolesDestinoParaAlerta = (alerta = {}) =>
+  MATRIZ_NOTIFICACION_ALERTAS[nivelNotificacionAlerta(alerta)] || MATRIZ_NOTIFICACION_ALERTAS.MENOR;
 
 const buildBaseAlert = (checklist, tipo, data = {}) => {
   const template = getAlertTemplate(tipo);
@@ -367,14 +386,17 @@ export const obtenerAlertasChecklistCamioneta = async (filter = {}) => {
   return alertas;
 };
 
-export const obtenerDestinatariosAlertas = async (checklist) => {
-  console.log("Buscando destinatarios dinamicos de alertas...");
+export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
+  console.log("Buscando destinatarios dinamicos de alertas por matriz...");
   const operadorId = checklist.creadoPor?._id || checklist.creadoPor || null;
+  const rolesDestino = rolesDestinoParaAlerta(alerta);
   const users = await User.find({
     $or: [
       { _id: operadorId },
-      { rol: { $in: ROLES_ALERTA } }
-    ]
+      { rol: { $in: rolesDestino } }
+    ],
+    estado: "ACTIVO",
+    activo: { $ne: false }
   })
     .select("nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
     .lean();
@@ -383,20 +405,36 @@ export const obtenerDestinatariosAlertas = async (checklist) => {
   const destinatarios = [];
   for (const user of users) {
     const key = String(user._id || user.email || user.telefono);
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      console.log("ALERTA_DESTINATARIO_OMITIDO_DUPLICADO", {
+        motivo: "usuario duplicado",
+        userId: key,
+        rol: user.rol,
+        alerta: alerta.tipo
+      });
+      continue;
+    }
     seen.add(key);
     destinatarios.push(user);
   }
 
-  console.log("Destinatarios encontrados:", destinatarios.map((u) => ({
-    nombre: u.nombre,
-    rol: u.rol,
-    estado: u.estado,
-    telefono: u.telefono,
-    correoCorporativo: u.correoCorporativo || u.email,
-    correoRespaldo: u.correoRespaldo,
-    preferenciasAlertas: u.preferenciasAlertas
-  })));
+  console.log("ALERTA_DESTINATARIOS_RESUELTOS", {
+    alerta: alerta.tipo,
+    prioridad: alerta.prioridad,
+    nivel: nivelNotificacionAlerta(alerta),
+    rolesDestino,
+    creadorChecklist: operadorId ? String(operadorId) : "",
+    total: destinatarios.length,
+    destinatarios: destinatarios.map((u) => ({
+      nombre: u.nombre,
+      rol: u.rol,
+      estado: u.estado,
+      telefono: u.telefono,
+      correoCorporativo: u.correoCorporativo || u.email,
+      correoRespaldo: u.correoRespaldo,
+      preferenciasAlertas: u.preferenciasAlertas
+    }))
+  });
   return destinatarios;
 };
 
@@ -480,7 +518,8 @@ const omitirCanal = async ({ alerta, user, canal, motivo }) => {
 
 const enviarCorreoUsuario = async ({ alerta, user, tipoCorreo }) => {
   const preferencias = preferenciasAlertasDe(user);
-  const canal = tipoCorreo === "respaldo" ? "correoRespaldo" : "correoCorporativo";
+  const canalValidacion = tipoCorreo === "respaldo" ? "correoRespaldo" : "correoCorporativo";
+  const canal = tipoCorreo === "respaldo" ? CANALES_HISTORIAL.correoRespaldo : CANALES_HISTORIAL.correoCorporativo;
   const etiqueta = tipoCorreo === "respaldo" ? "correo respaldo" : "correo corporativo";
   console.log("ENVIANDO ALERTA EMAIL", { usuario: user.email || user.nombre, etiqueta });
 
@@ -496,7 +535,7 @@ const enviarCorreoUsuario = async ({ alerta, user, tipoCorreo }) => {
     return omitirCanal({ alerta, user, canal, motivo: "Usuario desactivo correo corporativo" });
   }
 
-  const validacion = validarUsuarioAlertas(user, canal);
+  const validacion = validarUsuarioAlertas(user, canalValidacion);
   if (!validacion.valido) {
     return omitirCanal({ alerta, user, canal, motivo: validacion.motivos.join("; ") });
   }
@@ -543,35 +582,46 @@ const enviarCorreoUsuario = async ({ alerta, user, tipoCorreo }) => {
   return { alerta: alerta.tipo, ...result, canal, provider: result.provider || result.canal };
 };
 const enviarWhatsappUsuario = async ({ alerta, user }) => {
-  console.log("📲 ENVIANDO ALERTA WHATSAPP", { usuario: user.telefono || user.nombre });
+  console.log("ðŸ“² ENVIANDO ALERTA WHATSAPP", { usuario: user.telefono || user.nombre });
   const preferencias = preferenciasAlertasDe(user);
 
   if (debeOmitirPorSoloCriticas(user, alerta)) {
-    return omitirCanal({ alerta, user, canal: "whatsapp", motivo: "Preferencia soloCriticas activa y alerta no critica" });
+    return omitirCanal({ alerta, user, canal: CANALES_HISTORIAL.whatsapp, motivo: "Preferencia soloCriticas activa y alerta no critica" });
   }
 
   if (!preferencias.whatsapp) {
-    return omitirCanal({ alerta, user, canal: "whatsapp", motivo: "Usuario desactivo WhatsApp" });
+    return omitirCanal({ alerta, user, canal: CANALES_HISTORIAL.whatsapp, motivo: "Usuario desactivo WhatsApp" });
   }
 
   const validacion = validarUsuarioAlertas(user, "whatsapp");
   if (!validacion.valido) {
-    return omitirCanal({ alerta, user, canal: "whatsapp", motivo: validacion.motivos.join("; ") });
+    return omitirCanal({ alerta, user, canal: CANALES_HISTORIAL.whatsapp, motivo: validacion.motivos.join("; ") });
   }
   if (!whatsappConfigured()) {
-    return omitirCanal({ alerta, user, canal: "whatsapp", motivo: "Twilio WhatsApp Sandbox no configurado" });
+    return omitirCanal({ alerta, user, canal: CANALES_HISTORIAL.whatsapp, motivo: "Twilio WhatsApp Sandbox no configurado" });
   }
 
-  console.log("📲 ENVIANDO WHATSAPP", { tipo: alerta.tipo, destinatario: validacion.destinatario.telefono });
+  console.log("ðŸ“² ENVIANDO WHATSAPP", { tipo: alerta.tipo, destinatario: validacion.destinatario.telefono });
   const result = await sendWhatsAppAlert({ to: validacion.destinatario.telefono, body: buildWhatsappMessage(alerta) });
-  await registrarHistorialAlerta({ alerta, destinatario: validacion.destinatario, canal: "whatsapp", estado: result.estado, error: result.motivo || result.respuesta || "" });
+  await registrarHistorialAlerta({ alerta, destinatario: validacion.destinatario, canal: CANALES_HISTORIAL.whatsapp, estado: result.estado, error: result.motivo || result.respuesta || "" });
   return { alerta: alerta.tipo, ...result };
+};
+
+const destinoCanalParaDeduplicar = ({ user, tipoCorreo = "", canal }) => {
+  const destinatario = plainUser(user);
+  if (canal === CANALES_HISTORIAL.whatsapp) {
+    return destinatario.telefono ? `${canal}:${destinatario.telefono}` : "";
+  }
+  const email = tipoCorreo === "respaldo"
+    ? destinatario.correoRespaldo
+    : destinatario.correoCorporativo;
+  return email ? `EMAIL:${email}` : "";
 };
 
 export const procesarAlertasChecklist = async (checklistOrId) => {
   const inicio = Date.now();
   try {
-    console.log("🔥 INICIO ALERT SERVICE", {
+    console.log("ðŸ”¥ INICIO ALERT SERVICE", {
       email: emailConfigStatus(),
       whatsapp: whatsappConfigured()
     });
@@ -581,7 +631,7 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
         .select(ALERT_CHECKLIST_SELECT)
         .populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
       : await checklistOrId.populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas");
-    console.log("⚡ Tiempo Mongo alertas:", `${Date.now() - mongoInicio}ms`);
+    console.log("âš¡ Tiempo Mongo alertas:", `${Date.now() - mongoInicio}ms`);
 
     if (!checklist) {
       return { alertasGeneradas: [], notificaciones: [{ estado: "omitido", motivo: "Checklist no encontrado" }] };
@@ -589,14 +639,13 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
 
     const alertasGeneradas = await generarAlertasChecklist(checklist);
     const alertasOperacionales = await sincronizarAlertasOperacionalesChecklist(checklist, alertasGeneradas);
-    const destinatarios = await obtenerDestinatariosAlertas(checklist);
     const notificaciones = [];
+    const destinatariosFinales = new Map();
 
-    console.log("🔥 EJECUTANDO ALERTAS CHECKLIST", {
+    console.log("EJECUTANDO ALERTAS CHECKLIST", {
       checklistId: checklist._id,
       patente: checklist.patente,
-      totalAlertas: alertasGeneradas.length,
-      totalDestinatarios: destinatarios.length
+      totalAlertas: alertasGeneradas.length
     });
 
     if (!alertasGeneradas.length) {
@@ -604,35 +653,88 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
     }
 
     for (const alerta of alertasGeneradas) {
-      console.log("🔥 Alerta generada:", { tipo: alerta.tipo, prioridad: alerta.prioridad, mensaje: alerta.mensaje });
+      console.log("Alerta generada:", { tipo: alerta.tipo, prioridad: alerta.prioridad, mensaje: alerta.mensaje });
+      const destinatarios = await obtenerDestinatariosAlertas(checklist, alerta);
+      const enviosRealizados = new Set();
+
       for (const user of destinatarios) {
+        const destinatarioPlano = plainUser(user);
+        if (destinatarioPlano.userId) {
+          destinatariosFinales.set(String(destinatarioPlano.userId), destinatarioPlano);
+        }
+
         for (const tipoCorreo of ["corporativo", "respaldo"]) {
+          const canal = tipoCorreo === "respaldo" ? CANALES_HISTORIAL.correoRespaldo : CANALES_HISTORIAL.correoCorporativo;
           try {
+            const dedupeKey = destinoCanalParaDeduplicar({ user, tipoCorreo, canal });
+            if (dedupeKey && enviosRealizados.has(dedupeKey)) {
+              console.log("ALERTA_DESTINATARIO_OMITIDO_DUPLICADO", {
+                alerta: alerta.tipo,
+                prioridad: alerta.prioridad,
+                canal,
+                destino: dedupeKey,
+                usuario: destinatarioPlano.nombre,
+                rol: destinatarioPlano.rol
+              });
+              continue;
+            }
+            if (dedupeKey) enviosRealizados.add(dedupeKey);
+
+            console.log("ALERTA_ENVIO_INICIADO", {
+              alerta: alerta.tipo,
+              prioridad: alerta.prioridad,
+              canal,
+              usuario: destinatarioPlano.nombre,
+              rol: destinatarioPlano.rol
+            });
             notificaciones.push(await enviarCorreoUsuario({ alerta, user, tipoCorreo }));
+            console.log("ALERTA_ENVIO_FINALIZADO", { alerta: alerta.tipo, canal, usuario: destinatarioPlano.nombre });
           } catch (error) {
             console.error("ERROR ALERTAS CORREO:", { tipoCorreo, error: error.message });
             console.error(error);
             const destinatario = plainUser(user);
-            const canal = tipoCorreo === "respaldo" ? "correoRespaldo" : "correoCorporativo";
             await registrarHistorialAlerta({ alerta, destinatario, canal, estado: "error", error: error.message });
             notificaciones.push({ alerta: alerta.tipo, canal, estado: "error", destino: destinatario.email, motivo: error.message });
           }
         }
 
+        const canal = CANALES_HISTORIAL.whatsapp;
         try {
+          const dedupeKey = destinoCanalParaDeduplicar({ user, canal });
+          if (dedupeKey && enviosRealizados.has(dedupeKey)) {
+            console.log("ALERTA_DESTINATARIO_OMITIDO_DUPLICADO", {
+              alerta: alerta.tipo,
+              prioridad: alerta.prioridad,
+              canal,
+              destino: dedupeKey,
+              usuario: destinatarioPlano.nombre,
+              rol: destinatarioPlano.rol
+            });
+            continue;
+          }
+          if (dedupeKey) enviosRealizados.add(dedupeKey);
+
+          console.log("ALERTA_ENVIO_INICIADO", {
+            alerta: alerta.tipo,
+            prioridad: alerta.prioridad,
+            canal,
+            usuario: destinatarioPlano.nombre,
+            rol: destinatarioPlano.rol
+          });
           notificaciones.push(await enviarWhatsappUsuario({ alerta, user }));
+          console.log("ALERTA_ENVIO_FINALIZADO", { alerta: alerta.tipo, canal, usuario: destinatarioPlano.nombre });
         } catch (error) {
-          console.error("❌ ERROR ALERTAS WHATSAPP:", error.message);
+          console.error("ERROR ALERTAS WHATSAPP:", error.message);
           console.error(error);
           const destinatario = plainUser(user);
-          await registrarHistorialAlerta({ alerta, destinatario, canal: "whatsapp", estado: "error", error: error.message });
-          notificaciones.push({ alerta: alerta.tipo, canal: "whatsapp", estado: "error", destino: destinatario.telefono, motivo: error.message });
+          await registrarHistorialAlerta({ alerta, destinatario, canal, estado: "error", error: error.message });
+          notificaciones.push({ alerta: alerta.tipo, canal, estado: "error", destino: destinatario.telefono, motivo: error.message });
         }
       }
-      console.log("✅ ALERTA PROCESADA", { tipo: alerta.tipo, prioridad: alerta.prioridad });
+      console.log("ALERTA PROCESADA", { tipo: alerta.tipo, prioridad: alerta.prioridad });
     }
 
-    console.log("✅ ALERTAS FINALIZADAS", {
+    console.log("ALERTAS FINALIZADAS", {
       checklistId: checklist._id,
       alertas: alertasGeneradas.length,
       notificaciones: notificaciones.length
@@ -642,14 +744,14 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
       alertasGeneradas,
       alertasOperacionales,
       notificaciones,
-      destinatarios: destinatarios.map(plainUser),
+      destinatarios: Array.from(destinatariosFinales.values()),
       canalesActivos: canalesPreparados()
     };
   } catch (error) {
-    console.error("❌ ERROR ALERT SERVICE:", error);
+    console.error("âŒ ERROR ALERT SERVICE:", error);
     return { alertasGeneradas: [], notificaciones: [{ estado: "error", motivo: error.message }], destinatarios: [], canalesActivos: canalesPreparados() };
   } finally {
-    console.log("⚡ Tiempo alertas:", `${Date.now() - inicio}ms`);
+    console.log("âš¡ Tiempo alertas:", `${Date.now() - inicio}ms`);
   }
 };
 
@@ -666,3 +768,7 @@ export const variablesNotificacionChecklistCamioneta = [
   "TWILIO_AUTH_TOKEN",
   "TWILIO_WHATSAPP_FROM=whatsapp:+14155238886"
 ];
+
+
+
+
