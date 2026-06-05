@@ -1,9 +1,16 @@
 import { Resend } from "resend";
+import fs from "node:fs";
 import { ALERT_PRIORITIES } from "../config/alertTemplates.js";
 
 const cleanEnv = (value) => String(value || "").trim();
 const DEFAULT_FROM = "Operaciones Litio <alertas@auraprime.cl>";
 const DEFAULT_APP_URL = "https://auraprime.cl";
+const EMAIL_LOGO_CID = "logo-novandino";
+const EMAIL_LOGO_FILENAME = "logo-novandino.png";
+const EMAIL_LOGO_PATH = new URL("../assets/logo-novandino.png", import.meta.url);
+const EMAIL_LOGO_ALT = "NOVANDINO OPERACIONES LITIO";
+let logoCache = null;
+let logoCacheLoaded = false;
 
 const resendErrorSeguro = (error) => ({
   message: error?.message,
@@ -21,8 +28,53 @@ export const emailFrom = () => cleanEnv(process.env.EMAIL_FROM) || DEFAULT_FROM;
 
 export const publicAppUrl = () => cleanEnv(process.env.PUBLIC_APP_URL) || DEFAULT_APP_URL;
 
-export const emailLogoUrl = () =>
-  cleanEnv(process.env.EMAIL_LOGO_URL) || `${publicAppUrl()}/assets/logo-novandino.png`;
+const getEmbeddedLogo = () => {
+  if (logoCacheLoaded) return logoCache;
+  logoCacheLoaded = true;
+
+  try {
+    const buffer = fs.readFileSync(EMAIL_LOGO_PATH);
+    logoCache = {
+      buffer,
+      base64: buffer.toString("base64"),
+      mimeType: "image/png",
+      filename: EMAIL_LOGO_FILENAME,
+      cid: EMAIL_LOGO_CID
+    };
+    console.log("EMAIL_LOGO_EMBEDDED", {
+      mode: "cid",
+      filename: EMAIL_LOGO_FILENAME,
+      bytes: buffer.length
+    });
+  } catch (error) {
+    console.warn("EMAIL_LOGO_EMBEDDED_WARNING", {
+      message: error?.message || "No se pudo cargar logo corporativo inline",
+      path: EMAIL_LOGO_PATH.pathname
+    });
+    logoCache = null;
+  }
+
+  return logoCache;
+};
+
+export const emailLogoAttachments = () => {
+  const logo = getEmbeddedLogo();
+  if (!logo) return [];
+
+  return [{
+    filename: logo.filename,
+    content: logo.buffer,
+    contentType: logo.mimeType,
+    contentId: logo.cid
+  }];
+};
+
+const emailLogoSrc = (mode = "cid") => {
+  const logo = getEmbeddedLogo();
+  if (!logo) return "";
+  if (mode === "base64") return `data:${logo.mimeType};base64,${logo.base64}`;
+  return `cid:${logo.cid}`;
+};
 
 export const emailConfigStatus = () => {
   const apiKey = cleanEnv(process.env.RESEND_API_KEY);
@@ -35,7 +87,9 @@ export const emailConfigStatus = () => {
     resendApiKeyExists: Boolean(apiKey),
     resendApiKeyPrefix: apiKey ? `${apiKey.slice(0, 8)}...` : null,
     emailFrom: from,
-    logoUrl: emailLogoUrl(),
+    logoMode: "cid",
+    logoCid: EMAIL_LOGO_CID,
+    logoEmbedded: Boolean(getEmbeddedLogo()),
     appUrl: publicAppUrl()
   };
 };
@@ -88,7 +142,19 @@ const tableRow = (label, value) => `
     </td>
   </tr>`;
 
-const buildCorporateEmailLayout = ({ title, subtitle, preheader = "", bodyHtml }) => `
+const buildCorporateEmailLayout = ({ title, subtitle, preheader = "", bodyHtml, logoMode = "cid" }) => {
+  const logoSrc = emailLogoSrc(logoMode);
+  const logoHtml = logoSrc
+    ? `<img src="${escapeHtml(logoSrc)}" width="170" alt="${EMAIL_LOGO_ALT}" style="display:block;border:0;outline:none;text-decoration:none;width:170px;max-width:180px;height:auto;margin:0 auto 16px auto;">`
+    : `<div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:25px;font-weight:bold;color:#FFFFFF;margin-bottom:16px;">${EMAIL_LOGO_ALT}</div>`;
+
+  console.log("EMAIL_TEMPLATE_GENERATED", {
+    title,
+    logoMode: logoSrc ? logoMode : "text-fallback",
+    logoEmbedded: Boolean(logoSrc)
+  });
+
+  return `
 <!doctype html>
 <html>
   <head>
@@ -106,7 +172,7 @@ const buildCorporateEmailLayout = ({ title, subtitle, preheader = "", bodyHtml }
           <table role="presentation" width="720" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:720px;background:#FFFFFF;border-collapse:collapse;border:1px solid #D9DEE8;">
             <tr>
               <td align="center" style="background:#461D77;padding:24px 22px 18px 22px;">
-                <img src="${escapeHtml(emailLogoUrl())}" width="170" alt="Novandino" style="display:block;border:0;outline:none;text-decoration:none;width:170px;max-width:60%;height:auto;margin:0 auto 16px auto;">
+                ${logoHtml}
                 <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#FFFFFF;">
                   OPERACIONES LITIO
                 </div>
@@ -143,6 +209,7 @@ const buildCorporateEmailLayout = ({ title, subtitle, preheader = "", bodyHtml }
     </table>
   </body>
 </html>`;
+};
 
 export const buildAlertEmailHtml = ({ alerta, destinatario }) => {
   const priority = priorityData(alerta.prioridad);
@@ -249,7 +316,7 @@ export const buildPasswordTemporalEmailHtml = ({ user, passwordTemporal }) => {
   });
 };
 
-export const buildTestEmailHtml = () => {
+export const buildTestEmailHtml = ({ logoMode = "cid" } = {}) => {
   const bodyHtml = `
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
       <tr>
@@ -269,7 +336,8 @@ export const buildTestEmailHtml = () => {
     title: "PRUEBA SISTEMA ALERTAS OPERACIONES LITIO",
     subtitle: "Validacion de correo corporativo",
     preheader: "Correo de prueba enviado desde Resend",
-    bodyHtml
+    bodyHtml,
+    logoMode
   });
 };
 
@@ -319,7 +387,8 @@ export const sendEmailAlert = async ({ to, subject, html, text, metadata = {} })
       to: destinatario,
       subject,
       html,
-      text
+      text,
+      attachments: emailLogoAttachments()
     });
 
     if (result?.error) {
@@ -327,6 +396,7 @@ export const sendEmailAlert = async ({ to, subject, html, text, metadata = {} })
     }
 
     const messageId = result?.data?.id || result?.id || "";
+    console.log("EMAIL_SENT", { fecha, destinatario, messageId, estado: "enviado", logoCid: EMAIL_LOGO_CID });
     console.log("\u2705 EMAIL ENVIADO RESEND", { fecha, destinatario, messageId, estado: "enviado" });
 
     return {

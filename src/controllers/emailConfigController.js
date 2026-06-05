@@ -1,5 +1,5 @@
 import HistorialAlerta from "../models/HistorialAlerta.js";
-import { emailConfigStatus, sendTestEmail } from "../services/emailService.js";
+import { buildTestEmailHtml, emailConfigStatus, sendTestEmail } from "../services/emailService.js";
 
 const serializarHistorial = (doc) => {
   if (!doc) return null;
@@ -78,6 +78,23 @@ export const enviarCorreoPrueba = async (req, res) => {
       ok: false,
       enviado: false,
       error: error?.message || "Error enviando correo de prueba"
+    });
+  }
+};
+
+export const obtenerTemplateCorreoPrueba = async (req, res) => {
+  try {
+    const html = buildTestEmailHtml({ logoMode: "base64" });
+    console.log("EMAIL_TEMPLATE_GENERATED", {
+      endpoint: "/api/test/email-template",
+      logoMode: "base64"
+    });
+    return res.type("html").send(html);
+  } catch (error) {
+    console.error("EMAIL_TEMPLATE_DIAGNOSTIC_ERROR", error);
+    return res.status(500).json({
+      ok: false,
+      error: error?.message || "Error generando template de correo"
     });
   }
 };
