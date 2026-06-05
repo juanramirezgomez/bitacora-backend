@@ -21,7 +21,7 @@ import {
   registrarSolicitudResetPassword
 } from "../services/loginAuditService.js";
 import { registrarEvento } from "../services/operationalAuditService.js";
-import { sendEmailAlert } from "../services/emailService.js";
+import { buildPasswordTemporalEmailHtml, sendEmailAlert } from "../services/emailService.js";
 import { sendWhatsAppAlert } from "../services/whatsappService.js";
 
 const ROLES = [
@@ -729,25 +729,6 @@ const generarPasswordTemporal = () => {
   return `Nova${new Date().getFullYear()}!${numero}${letras.slice(0, 2)}`;
 };
 
-const passwordTemporalEmailHtml = ({ user, passwordTemporal }) => `
-  <div style="background:#07111f;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#111827;">
-    <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #d7d8e8;">
-      <div style="background:#461D77;color:#fff;padding:18px 22px;">
-        <h1 style="margin:0;font-size:20px;">Recuperacion de contrasena</h1>
-        <p style="margin:6px 0 0;font-size:13px;">Superintendencia Operaciones Litio</p>
-      </div>
-      <div style="padding:22px;">
-        <p>Hola ${user.nombre || "usuario"}, administracion aprobo tu solicitud de recuperacion.</p>
-        <p>Tu contrasena temporal es:</p>
-        <div style="font-size:24px;font-weight:800;letter-spacing:1px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:14px;text-align:center;">
-          ${passwordTemporal}
-        </div>
-        <p style="margin-top:18px;">Al iniciar sesion el sistema solicitara crear una nueva contrasena personal.</p>
-        <p style="font-size:12px;color:#64748b;margin-top:22px;">NOVANDINO | GESTION OPERACIONAL</p>
-      </div>
-    </div>
-  </div>`;
-
 const enviarPasswordTemporal = async (user, passwordTemporal) => {
   const preferencias = normalizarPreferenciasAlertas(user.preferenciasAlertas);
   const resultados = [];
@@ -769,7 +750,7 @@ const enviarPasswordTemporal = async (user, passwordTemporal) => {
     resultados.push(await sendEmailAlert({
       to: correo,
       subject: "Contrasena temporal - Superintendencia Operaciones Litio",
-      html: passwordTemporalEmailHtml({ user, passwordTemporal }),
+      html: buildPasswordTemporalEmailHtml({ user, passwordTemporal }),
       text: [
         `Hola ${user.nombre || "usuario"}`,
         "Administracion aprobo tu solicitud de recuperacion.",
