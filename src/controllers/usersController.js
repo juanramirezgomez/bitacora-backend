@@ -1,6 +1,7 @@
 // src/controllers/usersController.js
 import bcrypt from "bcryptjs";
 import User from "../models/user.js";
+import { reevaluarAlertasDocumentales } from "../services/documentacionOperacionalService.js";
 
 const ROLES = [
   "ADMIN",
@@ -18,6 +19,14 @@ const ROLES = [
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GMAIL_REGEX = /^[^\s@]+@gmail\.com$/i;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
+const toBoolean = (value) =>
+  value === true || String(value || "").trim().toUpperCase() === "SI" || String(value || "").trim().toLowerCase() === "true";
+
+const normalizarFecha = (value) => {
+  if (!value) return null;
+  const fecha = new Date(value);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
+};
 
 const preferenciasAlertasDefault = (preferencias = {}) => ({
   whatsapp: preferencias.whatsapp !== false,
@@ -51,6 +60,7 @@ const validarContactos = ({ email, correoCorporativo, correoRespaldo, telefono }
 const sanitizeUser = (u) => ({
   id: u._id,
   username: u.username,
+  operadorId: u.operadorId || "",
   nombre: u.nombre,
   email: u.email,
   correoCorporativo: u.correoCorporativo || u.email || "",
@@ -60,10 +70,57 @@ const sanitizeUser = (u) => ({
   rol: u.rol,
   estado: u.estado,
   planta: u.planta,
+  area: u.area || u.planta || "PC1",
+  turno: u.turno || "",
+  cargo: u.cargo || "",
+  licenciaClaseB: u.licenciaClaseB === true,
+  fechaVencimientoLicenciaB: u.fechaVencimientoLicenciaB || null,
+  licenciaInterna: u.licenciaInterna === true,
+  fechaVencimientoLicenciaInterna: u.fechaVencimientoLicenciaInterna || null,
+  modulosPermitidos: u.modulosPermitidos || [],
+  debeCambiarPassword: u.debeCambiarPassword === true,
   activo: u.activo,
   createdAt: u.createdAt,
   updatedAt: u.updatedAt
 });
+
+// PUT /api/users/documentacion
+export const actualizarDocumentacionOperacional = async (req, res) => {
+  try {
+    const id = req.user?.uid || req.user?.id || req.user?._id;
+    if (!id) return res.status(401).json({ message: "Token invalido" });
+
+    const update = {};
+    if (req.body?.licenciaClaseB !== undefined) update.licenciaClaseB = toBoolean(req.body.licenciaClaseB);
+    if (req.body?.licenciaInterna !== undefined) update.licenciaInterna = toBoolean(req.body.licenciaInterna);
+
+    if (req.body?.fechaVencimientoLicenciaB !== undefined) {
+      const fecha = normalizarFecha(req.body.fechaVencimientoLicenciaB);
+      if (req.body.fechaVencimientoLicenciaB && !fecha) return res.status(400).json({ message: "Fecha vencimiento Licencia Clase B invalida" });
+      update.fechaVencimientoLicenciaB = fecha;
+    }
+
+    if (req.body?.fechaVencimientoLicenciaInterna !== undefined) {
+      const fecha = normalizarFecha(req.body.fechaVencimientoLicenciaInterna);
+      if (req.body.fechaVencimientoLicenciaInterna && !fecha) return res.status(400).json({ message: "Fecha vencimiento Licencia Interna invalida" });
+      update.fechaVencimientoLicenciaInterna = fecha;
+    }
+
+    const user = await User.findByIdAndUpdate(id, update, { new: true })
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+    if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    const reevaluacion = await reevaluarAlertasDocumentales(user);
+    return res.json({
+      message: "Documentacion operacional actualizada",
+      user: sanitizeUser(user),
+      reevaluacion
+    });
+  } catch (e) {
+    console.error("ERROR ACTUALIZANDO DOCUMENTACION OPERACIONAL:", e);
+    return res.status(500).json({ message: "Error actualizando documentacion operacional" });
+  }
+};
 
 // GET /api/users
 export const listUsers = async (req, res) => {

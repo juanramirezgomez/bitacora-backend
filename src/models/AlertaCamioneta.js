@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
-const ESTADOS = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
+const ESTADOS = ["ABIERTA", "RESUELTA", "CERRADA"];
 
 const fotoSchema = new mongoose.Schema(
   {

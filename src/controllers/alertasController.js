@@ -59,8 +59,19 @@ export const mapAlerta = (alerta, seguimiento = []) => ({
   nivelEscalamiento: alerta.nivelEscalamiento || 0,
   checklistId: alerta.checklistId || null,
   fotos: alerta.fotos || [],
+  origen: inferirOrigenAlerta(alerta),
   seguimiento
 });
+
+const inferirOrigenAlerta = (alerta = {}) => {
+  const texto = `${alerta.tipo || ""} ${alerta.descripcion || ""}`.toUpperCase();
+  if (texto.includes("CLASE B")) return "Licencia Clase B";
+  if (texto.includes("LICENCIA INTERNA")) return "Licencia Interna";
+  if (texto.includes("MANTENCION")) return "Mantencion";
+  if (texto.includes("DOCUMENTACION")) return "Documentacion";
+  if (alerta.checklistId) return "Checklist";
+  return alerta.origen || "Alerta Operacional";
+};
 
 const requireAlerta = (alerta, res) => {
   if (alerta) return false;

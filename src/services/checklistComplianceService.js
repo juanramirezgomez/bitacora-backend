@@ -47,7 +47,7 @@ const pct = (realizados, total) => total ? Math.round((realizados / total) * 100
 const isNoAptaPorAlerta = (alerta = {}) => {
   const tipo = String(alerta.tipo || alerta.descripcion || "").toUpperCase();
   const estado = String(alerta.estado || "").toUpperCase();
-  if (!["ABIERTA", "ASIGNADA", "EN_PROCESO"].includes(estado)) return false;
+  if (estado !== "ABIERTA") return false;
   if (String(alerta.prioridad || "").toUpperCase() === "CRITICA") return true;
   return [
     "LICENCIA MUNICIPAL",
@@ -275,7 +275,7 @@ export const validarChecklistDiario = async ({ fecha = new Date(), user = null }
     AlertaCamioneta.find({
       activo: { $ne: false },
       patente: { $in: patentes },
-      estado: { $in: ["ABIERTA", "ASIGNADA", "EN_PROCESO"] }
+      estado: "ABIERTA"
     }).select("patente tipo descripcion prioridad estado").lean()
   ]);
 

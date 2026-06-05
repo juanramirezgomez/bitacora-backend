@@ -10,7 +10,7 @@ const PRIORIDAD_ORDEN = {
   BAJA: 1
 };
 
-export const ESTADOS_ALERTA_FLUJO = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
+export const ESTADOS_ALERTA_FLUJO = ["ABIERTA", "RESUELTA", "CERRADA"];
 const RESPONSABLE_ROLES = ["SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "OPERADOR_LIDER"];
 
 const normalizeText = (value) =>
@@ -30,8 +30,7 @@ const normalizePriority = (prioridad) => {
 
 const normalizeEstado = (estado = "ABIERTA") => {
   const value = normalizeText(estado);
-  if (value === "ASIGNADA") return "ASIGNADA";
-  if (value.includes("PROCESO")) return "EN_PROCESO";
+  if (value === "ASIGNADA" || value.includes("PROCESO")) return "ABIERTA";
   if (value.includes("RESUEL")) return "RESUELTA";
   if (value.includes("CERRA")) return "CERRADA";
   return "ABIERTA";
@@ -230,7 +229,10 @@ export const adjuntarEvidenciaAlerta = async ({ id, user, files = [], tipo = "GE
 export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsable, fechaCompromiso }) => {
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
-  validarTransicion(alerta.estado, "ASIGNADA");
+  alerta.estado = normalizeEstado(alerta.estado);
+  if (alerta.estado !== "ABIERTA") {
+    throw new Error("Solo se puede asignar una alerta abierta");
+  }
 
   let responsableUser = null;
   if (responsableId) {
@@ -240,7 +242,6 @@ export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsa
     throw new Error("Responsable no habilitado para alertas");
   }
 
-  alerta.estado = "ASIGNADA";
   alerta.responsableId = responsableUser?._id || null;
   alerta.responsableNombre = responsableUser?.nombre || String(responsable || userName(user)).trim();
   alerta.responsableRol = responsableUser?.rol || "";
@@ -254,7 +255,7 @@ export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsa
     user,
     tipoEvento: "ASIGNACION",
     estadoAnterior: "ABIERTA",
-    estadoNuevo: "ASIGNADA",
+    estadoNuevo: "ABIERTA",
     comentario: `Alerta asignada a ${alerta.responsableNombre}`
   });
   return alerta.toObject();
@@ -263,8 +264,10 @@ export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsa
 export const marcarAlertaEnProceso = async ({ id, user, observaciones }) => {
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
-  validarTransicion(alerta.estado, "EN_PROCESO");
-  alerta.estado = "EN_PROCESO";
+  alerta.estado = normalizeEstado(alerta.estado);
+  if (alerta.estado !== "ABIERTA") {
+    throw new Error("Solo se puede gestionar una alerta abierta");
+  }
   alerta.observaciones = String(observaciones || alerta.observaciones || "").trim();
   alerta.fechaUltimoMovimiento = new Date();
   await alerta.save();
@@ -272,9 +275,9 @@ export const marcarAlertaEnProceso = async ({ id, user, observaciones }) => {
     alerta,
     user,
     tipoEvento: "CAMBIO_ESTADO",
-    estadoAnterior: "ASIGNADA",
-    estadoNuevo: "EN_PROCESO",
-    comentario: alerta.observaciones || "Alerta en proceso"
+    estadoAnterior: "ABIERTA",
+    estadoNuevo: "ABIERTA",
+    comentario: alerta.observaciones || "Alerta gestionada sin cambio de estado"
   });
   return alerta.toObject();
 };
@@ -282,6 +285,7 @@ export const marcarAlertaEnProceso = async ({ id, user, observaciones }) => {
 export const resolverAlertaCamioneta = async ({ id, user, solucion, observaciones }) => {
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
+  alerta.estado = normalizeEstado(alerta.estado);
   validarTransicion(alerta.estado, "RESUELTA");
   const accionCorrectiva = String(solucion || "").trim();
   if (!accionCorrectiva) throw new Error("Accion correctiva obligatoria");
@@ -297,7 +301,7 @@ export const resolverAlertaCamioneta = async ({ id, user, solucion, observacione
     alerta,
     user,
     tipoEvento: "CAMBIO_ESTADO",
-    estadoAnterior: "EN_PROCESO",
+    estadoAnterior: "ABIERTA",
     estadoNuevo: "RESUELTA",
     comentario: accionCorrectiva
   });
@@ -307,6 +311,7 @@ export const resolverAlertaCamioneta = async ({ id, user, solucion, observacione
 export const cerrarAlertaCamioneta = async ({ id, user, solucion, observaciones }) => {
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
+  alerta.estado = normalizeEstado(alerta.estado);
   validarTransicion(alerta.estado, "CERRADA");
   const cierre = String(solucion || alerta.solucion || "").trim();
   if (!cierre) throw new Error("Solucion final obligatoria");
@@ -337,7 +342,7 @@ export const evaluarEscalamientoAlertas = async ({ notificar = false } = {}) => 
   const alertas = await AlertaCamioneta.find({
     activo: { $ne: false },
     prioridad: "CRITICA",
-    estado: { $in: ["ABIERTA", "ASIGNADA", "EN_PROCESO"] }
+    estado: "ABIERTA"
   }).limit(200);
 
   const resultados = [];

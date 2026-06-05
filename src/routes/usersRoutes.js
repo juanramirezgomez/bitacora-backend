@@ -3,6 +3,7 @@ import express from "express";
 import {
   listUsers,
   createUser,
+  actualizarDocumentacionOperacional,
   updateUser,
   resetPassword,
   setActivo,
@@ -13,6 +14,8 @@ import { requireAuth } from "../middlewares/authJwt.js";
 import { authorizeModule } from "../middlewares/authorizeModule.js";
 
 const router = express.Router();
+
+router.put("/documentacion", requireAuth, actualizarDocumentacionOperacional);
 
 // ✅ middleware simple: solo ADMIN
 const requireAdmin = (req, res, next) => {

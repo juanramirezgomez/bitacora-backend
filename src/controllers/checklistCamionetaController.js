@@ -551,7 +551,7 @@ const tieneBloqueoOperacionPatente = async (patente = "") => {
   const alertas = await AlertaCamioneta.find({
     activo: { $ne: false },
     patente: patenteClean,
-    estado: { $in: ["ABIERTA", "ASIGNADA", "EN_PROCESO"] }
+    estado: "ABIERTA"
   }).select("tipo descripcion prioridad estado").lean();
 
   return alertas.some((alerta) => {

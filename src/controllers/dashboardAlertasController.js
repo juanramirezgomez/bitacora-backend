@@ -12,7 +12,7 @@ import {
 import { registrarEvento } from "../services/operationalAuditService.js";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
-const ACTIVAS = ["ABIERTA", "ASIGNADA", "EN_PROCESO"];
+const ACTIVAS = ["ABIERTA"];
 
 const startOfDay = (date) => {
   const value = new Date(date);
@@ -50,8 +50,7 @@ const normalizePriority = (prioridad) => {
 
 const normalizeEstado = (estado) => {
   const value = String(estado || "ABIERTA").trim().toUpperCase();
-  if (value.includes("ASIGN")) return "ASIGNADA";
-  if (value.includes("PROCESO")) return "EN_PROCESO";
+  if (value.includes("ASIGN") || value.includes("PROCESO")) return "ABIERTA";
   if (value.includes("RESUEL")) return "RESUELTA";
   if (value.includes("CERRA")) return "CERRADA";
   return "ABIERTA";
@@ -130,6 +129,7 @@ const mapAlerta = (alerta) => ({
   nivelEscalamiento: alerta.nivelEscalamiento || 0,
   checklistId: alerta.checklistId?._id || alerta.checklistId || null,
   fotos: alerta.fotos || [],
+  origen: inferirOrigenAlerta(alerta),
   checklist: alerta.checklistId && typeof alerta.checklistId === "object" ? {
     _id: alerta.checklistId._id,
     conductorResponsable: alerta.checklistId.conductorResponsable,
@@ -140,6 +140,16 @@ const mapAlerta = (alerta) => ({
     aptitudOperacion: alerta.checklistId.aptitudOperacion
   } : null
 });
+
+const inferirOrigenAlerta = (alerta = {}) => {
+  const texto = `${alerta.tipo || ""} ${alerta.descripcion || ""}`.toUpperCase();
+  if (texto.includes("CLASE B")) return "Licencia Clase B";
+  if (texto.includes("LICENCIA INTERNA")) return "Licencia Interna";
+  if (texto.includes("MANTENCION")) return "Mantencion";
+  if (texto.includes("DOCUMENTACION")) return "Documentacion";
+  if (alerta.checklistId) return "Checklist";
+  return alerta.origen || "Alerta Operacional";
+};
 
 const buildTimeline = (alertas, checklists) => {
   const eventos = [];
@@ -264,7 +274,7 @@ const backfillAlertasDesdeHistorial = async (desde) => {
 const normalizarAlertasExistentes = async () => {
   const existentes = await AlertaCamioneta.find({
     $or: [
-      { estado: { $nin: ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"] } },
+      { estado: { $nin: ["ABIERTA", "RESUELTA", "CERRADA"] } },
       { prioridad: { $nin: PRIORIDADES } },
       { estado: { $exists: false } },
       { prioridad: { $exists: false } }
@@ -466,8 +476,6 @@ export const obtenerDashboardAlertas = async (req, res) => {
       });
 
     const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && alerta.estado === "ABIERTA").length;
-    const asignadas = alertasFiltradas.filter((alerta) => alerta.estado === "ASIGNADA").length;
-    const enProceso = alertasFiltradas.filter((alerta) => alerta.estado === "EN_PROCESO").length;
     const resueltas = alertasFiltradas.filter((alerta) => alerta.estado === "RESUELTA").length;
     const cerradas = alertasFiltradas.filter((alerta) => alerta.estado === "CERRADA").length;
     const escaladas = alertasFiltradas.filter((alerta) => alerta.escalada).length;
@@ -481,8 +489,8 @@ export const obtenerDashboardAlertas = async (req, res) => {
     const response = {
       criticas,
       activas,
-      asignadas,
-      enProceso,
+      asignadas: 0,
+      enProceso: 0,
       resueltas,
       cerradas,
       escaladas,
