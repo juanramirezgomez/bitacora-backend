@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import User from "../models/user.js";
-import CamionetaAsignada from "../models/CamionetaAsignada.js";
 import { sendEmailAlert } from "./emailService.js";
 import { sendWhatsAppAlert } from "./whatsappService.js";
 import { registrarEvento } from "./operationalAuditService.js";
@@ -66,22 +65,10 @@ const emailValido = (value = "") => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val
 const telefonoValido = (value = "") => /^\+569\d{8}$/.test(String(value || "").trim());
 
 const obtenerUsuariosNotificacion = async ({ roles = [], turnoNumero = "" } = {}) => {
-  const incluyeOperadores = roles.some((rol) => ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER"].includes(rol));
   const usuarios = await User.find({
     activo: true,
     estado: "ACTIVO",
-    rol: { $in: roles },
-    ...(incluyeOperadores ? {
-      $or: [
-        { rol: { $nin: ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER"] } },
-        {
-          conductorAutorizado: true,
-          licenciaInternaVigente: true,
-          habilitadoChecklistCamioneta: true,
-          camionetaAsignada: { $ne: null }
-        }
-      ]
-    } : {})
+    rol: { $in: roles }
   })
     .select("nombre rol turno correoCorporativo correoRespaldo telefono preferenciasAlertas")
     .lean();
@@ -203,8 +190,7 @@ export const normalizarCumplimientoChecklist = (payload = {}) => {
 };
 
 export const obtenerFlotaChecklistActiva = async ({ filtroBase = {} } = {}) => {
-  const [recientes, asignadas] = await Promise.all([
-    ChecklistCamioneta.aggregate([
+  const recientes = await ChecklistCamioneta.aggregate([
     {
       $match: {
         eliminado: { $ne: true },
@@ -224,22 +210,10 @@ export const obtenerFlotaChecklistActiva = async ({ filtroBase = {} } = {}) => {
       }
     },
     { $limit: 80 }
-    ]),
-    CamionetaAsignada.find({ activo: true })
-      .select("patente marca modelo color area turno usuarioResponsable")
-      .populate("usuarioResponsable", "nombre turno")
-      .lean()
   ]);
 
   const map = new Map();
-  const flotaAsignada = asignadas.map((item) => ({
-    patente: item.patente,
-    planta: item.area || "PC1",
-    area: item.area || "PC1",
-    turnoNumero: item.turno || item.usuarioResponsable?.turno || "",
-    operador: item.usuarioResponsable?.nombre || ""
-  }));
-  [...DEFAULT_VEHICLES, ...flotaAsignada, ...recientes].forEach((item) => {
+  [...DEFAULT_VEHICLES, ...recientes].forEach((item) => {
     const patente = normalizePatente(item.patente);
     if (!patente) return;
     map.set(patente, {

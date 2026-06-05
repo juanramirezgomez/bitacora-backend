@@ -412,6 +412,10 @@ const buildPayload = (body = {}) => {
     fechaProximaMantencion: parseDate(body.fechaProximaMantencion),
     conductorResponsable: String(body.conductorResponsable || "").trim(),
     areaTrabajo: String(body.areaTrabajo || "").trim(),
+    licenciaClaseB: body.licenciaClaseB === true,
+    fechaVencimientoLicenciaB: parseDate(body.fechaVencimientoLicenciaB),
+    licenciaInterna: body.licenciaInterna === true,
+    fechaVencimientoLicenciaInterna: parseDate(body.fechaVencimientoLicenciaInterna),
     fechaInspeccion: parseDate(body.fechaInspeccion),
     fechaProgramada: parseDate(body.fechaProgramada || body.fechaInspeccion),
     fechaRealizacion: parseDate(body.fechaRealizacion || body.fechaInspeccion || new Date()),
@@ -485,9 +489,8 @@ const canRead = (req, checklist) => {
   return false;
 };
 
-const aplicarAsignacionOperacional = (body = {}, user = null, admin = false) => {
+const aplicarDatosUsuarioChecklist = (body = {}, user = null, admin = false) => {
   if (admin || !user) return body;
-  const camioneta = user.camionetaAsignada || {};
   return {
     ...body,
     planta: user.area || user.planta || body.planta || "PC1",
@@ -497,19 +500,27 @@ const aplicarAsignacionOperacional = (body = {}, user = null, admin = false) => 
     nombreConductor: user.nombre || body.nombreConductor || "",
     nombreRealizadoPor: user.nombre || body.nombreRealizadoPor || "",
     cargoRealizadoPor: user.cargo || user.rol || body.cargoRealizadoPor || "",
-    patente: camioneta.patente || body.patente || "",
-    marca: camioneta.marca || body.marca || "TOYOTA",
-    modelo: camioneta.modelo || body.modelo || "HILUX",
-    color: camioneta.color || body.color || "ROJO"
+    licenciaClaseB: user.licenciaClaseB === true,
+    fechaVencimientoLicenciaB: user.fechaVencimientoLicenciaB || body.fechaVencimientoLicenciaB || null,
+    licenciaInterna: user.licenciaInterna === true,
+    fechaVencimientoLicenciaInterna: user.fechaVencimientoLicenciaInterna || body.fechaVencimientoLicenciaInterna || null
   };
 };
 
 const validarHabilitacionChecklistUsuario = (user = {}) => {
   if (!user) return "Usuario no encontrado";
-  if (user.conductorAutorizado !== true) return "Usuario no autorizado como conductor";
-  if (user.licenciaInternaVigente !== true) return "Licencia interna no vigente";
-  if (user.habilitadoChecklistCamioneta !== true) return "Usuario no habilitado para checklist camioneta";
-  if (!user.camionetaAsignada) return "Usuario sin camioneta asignada";
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const licenciaBVence = user.fechaVencimientoLicenciaB ? new Date(user.fechaVencimientoLicenciaB) : null;
+  const licenciaInternaVence = user.fechaVencimientoLicenciaInterna ? new Date(user.fechaVencimientoLicenciaInterna) : null;
+  if (user.licenciaClaseB !== true) return "No puedes crear checklist: no registras Licencia Clase B";
+  if (!licenciaBVence || Number.isNaN(licenciaBVence.getTime())) return "No puedes crear checklist: falta fecha de vencimiento de Licencia Clase B";
+  licenciaBVence.setHours(0, 0, 0, 0);
+  if (licenciaBVence < hoy) return "No puedes crear checklist: Licencia Clase B vencida";
+  if (user.licenciaInterna !== true) return "No puedes crear checklist: no registras Licencia Interna";
+  if (!licenciaInternaVence || Number.isNaN(licenciaInternaVence.getTime())) return "No puedes crear checklist: falta fecha de vencimiento de Licencia Interna";
+  licenciaInternaVence.setHours(0, 0, 0, 0);
+  if (licenciaInternaVence < hoy) return "No puedes crear checklist: Licencia Interna vencida";
   return "";
 };
 
@@ -576,8 +587,7 @@ export const crearChecklistCamioneta = async (req, res) => {
     }
 
     const autorUser = await User.findById(autor)
-      .select("nombre rol planta area turno cargo conductorAutorizado licenciaInternaVigente habilitadoChecklistCamioneta camionetaAsignada")
-      .populate("camionetaAsignada")
+      .select("nombre rol planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna")
       .lean();
 
     if (!esAdmin(req)) {
@@ -585,7 +595,7 @@ export const crearChecklistCamioneta = async (req, res) => {
       if (bloqueo) return res.status(403).json({ message: bloqueo });
     }
 
-    const payload = buildPayload(aplicarAsignacionOperacional(req.body, autorUser, esAdmin(req)));
+    const payload = buildPayload(aplicarDatosUsuarioChecklist(req.body, autorUser, esAdmin(req)));
     const checklist = await ChecklistCamioneta.create({
       ...payload,
       estado: "BORRADOR",

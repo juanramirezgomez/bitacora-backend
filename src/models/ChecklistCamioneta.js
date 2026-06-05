@@ -77,6 +77,10 @@ const checklistCamionetaSchema = new mongoose.Schema(
 
     conductorResponsable: { type: String, trim: true, default: "" },
     areaTrabajo: { type: String, trim: true, default: "" },
+    licenciaClaseB: { type: Boolean, default: false },
+    fechaVencimientoLicenciaB: { type: Date, default: null },
+    licenciaInterna: { type: Boolean, default: false },
+    fechaVencimientoLicenciaInterna: { type: Date, default: null },
     fechaInspeccion: { type: Date, default: null },
     fechaProgramada: { type: Date, default: null, index: true },
     fechaRealizacion: { type: Date, default: null, index: true },

@@ -13,11 +13,9 @@ const PERMISOS = {
     "auditoria_accesos",
     "auditoria_operacional",
     "configuracion",
-    "organizacion",
     "system_health",
     "backups",
     "reportes_ejecutivos",
-    "dashboard_ejecutivo",
     "dashboard",
     "pdf",
     "excel",
@@ -31,9 +29,7 @@ const PERMISOS = {
     "checklist_camioneta",
     "historial_bitacora",
     "reportes_bitacora",
-    "reportes_ejecutivos",
-    "dashboard_ejecutivo",
-    "pdf",
+    "reportes_ejecutivos",    "pdf",
     "excel"
   ],
 
@@ -44,9 +40,7 @@ const PERMISOS = {
     "checklist_camioneta",
     "historial_bitacora",
     "reportes_bitacora",
-    "reportes_ejecutivos",
-    "dashboard_ejecutivo",
-    "pdf",
+    "reportes_ejecutivos",    "pdf",
     "excel"
   ],
 
@@ -57,9 +51,7 @@ const PERMISOS = {
     "checklist_camioneta",
     "historial_bitacora",
     "reportes_bitacora",
-    "reportes_ejecutivos",
-    "dashboard_ejecutivo",
-    "pdf",
+    "reportes_ejecutivos",    "pdf",
     "excel"
   ],
 
@@ -70,9 +62,7 @@ const PERMISOS = {
     "checklist_camioneta",
     "historial_bitacora",
     "reportes_bitacora",
-    "reportes_ejecutivos",
-    "dashboard_ejecutivo",
-    "pdf",
+    "reportes_ejecutivos",    "pdf",
     "excel"
   ],
 
@@ -142,7 +132,6 @@ const ALIASES_MODULO = {
   auditoria_login: "auditoria_accesos",
   auditoria_operacional: "auditoria_operacional",
   dashboard_alertas: "alertas",
-  dashboard_ejecutivo_operacional: "dashboard_ejecutivo",
   checklist_camionetas: "checklist_camioneta",
   bitacoras_diarias: "libro_diario",
   libro_diario_plantas: "libro_diario",
@@ -191,3 +180,4 @@ export const tienePermiso = (rol = "", modulo = "") => {
 };
 
 export default PERMISOS;
+

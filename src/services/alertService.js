@@ -24,9 +24,9 @@ const ROLES_VALIDOS_ALERTA = [
   "OPERADOR_CALDERA"
 ];
 const MATRIZ_NOTIFICACION_ALERTAS = {
-  CRITICA: ["JEFE_PLANTA", "SUPERINTENDENTE"],
-  MEDIA: ["JEFE_PLANTA"],
-  MENOR: ["JEFE_PLANTA"]
+  CRITICA: ["JEFE_PLANTA", "JEFE_TURNO", "SUPERINTENDENTE"],
+  MEDIA: ["JEFE_PLANTA", "JEFE_TURNO"],
+  MENOR: ["JEFE_PLANTA", "JEFE_TURNO"]
 };
 const CANALES_HISTORIAL = {
   correoCorporativo: "EMAIL_CORPORATIVO",
@@ -170,14 +170,7 @@ const nivelNotificacionAlerta = (alerta = {}) => {
 const rolesDestinoParaAlerta = (alerta = {}) =>
   MATRIZ_NOTIFICACION_ALERTAS[nivelNotificacionAlerta(alerta)] || MATRIZ_NOTIFICACION_ALERTAS.MENOR;
 
-const ALERT_USER_SELECT = "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas area turno planta jefaturaDirecta";
-
-const orgMatchFor = (baseUser = {}) => {
-  const match = {};
-  const area = baseUser?.area || baseUser?.planta;
-  if (area) match.area = area;
-  return match;
-};
+const ALERT_USER_SELECT = "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas area turno planta";
 
 const buildBaseAlert = (checklist, tipo, data = {}) => {
   const template = getAlertTemplate(tipo);
@@ -265,6 +258,60 @@ const generarAlertasMantencion = (checklist) => {
   })];
 };
 
+const generarAlertasDocumentacionConductor = (checklist) => {
+  const docs = [
+    {
+      posee: checklist.licenciaClaseB === true,
+      fecha: checklist.fechaVencimientoLicenciaB,
+      nombre: "Licencia Clase B",
+      tipoVencida: "LICENCIA_VENCIDA",
+      tipoPorVencer: "LICENCIA_POR_VENCER"
+    },
+    {
+      posee: checklist.licenciaInterna === true,
+      fecha: checklist.fechaVencimientoLicenciaInterna,
+      nombre: "Licencia Interna",
+      tipoVencida: "LICENCIA_INTERNA_VENCIDA",
+      tipoPorVencer: "LICENCIA_INTERNA_POR_VENCER"
+    }
+  ];
+
+  const alertas = [];
+  for (const doc of docs) {
+    if (!doc.posee) {
+      alertas.push(buildBaseAlert(checklist, "DOCUMENTACION_INCOMPLETA", {
+        categoria: "DOCUMENTACION_CONDUCTOR",
+        estadoAlerta: "DOCUMENTACION_INCOMPLETA",
+        estadoTexto: "Documentacion conductor incompleta",
+        prioridad: "CRITICA",
+        documento: doc.nombre,
+        anomalias: [`${doc.nombre}: no registrada en perfil del operador`],
+        mensaje: `${doc.nombre} no registrada para operador de camioneta ${checklist.patente || "-"}.`
+      }));
+      continue;
+    }
+
+    if (!doc.fecha) continue;
+    const diasRestantes = calcularDiasRestantes(doc.fecha);
+    if (diasRestantes > ALERTA_DIAS) continue;
+
+    const vencida = diasRestantes < 0;
+    const estadoTexto = vencida ? `vencida hace ${Math.abs(diasRestantes)} dias` : `vence en ${diasRestantes} dias`;
+    alertas.push(buildBaseAlert(checklist, vencida ? doc.tipoVencida : doc.tipoPorVencer, {
+      categoria: "DOCUMENTACION_CONDUCTOR",
+      estadoAlerta: vencida ? "VENCIDA" : "VENCE_PRONTO",
+      estadoTexto: vencida ? "Documento vencido" : "Vence pronto",
+      prioridad: vencida ? "CRITICA" : "ALTA",
+      documento: doc.nombre,
+      fechaVencimiento: doc.fecha,
+      diasRestantes,
+      anomalias: [`${doc.nombre}: ${estadoTexto}`],
+      mensaje: `${doc.nombre} del operador ${estadoTexto} en camioneta ${checklist.patente || "-"}.`
+    }));
+  }
+  return alertas;
+};
+
 const tipoInspeccionMala = (seccion, item) => {
   const group = normalizeText(seccion);
   const itemName = normalizeText(item?.nombre);
@@ -323,6 +370,7 @@ export const generarAlertasChecklist = async (checklistInput) => {
 
   return [
     ...generarAlertasDocumentos(checklist),
+    ...generarAlertasDocumentacionConductor(checklist),
     ...generarAlertasMantencion(checklist),
     ...generarAlertasInspeccion(checklist),
     ...generarAlertasObservacionesCriticas(checklist)
@@ -396,23 +444,12 @@ export const obtenerAlertasChecklistCamioneta = async (filter = {}) => {
 };
 
 export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
-  console.log("Buscando destinatarios dinamicos de alertas por estructura organizacional...");
+  console.log("Buscando destinatarios dinamicos de alertas por matriz de roles...");
   const operadorId = checklist.creadoPor?._id || checklist.creadoPor || null;
   const rolesDestino = rolesDestinoParaAlerta(alerta);
-  const operador = operadorId
-    ? await User.findById(operadorId).select(ALERT_USER_SELECT).lean()
-    : null;
-  const jefeDirectoId = operador?.jefaturaDirecta || checklist.creadoPor?.jefaturaDirecta || null;
-
   const consultas = [];
-  if (operador?._id) consultas.push({ _id: operador._id });
-  if (jefeDirectoId) consultas.push({ _id: jefeDirectoId });
-  if (rolesDestino.length) {
-    consultas.push({
-      rol: { $in: rolesDestino },
-      ...orgMatchFor(operador || checklist.creadoPor || {})
-    });
-  }
+  if (operadorId) consultas.push({ _id: operadorId });
+  if (rolesDestino.length) consultas.push({ rol: { $in: rolesDestino } });
 
   const users = consultas.length
     ? await User.find({
@@ -447,8 +484,6 @@ export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
     nivel: nivelNotificacionAlerta(alerta),
     rolesDestino,
     creadorChecklist: operadorId ? String(operadorId) : "",
-    jefeDirecto: jefeDirectoId ? String(jefeDirectoId) : "",
-    area: operador?.area || operador?.planta || checklist?.planta || "",
     total: destinatarios.length,
     destinatarios: destinatarios.map((u) => ({
       nombre: u.nombre,
