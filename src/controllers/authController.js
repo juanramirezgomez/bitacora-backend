@@ -21,6 +21,7 @@ import {
   registrarSolicitudResetPassword
 } from "../services/loginAuditService.js";
 import { registrarEvento } from "../services/operationalAuditService.js";
+import { normalizarCamposOrganizacionales } from "../services/organizationalService.js";
 import { buildPasswordTemporalEmailHtml, sendEmailAlert } from "../services/emailService.js";
 import { sendWhatsAppAlert } from "../services/whatsappService.js";
 
@@ -58,7 +59,7 @@ const OPERADOR_ID_REGEX = /^[A-Z0-9]{3,12}$/;
 const PASSWORD_SEGURA_REGEX = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MINUTES = 5;
-const TURNOS_USUARIO = ["", "39", "44"];
+const TURNOS_USUARIO = ["", "39", "44", "ADMINISTRATIVO", "OTROS"];
 
 const normalizarOperadorId = (value = "") => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 const normalizarTurno = (value = "") => {
@@ -155,7 +156,16 @@ const publicUser = (user) => ({
   rol: user.rol,
   estado: user.estado,
   planta: user.planta,
+  area: user.area || user.planta || "PC1",
   turno: normalizarTurno(user.turno),
+  cargo: user.cargo || "",
+  jefaturaDirecta: user.jefaturaDirecta || null,
+  conductorAutorizado: user.conductorAutorizado === true,
+  licenciaInterna: user.licenciaInterna || {},
+  licenciaInternaVigente: user.licenciaInternaVigente === true,
+  fechaVencimientoLicenciaInterna: user.fechaVencimientoLicenciaInterna || user.licenciaInterna?.fechaVencimiento || null,
+  habilitadoChecklistCamioneta: user.habilitadoChecklistCamioneta === true,
+  camionetaAsignada: user.camionetaAsignada || null,
   modulosPermitidos: user.modulosPermitidos || [],
   failedLoginAttempts: Number(user.failedLoginAttempts || 0),
   lockUntil: user.lockUntil || null,
@@ -237,7 +247,16 @@ const signToken = (user) => {
       preferenciasAlertas: normalizarPreferenciasAlertas(user.preferenciasAlertas),
       estado: user.estado,
       planta: user.planta,
+      area: user.area || user.planta || "PC1",
       turno: normalizarTurno(user.turno),
+      cargo: user.cargo || "",
+      jefaturaDirecta: user.jefaturaDirecta || null,
+      conductorAutorizado: user.conductorAutorizado === true,
+      licenciaInterna: user.licenciaInterna || {},
+      licenciaInternaVigente: user.licenciaInternaVigente === true,
+      fechaVencimientoLicenciaInterna: user.fechaVencimientoLicenciaInterna || null,
+      habilitadoChecklistCamioneta: user.habilitadoChecklistCamioneta === true,
+      camionetaAsignada: user.camionetaAsignada || null,
       debeCambiarPassword: user.debeCambiarPassword === true,
       modulosPermitidos: user.modulosPermitidos || []
     },
@@ -257,6 +276,14 @@ export const register = async (req, res) => {
       telefono = "",
       operadorId = "",
       turno = "",
+      area = "PC1",
+      cargo = "",
+      jefaturaDirecta = null,
+      conductorAutorizado = false,
+      licenciaInterna = {},
+      fechaVencimientoLicenciaInterna = null,
+      habilitadoChecklistCamioneta,
+      camionetaAsignada = null,
       password,
       confirmPassword,
       rol,
@@ -300,6 +327,15 @@ export const register = async (req, res) => {
     if (exists) return res.status(409).json({ message: "El correo ya está registrado" });
 
     const passwordHash = await bcrypt.hash(String(password), 10);
+    const org = normalizarCamposOrganizacionales({
+      area,
+      turno,
+      cargo,
+      conductorAutorizado,
+      licenciaInterna,
+      fechaVencimientoLicenciaInterna,
+      habilitadoChecklistCamioneta
+    });
 
     const nuevo = await User.create({
       username: contactos.username,
@@ -312,8 +348,17 @@ export const register = async (req, res) => {
       preferenciasAlertas: normalizarPreferenciasAlertas(preferenciasAlertas),
       rol: rolUp,
       estado: "PENDIENTE",
-      planta: "PC1",
-      turno: normalizarTurno(turno),
+      planta: org.area,
+      area: org.area,
+      turno: normalizarTurno(org.turno),
+      cargo: org.cargo,
+      jefaturaDirecta,
+      conductorAutorizado: org.conductorAutorizado,
+      licenciaInterna: org.licenciaInterna,
+      licenciaInternaVigente: org.licenciaInternaVigente,
+      fechaVencimientoLicenciaInterna: org.fechaVencimientoLicenciaInterna,
+      habilitadoChecklistCamioneta: org.habilitadoChecklistCamioneta,
+      camionetaAsignada: camionetaAsignada || null,
       modulosPermitidos: modulosPorRol(rolUp),
       passwordHash,
       activo: false,
@@ -443,7 +488,7 @@ export const logout = async (req, res) => {
 export const me = async (req, res) => {
   try {
     const user = await User.findById(req.user?.uid)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo jefaturaDirecta conductorAutorizado licenciaInterna licenciaInternaVigente fechaVencimientoLicenciaInterna habilitadoChecklistCamioneta camionetaAsignada modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -496,7 +541,7 @@ export const actualizarMiPerfil = async (req, res) => {
     if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
 
     const user = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo jefaturaDirecta conductorAutorizado licenciaInterna licenciaInternaVigente fechaVencimientoLicenciaInterna habilitadoChecklistCamioneta camionetaAsignada modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     return res.json({ message: "Perfil actualizado", user: publicUser(user) });
   } catch (e) {
@@ -561,6 +606,14 @@ export const crearUsuario = async (req, res) => {
       estado = "ACTIVO",
       planta = "PC1",
       turno = "",
+      area = planta,
+      cargo = "",
+      jefaturaDirecta = null,
+      conductorAutorizado = false,
+      licenciaInterna = {},
+      fechaVencimientoLicenciaInterna = null,
+      habilitadoChecklistCamioneta,
+      camionetaAsignada = null,
       preferenciasAlertas = {}
     } = req.body || {};
     const contactos = buildContactosAlerta({ email: email || username, correoCorporativo, correoRespaldo, telefono });
@@ -601,6 +654,15 @@ export const crearUsuario = async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
+    const org = normalizarCamposOrganizacionales({
+      area,
+      turno,
+      cargo,
+      conductorAutorizado,
+      licenciaInterna,
+      fechaVencimientoLicenciaInterna,
+      habilitadoChecklistCamioneta
+    });
 
     const nuevo = await User.create({
       username: contactos.username,
@@ -613,8 +675,17 @@ export const crearUsuario = async (req, res) => {
       preferenciasAlertas: normalizarPreferenciasAlertas(preferenciasAlertas),
       rol: rolUp,
       estado: estadoUp,
-      planta: String(planta || "PC1").trim() || "PC1",
-      turno: normalizarTurno(turno),
+      planta: org.area,
+      area: org.area,
+      turno: normalizarTurno(org.turno),
+      cargo: org.cargo,
+      jefaturaDirecta,
+      conductorAutorizado: org.conductorAutorizado,
+      licenciaInterna: org.licenciaInterna,
+      licenciaInternaVigente: org.licenciaInternaVigente,
+      fechaVencimientoLicenciaInterna: org.fechaVencimientoLicenciaInterna,
+      habilitadoChecklistCamioneta: org.habilitadoChecklistCamioneta,
+      camionetaAsignada: camionetaAsignada || null,
       modulosPermitidos: modulosPorRol(rolUp),
       passwordHash,
       activo: estadoUp === "ACTIVO",
@@ -670,7 +741,7 @@ export const listarUsuarios = async (req, res) => {
 
     const users = await User.find(filter)
       .sort({ createdAt: -1 })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo jefaturaDirecta conductorAutorizado licenciaInterna licenciaInternaVigente fechaVencimientoLicenciaInterna habilitadoChecklistCamioneta camionetaAsignada modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
     return res.json(users);
   } catch (e) {
     return res.status(500).json({ message: "Error listando usuarios" });
@@ -982,6 +1053,37 @@ export const actualizarUsuario = async (req, res) => {
     if (req.body.planta !== undefined) {
       update.planta = String(req.body.planta || "PC1").trim() || "PC1";
     }
+    const orgInputFields = [
+      "area",
+      "cargo",
+      "jefaturaDirecta",
+      "conductorAutorizado",
+      "licenciaInterna",
+      "fechaVencimientoLicenciaInterna",
+      "habilitadoChecklistCamioneta",
+      "camionetaAsignada"
+    ];
+    if (orgInputFields.some((campo) => req.body[campo] !== undefined)) {
+      const org = normalizarCamposOrganizacionales({
+        area: req.body.area ?? req.body.planta ?? antes.area ?? antes.planta,
+        turno: req.body.turno ?? antes.turno,
+        cargo: req.body.cargo ?? antes.cargo,
+        conductorAutorizado: req.body.conductorAutorizado ?? antes.conductorAutorizado,
+        licenciaInterna: req.body.licenciaInterna ?? antes.licenciaInterna,
+        fechaVencimientoLicenciaInterna: req.body.fechaVencimientoLicenciaInterna ?? antes.fechaVencimientoLicenciaInterna,
+        habilitadoChecklistCamioneta: req.body.habilitadoChecklistCamioneta ?? antes.habilitadoChecklistCamioneta
+      });
+      update.area = org.area;
+      update.planta = org.area;
+      update.cargo = org.cargo;
+      update.conductorAutorizado = org.conductorAutorizado;
+      update.licenciaInterna = org.licenciaInterna;
+      update.licenciaInternaVigente = org.licenciaInternaVigente;
+      update.fechaVencimientoLicenciaInterna = org.fechaVencimientoLicenciaInterna;
+      update.habilitadoChecklistCamioneta = org.habilitadoChecklistCamioneta;
+      if (req.body.jefaturaDirecta !== undefined) update.jefaturaDirecta = req.body.jefaturaDirecta || null;
+      if (req.body.camionetaAsignada !== undefined) update.camionetaAsignada = req.body.camionetaAsignada || null;
+    }
     if (req.body.turno !== undefined) {
       update.turno = normalizarTurno(req.body.turno);
     }
@@ -1011,7 +1113,7 @@ export const actualizarUsuario = async (req, res) => {
     }
 
     const u = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo jefaturaDirecta conductorAutorizado licenciaInterna licenciaInternaVigente fechaVencimientoLicenciaInterna habilitadoChecklistCamioneta camionetaAsignada modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1023,7 +1125,15 @@ export const actualizarUsuario = async (req, res) => {
       "correoRespaldo",
       "telefono",
       "planta",
+      "area",
       "turno",
+      "cargo",
+      "jefaturaDirecta",
+      "conductorAutorizado",
+      "licenciaInterna",
+      "licenciaInternaVigente",
+      "habilitadoChecklistCamioneta",
+      "camionetaAsignada",
       "rol",
       "estado",
       "activo",
@@ -1067,7 +1177,7 @@ export const actualizarEstadoUsuario = async (req, res) => {
         activo: estadoUp === "ACTIVO"
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo jefaturaDirecta conductorAutorizado licenciaInterna licenciaInternaVigente fechaVencimientoLicenciaInterna habilitadoChecklistCamioneta camionetaAsignada modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1114,7 +1224,7 @@ export const actualizarRolUsuario = async (req, res) => {
         modulosPermitidos: modulosPorRol(rolUp)
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo jefaturaDirecta conductorAutorizado licenciaInterna licenciaInternaVigente fechaVencimientoLicenciaInterna habilitadoChecklistCamioneta camionetaAsignada modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1170,7 +1280,7 @@ export const resetPassword = async (req, res) => {
       },
       { new: true }
     )
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo jefaturaDirecta conductorAutorizado licenciaInterna licenciaInternaVigente fechaVencimientoLicenciaInterna habilitadoChecklistCamioneta camionetaAsignada failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1206,7 +1316,7 @@ export const eliminarUsuario = async (req, res) => {
     }
 
     const deleted = await User.findByIdAndDelete(id)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta turno failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo jefaturaDirecta conductorAutorizado licenciaInterna licenciaInternaVigente fechaVencimientoLicenciaInterna habilitadoChecklistCamioneta camionetaAsignada failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
 
     if (!deleted) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1230,5 +1340,6 @@ export const eliminarUsuario = async (req, res) => {
     return res.status(500).json({ message: "Error eliminando usuario" });
   }
 };
+
 
 

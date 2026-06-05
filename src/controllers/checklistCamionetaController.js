@@ -485,6 +485,34 @@ const canRead = (req, checklist) => {
   return false;
 };
 
+const aplicarAsignacionOperacional = (body = {}, user = null, admin = false) => {
+  if (admin || !user) return body;
+  const camioneta = user.camionetaAsignada || {};
+  return {
+    ...body,
+    planta: user.area || user.planta || body.planta || "PC1",
+    areaTrabajo: user.area ? `PLANTA ${user.area}` : (body.areaTrabajo || user.planta || "PC1"),
+    turnoNumero: user.turno || body.turnoNumero || "",
+    conductorResponsable: user.nombre || body.conductorResponsable || "",
+    nombreConductor: user.nombre || body.nombreConductor || "",
+    nombreRealizadoPor: user.nombre || body.nombreRealizadoPor || "",
+    cargoRealizadoPor: user.cargo || user.rol || body.cargoRealizadoPor || "",
+    patente: camioneta.patente || body.patente || "",
+    marca: camioneta.marca || body.marca || "TOYOTA",
+    modelo: camioneta.modelo || body.modelo || "HILUX",
+    color: camioneta.color || body.color || "ROJO"
+  };
+};
+
+const validarHabilitacionChecklistUsuario = (user = {}) => {
+  if (!user) return "Usuario no encontrado";
+  if (user.conductorAutorizado !== true) return "Usuario no autorizado como conductor";
+  if (user.licenciaInternaVigente !== true) return "Licencia interna no vigente";
+  if (user.habilitadoChecklistCamioneta !== true) return "Usuario no habilitado para checklist camioneta";
+  if (!user.camionetaAsignada) return "Usuario sin camioneta asignada";
+  return "";
+};
+
 const tieneBloqueoOperacionPatente = async (patente = "") => {
   const patenteClean = String(patente || "").trim().toUpperCase();
   if (!patenteClean) return false;
@@ -547,7 +575,17 @@ export const crearChecklistCamioneta = async (req, res) => {
       return res.status(401).json({ message: "Sesion invalida. Vuelve a iniciar sesion." });
     }
 
-    const payload = buildPayload(req.body);
+    const autorUser = await User.findById(autor)
+      .select("nombre rol planta area turno cargo conductorAutorizado licenciaInternaVigente habilitadoChecklistCamioneta camionetaAsignada")
+      .populate("camionetaAsignada")
+      .lean();
+
+    if (!esAdmin(req)) {
+      const bloqueo = validarHabilitacionChecklistUsuario(autorUser);
+      if (bloqueo) return res.status(403).json({ message: bloqueo });
+    }
+
+    const payload = buildPayload(aplicarAsignacionOperacional(req.body, autorUser, esAdmin(req)));
     const checklist = await ChecklistCamioneta.create({
       ...payload,
       estado: "BORRADOR",

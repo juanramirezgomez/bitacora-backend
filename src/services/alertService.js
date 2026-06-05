@@ -24,9 +24,9 @@ const ROLES_VALIDOS_ALERTA = [
   "OPERADOR_CALDERA"
 ];
 const MATRIZ_NOTIFICACION_ALERTAS = {
-  CRITICA: ["SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO"],
-  MEDIA: ["JEFE_PLANTA", "JEFE_TURNO"],
-  MENOR: ["JEFE_PLANTA", "JEFE_TURNO"]
+  CRITICA: ["JEFE_PLANTA", "SUPERINTENDENTE"],
+  MEDIA: ["JEFE_PLANTA"],
+  MENOR: ["JEFE_PLANTA"]
 };
 const CANALES_HISTORIAL = {
   correoCorporativo: "EMAIL_CORPORATIVO",
@@ -170,6 +170,15 @@ const nivelNotificacionAlerta = (alerta = {}) => {
 const rolesDestinoParaAlerta = (alerta = {}) =>
   MATRIZ_NOTIFICACION_ALERTAS[nivelNotificacionAlerta(alerta)] || MATRIZ_NOTIFICACION_ALERTAS.MENOR;
 
+const ALERT_USER_SELECT = "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas area turno planta jefaturaDirecta";
+
+const orgMatchFor = (baseUser = {}) => {
+  const match = {};
+  const area = baseUser?.area || baseUser?.planta;
+  if (area) match.area = area;
+  return match;
+};
+
 const buildBaseAlert = (checklist, tipo, data = {}) => {
   const template = getAlertTemplate(tipo);
   const alerta = {
@@ -309,7 +318,7 @@ const generarAlertasObservacionesCriticas = (checklist) => {
 
 export const generarAlertasChecklist = async (checklistInput) => {
   const checklist = typeof checklistInput?.populate === "function"
-    ? await checklistInput.populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
+    ? await checklistInput.populate("creadoPor", ALERT_USER_SELECT)
     : checklistInput;
 
   return [
@@ -387,19 +396,33 @@ export const obtenerAlertasChecklistCamioneta = async (filter = {}) => {
 };
 
 export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
-  console.log("Buscando destinatarios dinamicos de alertas por matriz...");
+  console.log("Buscando destinatarios dinamicos de alertas por estructura organizacional...");
   const operadorId = checklist.creadoPor?._id || checklist.creadoPor || null;
   const rolesDestino = rolesDestinoParaAlerta(alerta);
-  const users = await User.find({
-    $or: [
-      { _id: operadorId },
-      { rol: { $in: rolesDestino } }
-    ],
-    estado: "ACTIVO",
-    activo: { $ne: false }
-  })
-    .select("nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
-    .lean();
+  const operador = operadorId
+    ? await User.findById(operadorId).select(ALERT_USER_SELECT).lean()
+    : null;
+  const jefeDirectoId = operador?.jefaturaDirecta || checklist.creadoPor?.jefaturaDirecta || null;
+
+  const consultas = [];
+  if (operador?._id) consultas.push({ _id: operador._id });
+  if (jefeDirectoId) consultas.push({ _id: jefeDirectoId });
+  if (rolesDestino.length) {
+    consultas.push({
+      rol: { $in: rolesDestino },
+      ...orgMatchFor(operador || checklist.creadoPor || {})
+    });
+  }
+
+  const users = consultas.length
+    ? await User.find({
+      $or: consultas,
+      estado: "ACTIVO",
+      activo: { $ne: false }
+    })
+      .select(ALERT_USER_SELECT)
+      .lean()
+    : [];
 
   const seen = new Set();
   const destinatarios = [];
@@ -424,6 +447,8 @@ export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
     nivel: nivelNotificacionAlerta(alerta),
     rolesDestino,
     creadorChecklist: operadorId ? String(operadorId) : "",
+    jefeDirecto: jefeDirectoId ? String(jefeDirectoId) : "",
+    area: operador?.area || operador?.planta || checklist?.planta || "",
     total: destinatarios.length,
     destinatarios: destinatarios.map((u) => ({
       nombre: u.nombre,

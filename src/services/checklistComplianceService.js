@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
+import User from "../models/user.js";
+import CamionetaAsignada from "../models/CamionetaAsignada.js";
+import { sendEmailAlert } from "./emailService.js";
+import { sendWhatsAppAlert } from "./whatsappService.js";
 import { registrarEvento } from "./operationalAuditService.js";
 
 const DEFAULT_VEHICLES = [
@@ -58,6 +62,131 @@ const isNoAptaPorAlerta = (alerta = {}) => {
   ].some((word) => tipo.includes(word)) && tipo.includes("VENC");
 };
 
+const emailValido = (value = "") => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+const telefonoValido = (value = "") => /^\+569\d{8}$/.test(String(value || "").trim());
+
+const obtenerUsuariosNotificacion = async ({ roles = [], turnoNumero = "" } = {}) => {
+  const incluyeOperadores = roles.some((rol) => ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER"].includes(rol));
+  const usuarios = await User.find({
+    activo: true,
+    estado: "ACTIVO",
+    rol: { $in: roles },
+    ...(incluyeOperadores ? {
+      $or: [
+        { rol: { $nin: ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER"] } },
+        {
+          conductorAutorizado: true,
+          licenciaInternaVigente: true,
+          habilitadoChecklistCamioneta: true,
+          camionetaAsignada: { $ne: null }
+        }
+      ]
+    } : {})
+  })
+    .select("nombre rol turno correoCorporativo correoRespaldo telefono preferenciasAlertas")
+    .lean();
+
+  const filtrados = usuarios.filter((user) => {
+    if (!turnoNumero) return true;
+    if (!["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER"].includes(user.rol)) return true;
+    return !user.turno || String(user.turno) === String(turnoNumero);
+  });
+
+  const map = new Map();
+  for (const user of filtrados) map.set(String(user._id), user);
+  return Array.from(map.values());
+};
+
+const buildMensajeCumplimiento = ({ item, tipo, nivel = "MEDIA" }) => {
+  const titulo = tipo === "RECORDATORIO"
+    ? "Recordatorio checklist camioneta"
+    : nivel === "CRITICA"
+      ? "Incumplimiento operacional critico"
+      : "Incumplimiento checklist camioneta";
+
+  const texto = `${titulo}\n\nPatente: ${item.patente}\nArea: ${item.area || "PC1"}\nTurno: ${item.turnoNumero || "-"}\nEstado: Checklist pendiente\n\nNOVANDINO | GESTION OPERACIONAL`;
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;color:#111827">
+      <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+        <div style="background:#312e81;color:white;padding:18px 22px">
+          <strong>OPERACIONES LITIO</strong>
+          <h2 style="margin:6px 0 0;font-size:20px">${titulo}</h2>
+        </div>
+        <div style="padding:22px">
+          <p>Se detecta checklist de camioneta pendiente.</p>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Patente</td><td style="padding:8px;border-bottom:1px solid #e5e7eb"><strong>${item.patente}</strong></td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Area</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${item.area || "PC1"}</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Turno</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${item.turnoNumero || "-"}</td></tr>
+            <tr><td style="padding:8px;border-bottom:1px solid #e5e7eb">Nivel</td><td style="padding:8px;border-bottom:1px solid #e5e7eb">${nivel}</td></tr>
+          </table>
+          <p style="margin-top:20px;color:#475569">Favor regularizar el cumplimiento operacional del checklist diario.</p>
+        </div>
+        <div style="padding:14px 22px;background:#f1f5f9;color:#475569;font-size:12px">NOVANDINO | GESTION OPERACIONAL</div>
+      </div>
+    </div>
+  `;
+  return { titulo, texto, html };
+};
+
+const enviarNotificacionCumplimiento = async ({ item, tipo, nivel = "MEDIA", req = null }) => {
+  const roles = tipo === "RECORDATORIO"
+    ? ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER"]
+    : nivel === "CRITICA"
+      ? ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER", "JEFE_TURNO", "JEFE_PLANTA", "SUPERINTENDENTE"]
+      : ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER", "JEFE_TURNO", "JEFE_PLANTA"];
+  const usuarios = await obtenerUsuariosNotificacion({ roles, turnoNumero: item.turnoNumero });
+  const mensaje = buildMensajeCumplimiento({ item, tipo, nivel });
+  const enviados = [];
+
+  for (const user of usuarios) {
+    const preferencias = user.preferenciasAlertas || {};
+    if (preferencias.soloCriticas && nivel !== "CRITICA") continue;
+
+    const correos = [];
+    if (preferencias.correoCorporativo !== false && emailValido(user.correoCorporativo)) {
+      correos.push({ canal: "EMAIL_CORPORATIVO", email: user.correoCorporativo });
+    }
+    if (preferencias.correoRespaldo !== false && emailValido(user.correoRespaldo)) {
+      correos.push({ canal: "EMAIL_RESPALDO", email: user.correoRespaldo });
+    }
+
+    const emailsUnicos = new Map(correos.map((mail) => [mail.email, mail]));
+    for (const mail of emailsUnicos.values()) {
+      console.log("ALERTA_ENVIO_INICIADO", { canal: mail.canal, destinatario: mail.email, patente: item.patente });
+      const result = await sendEmailAlert({
+        to: mail.email,
+        subject: mensaje.titulo,
+        html: mensaje.html,
+        text: mensaje.texto,
+        metadata: { tipo: "CHECKLIST_CUMPLIMIENTO", patente: item.patente, canal: mail.canal }
+      });
+      enviados.push({ usuario: user.nombre, canal: mail.canal, destinatario: mail.email, ok: result.ok });
+    }
+
+    if (preferencias.whatsapp !== false && telefonoValido(user.telefono)) {
+      console.log("ALERTA_ENVIO_INICIADO", { canal: "WHATSAPP", destinatario: user.telefono, patente: item.patente });
+      const result = await sendWhatsAppAlert({ to: user.telefono, body: mensaje.texto });
+      enviados.push({ usuario: user.nombre, canal: "WHATSAPP", destinatario: user.telefono, ok: result.ok });
+    }
+  }
+
+  await registrarEvento({
+    req,
+    modulo: "CHECKLIST_CAMIONETA",
+    entidad: "ChecklistCumplimiento",
+    accion: tipo === "RECORDATORIO"
+      ? "CHECKLIST_RECORDATORIO_ENVIADO"
+      : nivel === "CRITICA"
+        ? "CHECKLIST_INCUMPLIMIENTO_CRITICO"
+        : "CHECKLIST_INCUMPLIMIENTO",
+    observacion: `${item.patente}: ${enviados.length} notificaciones procesadas`
+  });
+
+  console.log("ALERTA_ENVIO_FINALIZADO", { patente: item.patente, total: enviados.length });
+  return enviados;
+};
+
 export const normalizarCumplimientoChecklist = (payload = {}) => {
   const fechaProgramada = payload.fechaProgramada || payload.fechaInspeccion || new Date();
   const fechaRealizacion = payload.fechaRealizacion || payload.fechaInspeccion || new Date();
@@ -74,7 +203,8 @@ export const normalizarCumplimientoChecklist = (payload = {}) => {
 };
 
 export const obtenerFlotaChecklistActiva = async ({ filtroBase = {} } = {}) => {
-  const recientes = await ChecklistCamioneta.aggregate([
+  const [recientes, asignadas] = await Promise.all([
+    ChecklistCamioneta.aggregate([
     {
       $match: {
         eliminado: { $ne: true },
@@ -94,10 +224,22 @@ export const obtenerFlotaChecklistActiva = async ({ filtroBase = {} } = {}) => {
       }
     },
     { $limit: 80 }
+    ]),
+    CamionetaAsignada.find({ activo: true })
+      .select("patente marca modelo color area turno usuarioResponsable")
+      .populate("usuarioResponsable", "nombre turno")
+      .lean()
   ]);
 
   const map = new Map();
-  [...DEFAULT_VEHICLES, ...recientes].forEach((item) => {
+  const flotaAsignada = asignadas.map((item) => ({
+    patente: item.patente,
+    planta: item.area || "PC1",
+    area: item.area || "PC1",
+    turnoNumero: item.turno || item.usuarioResponsable?.turno || "",
+    operador: item.usuarioResponsable?.nombre || ""
+  }));
+  [...DEFAULT_VEHICLES, ...flotaAsignada, ...recientes].forEach((item) => {
     const patente = normalizePatente(item.patente);
     if (!patente) return;
     map.set(patente, {
@@ -263,32 +405,21 @@ export const validarChecklistDiario = async ({ fecha = new Date(), user = null }
 export const generarRecordatorios = async ({ fecha = new Date(), hora = 8, req = null } = {}) => {
   const cumplimiento = await validarChecklistDiario({ fecha, user: req?.user || null });
   const pendientes = cumplimiento.vehiculos.filter((item) => item.estadoCumplimiento === "PENDIENTE");
+  const notificaciones = [];
   for (const item of pendientes) {
-    await registrarEvento({
-      req,
-      modulo: "CHECKLIST_CAMIONETA",
-      entidad: "ChecklistCumplimiento",
-      accion: "CHECKLIST_RECORDATORIO_ENVIADO",
-      observacion: `Recordatorio ${hora}:00 checklist pendiente patente ${item.patente}`
-    });
+    notificaciones.push(...await enviarNotificacionCumplimiento({ item, tipo: "RECORDATORIO", nivel: "MEDIA", req }));
   }
-  return { total: pendientes.length, pendientes };
+  return { total: pendientes.length, pendientes, notificaciones, hora };
 };
 
 export const generarEscalamiento = async ({ fecha = new Date(), nivel = "MEDIA", req = null } = {}) => {
   const cumplimiento = await validarChecklistDiario({ fecha, user: req?.user || null });
   const pendientes = cumplimiento.vehiculos.filter((item) => item.estadoCumplimiento === "PENDIENTE");
-  const accion = nivel === "CRITICA" ? "CHECKLIST_INCUMPLIMIENTO_CRITICO" : "CHECKLIST_INCUMPLIMIENTO";
+  const notificaciones = [];
   for (const item of pendientes) {
-    await registrarEvento({
-      req,
-      modulo: "CHECKLIST_CAMIONETA",
-      entidad: "ChecklistCumplimiento",
-      accion,
-      observacion: `${accion} patente ${item.patente}`
-    });
+    notificaciones.push(...await enviarNotificacionCumplimiento({ item, tipo: "ESCALAMIENTO", nivel, req }));
   }
-  return { total: pendientes.length, pendientes, nivel };
+  return { total: pendientes.length, pendientes, nivel, notificaciones };
 };
 
 export const actualizarIndicadores = validarChecklistDiario;

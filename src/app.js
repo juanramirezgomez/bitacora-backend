@@ -30,6 +30,9 @@ import alertasRoutes from "./routes/alertasRoutes.js";
 import systemHealthRoutes from "./routes/systemHealthRoutes.js";
 import systemBackupRoutes from "./routes/systemBackupRoutes.js";
 import executiveReportsRoutes from "./routes/executiveReportsRoutes.js";
+import dashboardEjecutivoRoutes from "./routes/dashboardEjecutivoRoutes.js";
+import jobsRoutes from "./routes/jobsRoutes.js";
+import organizationalRoutes from "./routes/organizationalRoutes.js";
 import emailConfigRoutes from "./routes/emailConfigRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -124,6 +127,9 @@ app.use("/api/auditoria-operacional", operationalAuditRoutes);
 app.use("/api/system-health", systemHealthRoutes);
 app.use("/api/system-backups", systemBackupRoutes);
 app.use("/api/executive-reports", executiveReportsRoutes);
+app.use("/api/dashboard-ejecutivo", dashboardEjecutivoRoutes);
+app.use("/api/jobs", jobsRoutes);
+app.use("/api/organizacion", organizationalRoutes);
 app.use("/api", emailConfigRoutes);
 
 app.use("/api/bitacoras", checklistRoutes);
