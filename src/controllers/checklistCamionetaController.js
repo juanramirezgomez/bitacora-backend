@@ -489,8 +489,28 @@ const canRead = (req, checklist) => {
   return false;
 };
 
+const licenciaInternaActiva = (value) => {
+  if (value === true) return true;
+  if (typeof value === "string") {
+    return ["SI", "TRUE", "VIGENTE", "POR_VENCER"].includes(value.trim().toUpperCase());
+  }
+  if (value && typeof value === "object") {
+    const estado = String(value.estado || value.status || "").trim().toUpperCase();
+    if (["VIGENTE", "POR_VENCER", "ACTIVA", "ACTIVO"].includes(estado)) return true;
+    return Boolean(value.fechaVencimiento || value.fechaVencimientoLicenciaInterna || value.numero);
+  }
+  return false;
+};
+
+const fechaLicenciaInternaUsuario = (user = {}) =>
+  user.fechaVencimientoLicenciaInterna ||
+  user.licenciaInterna?.fechaVencimiento ||
+  user.licenciaInterna?.fechaVencimientoLicenciaInterna ||
+  null;
+
 const aplicarDatosUsuarioChecklist = (body = {}, user = null, admin = false) => {
   if (admin || !user) return body;
+  const fechaInterna = fechaLicenciaInternaUsuario(user);
   return {
     ...body,
     planta: user.area || user.planta || body.planta || "PC1",
@@ -502,8 +522,8 @@ const aplicarDatosUsuarioChecklist = (body = {}, user = null, admin = false) => 
     cargoRealizadoPor: user.cargo || user.rol || body.cargoRealizadoPor || "",
     licenciaClaseB: user.licenciaClaseB === true,
     fechaVencimientoLicenciaB: user.fechaVencimientoLicenciaB || body.fechaVencimientoLicenciaB || null,
-    licenciaInterna: user.licenciaInterna === true,
-    fechaVencimientoLicenciaInterna: user.fechaVencimientoLicenciaInterna || body.fechaVencimientoLicenciaInterna || null
+    licenciaInterna: licenciaInternaActiva(user.licenciaInterna),
+    fechaVencimientoLicenciaInterna: fechaInterna || body.fechaVencimientoLicenciaInterna || null
   };
 };
 
@@ -512,12 +532,13 @@ const validarHabilitacionChecklistUsuario = (user = {}) => {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
   const licenciaBVence = user.fechaVencimientoLicenciaB ? new Date(user.fechaVencimientoLicenciaB) : null;
-  const licenciaInternaVence = user.fechaVencimientoLicenciaInterna ? new Date(user.fechaVencimientoLicenciaInterna) : null;
+  const fechaInterna = fechaLicenciaInternaUsuario(user);
+  const licenciaInternaVence = fechaInterna ? new Date(fechaInterna) : null;
   if (user.licenciaClaseB !== true) return "No puedes crear checklist: no registras Licencia Clase B";
   if (!licenciaBVence || Number.isNaN(licenciaBVence.getTime())) return "No puedes crear checklist: falta fecha de vencimiento de Licencia Clase B";
   licenciaBVence.setHours(0, 0, 0, 0);
   if (licenciaBVence < hoy) return "No puedes crear checklist: Licencia Clase B vencida";
-  if (user.licenciaInterna !== true) return "No puedes crear checklist: no registras Licencia Interna";
+  if (!licenciaInternaActiva(user.licenciaInterna)) return "No puedes crear checklist: no registras Licencia Interna";
   if (!licenciaInternaVence || Number.isNaN(licenciaInternaVence.getTime())) return "No puedes crear checklist: falta fecha de vencimiento de Licencia Interna";
   licenciaInternaVence.setHours(0, 0, 0, 0);
   if (licenciaInternaVence < hoy) return "No puedes crear checklist: Licencia Interna vencida";

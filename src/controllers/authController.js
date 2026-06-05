@@ -103,6 +103,25 @@ const normalizarFecha = (value) => {
   return Number.isNaN(fecha.getTime()) ? null : fecha;
 };
 
+const licenciaInternaActiva = (value) => {
+  if (value === true) return true;
+  if (typeof value === "string") {
+    return ["SI", "TRUE", "VIGENTE", "POR_VENCER"].includes(value.trim().toUpperCase());
+  }
+  if (value && typeof value === "object") {
+    const estado = String(value.estado || value.status || "").trim().toUpperCase();
+    if (["VIGENTE", "POR_VENCER", "ACTIVA", "ACTIVO"].includes(estado)) return true;
+    return Boolean(value.fechaVencimiento || value.fechaVencimientoLicenciaInterna || value.numero);
+  }
+  return false;
+};
+
+const fechaLicenciaInternaUsuario = (user = {}) =>
+  user.fechaVencimientoLicenciaInterna ||
+  user.licenciaInterna?.fechaVencimiento ||
+  user.licenciaInterna?.fechaVencimientoLicenciaInterna ||
+  null;
+
 const buildContactosAlerta = ({ email = "", correoCorporativo = "", correoRespaldo = "", telefono = "" }) => {
   const corporativo = String(correoCorporativo || email || "").trim().toLowerCase();
   const respaldo = String(correoRespaldo || "").trim().toLowerCase();
@@ -169,8 +188,8 @@ const publicUser = (user) => ({
   cargo: user.cargo || "",
   licenciaClaseB: user.licenciaClaseB === true,
   fechaVencimientoLicenciaB: user.fechaVencimientoLicenciaB || null,
-  licenciaInterna: user.licenciaInterna === true,
-  fechaVencimientoLicenciaInterna: user.fechaVencimientoLicenciaInterna || null,
+  licenciaInterna: licenciaInternaActiva(user.licenciaInterna),
+  fechaVencimientoLicenciaInterna: fechaLicenciaInternaUsuario(user),
   modulosPermitidos: user.modulosPermitidos || [],
   failedLoginAttempts: Number(user.failedLoginAttempts || 0),
   lockUntil: user.lockUntil || null,
@@ -257,8 +276,8 @@ const signToken = (user) => {
       cargo: user.cargo || "",
       licenciaClaseB: user.licenciaClaseB === true,
       fechaVencimientoLicenciaB: user.fechaVencimientoLicenciaB || null,
-      licenciaInterna: user.licenciaInterna === true,
-      fechaVencimientoLicenciaInterna: user.fechaVencimientoLicenciaInterna || null,
+      licenciaInterna: licenciaInternaActiva(user.licenciaInterna),
+      fechaVencimientoLicenciaInterna: fechaLicenciaInternaUsuario(user),
       debeCambiarPassword: user.debeCambiarPassword === true,
       modulosPermitidos: user.modulosPermitidos || []
     },
@@ -404,7 +423,10 @@ export const login = async (req, res) => {
     if (user.lockUntil && new Date(user.lockUntil).getTime() <= ahora.getTime()) {
       user.failedLoginAttempts = 0;
       user.lockUntil = null;
-      await user.save();
+      await User.updateOne(
+        { _id: user._id },
+        { $set: { failedLoginAttempts: 0, lockUntil: null } }
+      );
       await registrarDesbloqueoAutomatico(req, user);
     }
 
@@ -424,7 +446,16 @@ export const login = async (req, res) => {
 
       if (user.failedLoginAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
         user.lockUntil = new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000);
-        await user.save();
+        await User.updateOne(
+          { _id: user._id },
+          {
+            $set: {
+              failedLoginAttempts: user.failedLoginAttempts,
+              lastFailedLogin: user.lastFailedLogin,
+              lockUntil: user.lockUntil
+            }
+          }
+        );
         await registrarLoginBloqueado(
           req,
           user,
@@ -436,7 +467,15 @@ export const login = async (req, res) => {
         });
       }
 
-      await user.save();
+      await User.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            failedLoginAttempts: user.failedLoginAttempts,
+            lastFailedLogin: user.lastFailedLogin
+          }
+        }
+      );
       return res.status(401).json({ message: "Credenciales invalidas" });
     }
 
@@ -447,7 +486,16 @@ export const login = async (req, res) => {
       user.modulosPermitidos = modulosPorRol(user.rol);
     }
 
-    await user.save();
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          failedLoginAttempts: 0,
+          lockUntil: null,
+          modulosPermitidos: user.modulosPermitidos || []
+        }
+      }
+    );
 
     const token = signToken(user);
     await registrarLoginExitoso(req, user);
@@ -458,6 +506,7 @@ export const login = async (req, res) => {
       user: publicUser(user)
     });
   } catch (e) {
+    console.error("ERROR LOGIN:", e);
     return res.status(500).json({ message: "Error en login" });
   }
 };

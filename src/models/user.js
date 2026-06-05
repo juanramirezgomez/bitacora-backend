@@ -45,13 +45,14 @@ const userSchema = new mongoose.Schema(
       enum: ["PENDIENTE", "ACTIVO", "BLOQUEADO", "INACTIVO"],
       default: "ACTIVO"
     },
-    planta: { type: String, default: "PC1" },
-    area: { type: String, enum: ["PC1", "PLANTA_AMPLIADA", "CALDERA", "MANTENCION", "LABORATORIO", "ADMINISTRACION", "OTROS"], default: "PC1", index: true },
-    turno: { type: String, enum: ["", "39", "44", "ADMINISTRATIVO", "OTROS"], default: "", index: true },
+    planta: { type: String, trim: true, default: "PC1" },
+    area: { type: String, trim: true, default: "PC1", index: true },
+    turno: { type: String, trim: true, default: "", index: true },
     cargo: { type: String, trim: true, default: "" },
     licenciaClaseB: { type: Boolean, default: false, index: true },
     fechaVencimientoLicenciaB: { type: Date, default: null },
-    licenciaInterna: { type: Boolean, default: false, index: true },
+    // Mixed mantiene compatibilidad con usuarios historicos que tenian licenciaInterna como objeto.
+    licenciaInterna: { type: mongoose.Schema.Types.Mixed, default: false, index: true },
     fechaVencimientoLicenciaInterna: { type: Date, default: null },
     modulosPermitidos: { type: [String], default: [] },
     passwordHash: { type: String, required: true },
