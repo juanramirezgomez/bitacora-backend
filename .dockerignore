@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+node_modules
+npm-debug.log*
+*.log
+coverage
+dist
+storage/backups
+storage/backups/**
+src/uploads
+src/uploads/**
+uploads
+uploads/**
+*.pdf
+*.xlsx
+docs
