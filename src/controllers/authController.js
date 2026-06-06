@@ -61,6 +61,48 @@ const LOGIN_LOCK_MINUTES = 5;
 const TURNOS_USUARIO = ["", "39", "44", "ADMINISTRATIVO", "OTROS"];
 
 const normalizarOperadorId = (value = "") => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+const escaparRegex = (value = "") => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buscarUsuarioLogin = async (identificador, operadorLookup) => {
+  const userExacto = await User.findOne({
+    $or: [
+      { username: identificador },
+      { email: identificador },
+      { correoCorporativo: identificador },
+      { correoRespaldo: identificador },
+      { operadorId: operadorLookup }
+    ]
+  });
+
+  if (userExacto || identificador.includes("@")) return userExacto;
+
+  // Compatibilidad segura: permite "admin" para "admin@dominio" solo si
+  // el alias identifica de forma unica a una cuenta.
+  const aliasCorreo = new RegExp(`^${escaparRegex(identificador)}@`, "i");
+  const candidatos = await User.find({
+    $or: [
+      { username: aliasCorreo },
+      { email: aliasCorreo },
+      { correoCorporativo: aliasCorreo },
+      { correoRespaldo: aliasCorreo }
+    ]
+  }).limit(2);
+
+  if (candidatos.length === 1) {
+    console.log("LOGIN_ALIAS_CORTO_RESUELTO", {
+      alias: identificador,
+      usuarioId: String(candidatos[0]._id)
+    });
+    return candidatos[0];
+  }
+
+  if (candidatos.length > 1) {
+    console.warn("LOGIN_ALIAS_CORTO_AMBIGUO", { alias: identificador });
+  }
+
+  return null;
+};
+
 const normalizarTurno = (value = "") => {
   const turno = String(value || "").trim();
   return TURNOS_USUARIO.includes(turno) ? turno : "";
@@ -392,15 +434,7 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "usuario/correo y password son obligatorios" });
     }
 
-    const user = await User.findOne({
-      $or: [
-        { username: identificador },
-        { email: identificador },
-        { correoCorporativo: identificador },
-        { correoRespaldo: identificador },
-        { operadorId: operadorLookup }
-      ]
-    });
+    const user = await buscarUsuarioLogin(identificador, operadorLookup);
 
     if (!user) {
       await registrarLoginFallido(req, identificador, "Credenciales incorrectas");
