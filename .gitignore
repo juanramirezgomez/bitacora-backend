@@ -22,3 +22,9 @@ backend/uploads/**
 # ENV
 # =====================
 .env
+
+# =====================
+# RESPALDOS MONGODB
+# =====================
+storage/backups/
+storage/backups/**

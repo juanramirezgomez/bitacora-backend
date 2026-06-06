@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import LoginAudit from "../models/LoginAudit.js";
 
 const detectarDispositivo = (userAgent = "") => {
@@ -28,8 +29,13 @@ const datosRequest = (req) => {
   };
 };
 
+const usuarioIdSeguro = (user = {}) => {
+  const id = user?._id || user?.id || user?.uid || user?.sub || null;
+  return mongoose.Types.ObjectId.isValid(String(id || "")) ? id : null;
+};
+
 const usuarioAudit = (user = {}) => ({
-  usuarioId: user?._id || user?.id || user?.uid || null,
+  usuarioId: usuarioIdSeguro(user),
   nombreUsuario: user?.nombre || "",
   username: user?.username || user?.operadorId || "",
   email: user?.email || user?.correoCorporativo || "",
@@ -88,6 +94,28 @@ export const registrarLoginBloqueado = async (
     observacion
   });
   if (doc) console.log("\u{1F512} LOGIN BLOQUEADO REGISTRADO", { username: doc.username, ip: doc.ip });
+  return doc;
+};
+
+export const registrarJwtAccessDenied = async (
+  req,
+  user = {},
+  observacion = "Acceso JWT rechazado"
+) => {
+  const doc = await registrarAudit(req, {
+    ...usuarioAudit(user),
+    accion: "JWT_ACCESS_DENIED",
+    resultado: "ERROR",
+    observacion
+  });
+  if (doc) {
+    console.warn("JWT ACCESS DENIED REGISTRADO", {
+      usuarioId: String(doc.usuarioId || ""),
+      username: doc.username,
+      ip: doc.ip,
+      observacion: doc.observacion
+    });
+  }
   return doc;
 };
 

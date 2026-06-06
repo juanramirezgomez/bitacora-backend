@@ -14,6 +14,7 @@ const loginAuditSchema = new mongoose.Schema(
         "LOGIN_EXITOSO",
         "LOGIN_FALLIDO",
         "LOGIN_BLOQUEADO",
+        "JWT_ACCESS_DENIED",
         "DESBLOQUEO_AUTOMATICO",
         "LOGOUT",
         "SOLICITUD_RESET_PASSWORD",

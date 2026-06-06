@@ -9,6 +9,7 @@
   },
   "scripts": {
     "seed:users": "node src/scripts/seedUsers.js",
+    "backup:scheduled": "node src/scripts/scheduledBackup.js",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js"
   },

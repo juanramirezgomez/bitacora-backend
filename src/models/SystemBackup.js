@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 const systemBackupSchema = new mongoose.Schema(
   {
+    nombre: { type: String, trim: true, default: "", index: true },
     tipo: {
       type: String,
       enum: ["MANUAL", "PROGRAMADO"],
@@ -18,6 +19,9 @@ const systemBackupSchema = new mongoose.Schema(
     fechaFin: { type: Date, default: null },
     duracion: { type: Number, default: 0 },
     tamano: { type: String, default: "" },
+    tamanoBytes: { type: Number, default: 0 },
+    hashSha256: { type: String, default: "" },
+    validado: { type: Boolean, default: false },
     usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
     usuarioNombre: { type: String, default: "" },
     observacion: { type: String, default: "" },
@@ -25,10 +29,13 @@ const systemBackupSchema = new mongoose.Schema(
     origen: { type: String, default: "OPERACIONES_LITIO" },
     resultado: {
       type: String,
-      enum: ["OK", "ERROR"],
+      enum: ["PENDIENTE", "OK", "ERROR"],
       required: true,
       index: true
     },
+    ultimaRestauracion: { type: Date, default: null },
+    restauradoPor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    restauradoPorNombre: { type: String, default: "" },
     creadoPor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }
   },
   { timestamps: true }
