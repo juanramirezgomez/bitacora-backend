@@ -508,23 +508,79 @@ const fechaLicenciaInternaUsuario = (user = {}) =>
   user.licenciaInterna?.fechaVencimientoLicenciaInterna ||
   null;
 
-const aplicarDatosUsuarioChecklist = (body = {}, user = null, admin = false) => {
-  if (admin || !user) return body;
+const normalizarNombreDocumento = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+
+const estadoDocumentoUsuario = (posee, fechaVencimiento) => {
+  if (!posee || !fechaVencimiento) return "VENCIDO";
+  const fecha = new Date(fechaVencimiento);
+  if (Number.isNaN(fecha.getTime())) return "VENCIDO";
+  fecha.setHours(23, 59, 59, 999);
+  return fecha >= new Date() ? "VIGENTE" : "VENCIDO";
+};
+
+const sincronizarDocumentacionUsuario = (documentacion = [], user = {}) => {
   const fechaInterna = fechaLicenciaInternaUsuario(user);
-  return {
+  return (Array.isArray(documentacion) ? documentacion : []).map((documento) => {
+    const nombre = normalizarNombreDocumento(documento.nombre);
+    if (nombre === "LICENCIA MUNICIPAL") {
+      return {
+        ...documento,
+        fechaVencimiento: user.fechaVencimientoLicenciaB || null,
+        estado: estadoDocumentoUsuario(user.licenciaClaseB === true, user.fechaVencimientoLicenciaB)
+      };
+    }
+    if (nombre === "LICENCIA INTERNA") {
+      return {
+        ...documento,
+        fechaVencimiento: fechaInterna || null,
+        estado: estadoDocumentoUsuario(licenciaInternaActiva(user.licenciaInterna), fechaInterna)
+      };
+    }
+    return documento;
+  });
+};
+
+const aplicarDatosUsuarioChecklist = (body = {}, user = null, admin = false) => {
+  if (!user) return body;
+  const fechaInterna = fechaLicenciaInternaUsuario(user);
+  const planta = String(user.area || user.planta || body.planta || "PC1").trim().toUpperCase();
+  const payload = {
     ...body,
-    planta: user.area || user.planta || body.planta || "PC1",
-    areaTrabajo: user.area ? `PLANTA ${user.area}` : (body.areaTrabajo || user.planta || "PC1"),
-    turnoNumero: user.turno || body.turnoNumero || "",
-    conductorResponsable: user.nombre || body.conductorResponsable || "",
-    nombreConductor: user.nombre || body.nombreConductor || "",
-    nombreRealizadoPor: user.nombre || body.nombreRealizadoPor || "",
-    cargoRealizadoPor: user.cargo || user.rol || body.cargoRealizadoPor || "",
+    planta,
     licenciaClaseB: user.licenciaClaseB === true,
     fechaVencimientoLicenciaB: user.fechaVencimientoLicenciaB || body.fechaVencimientoLicenciaB || null,
     licenciaInterna: licenciaInternaActiva(user.licenciaInterna),
-    fechaVencimientoLicenciaInterna: fechaInterna || body.fechaVencimientoLicenciaInterna || null
+    fechaVencimientoLicenciaInterna: fechaInterna || body.fechaVencimientoLicenciaInterna || null,
+    documentacion: sincronizarDocumentacionUsuario(body.documentacion, user)
   };
+
+  if (planta.includes("PC1")) {
+    Object.assign(payload, {
+      tipoVehiculo: "Camioneta",
+      marca: "TOYOTA",
+      modelo: "HILUX",
+      patente: "SWJJ-86",
+      color: "ROJO"
+    });
+  }
+
+  if (!admin) {
+    Object.assign(payload, {
+      areaTrabajo: user.area ? `PLANTA ${user.area}` : (body.areaTrabajo || user.planta || "PC1"),
+      turnoNumero: user.turno || body.turnoNumero || "",
+      conductorResponsable: user.nombre || body.conductorResponsable || "",
+      nombreConductor: user.nombre || body.nombreConductor || "",
+      nombreRealizadoPor: user.nombre || body.nombreRealizadoPor || "",
+      cargoRealizadoPor: user.cargo || user.rol || body.cargoRealizadoPor || ""
+    });
+  }
+
+  return payload;
 };
 
 const validarHabilitacionChecklistUsuario = (user = {}) => {
