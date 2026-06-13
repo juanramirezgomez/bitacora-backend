@@ -196,8 +196,16 @@ const asegurarAlertasOperacionalesRecientes = async (desde) => {
     {
       $lookup: {
         from: "alertacamionetas",
-        localField: "_id",
-        foreignField: "checklistId",
+        let: { checklistId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$checklistId", "$$checklistId"] },
+              tipo: "CHECKLIST_CAMIONETA_CONSOLIDADO",
+              activo: { $ne: false }
+            }
+          }
+        ],
         as: "alertasOperacionales"
       }
     },
@@ -222,6 +230,7 @@ const asegurarAlertasOperacionalesRecientes = async (desde) => {
 const backfillAlertasDesdeHistorial = async (desde) => {
   const historial = await HistorialAlerta.find({
     checklistId: { $ne: null },
+    tipo: "CHECKLIST_CAMIONETA_CONSOLIDADO",
     estado: { $ne: "omitido" },
     createdAt: { $gte: desde }
   })
@@ -234,11 +243,7 @@ const backfillAlertasDesdeHistorial = async (desde) => {
 
   const ops = [];
   for (const item of historial) {
-    const dedupeKey = [
-      item.checklistId,
-      item.tipo,
-      String(item.mensaje || item.error || "").slice(0, 90)
-    ].join(":");
+    const dedupeKey = `${item.checklistId}:CHECKLIST_CAMIONETA_CONSOLIDADO`;
 
     ops.push({
       updateOne: {

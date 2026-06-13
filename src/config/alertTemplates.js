@@ -86,6 +86,16 @@ export const ALERT_TEMPLATES = {
     whatsapp: { title: "Alerta critica checklist camioneta" },
     email: { subject: "Alerta critica checklist camioneta" }
   },
+  CONDICION_NO_CRITICA: {
+    prioridad: "BAJA",
+    whatsapp: { title: "Condicion no critica detectada" },
+    email: { subject: "Condicion no critica en checklist camioneta" }
+  },
+  FATIGA_SOMNOLENCIA: {
+    prioridad: "MEDIA",
+    whatsapp: { title: "Hallazgo de fatiga o somnolencia" },
+    email: { subject: "Hallazgo de fatiga o somnolencia en checklist" }
+  },
   DOCUMENTACION_INCOMPLETA: {
     prioridad: "MEDIA",
     whatsapp: { title: "Documentacion incompleta" },

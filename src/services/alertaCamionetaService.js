@@ -67,11 +67,22 @@ const descripcionAlerta = (alerta) => {
   return anomalias[0] || alerta.mensaje || alerta.titulo || alerta.tipo;
 };
 
-const buildDedupeKey = (checklist, alerta) => [
-  checklist?._id,
-  alerta.tipo,
-  normalizeText(alerta.item || alerta.documento || descripcionAlerta(alerta)).slice(0, 90)
-].join(":");
+const buildDedupeKey = (checklist) => `${checklist?._id}:CHECKLIST_CAMIONETA_CONSOLIDADO`;
+
+const prioridadConsolidada = (alertas = []) =>
+  alertas.reduce((mayor, alerta) => {
+    const prioridad = prioridadOperacional(alerta);
+    return PRIORIDAD_ORDEN[prioridad] > PRIORIDAD_ORDEN[mayor] ? prioridad : mayor;
+  }, "BAJA");
+
+const resumenConsolidado = (alertas = []) => alertas
+  .flatMap((alerta) => {
+    const anomalias = Array.isArray(alerta.anomalias) ? alerta.anomalias.filter(Boolean) : [];
+    return anomalias.length ? anomalias : [descripcionAlerta(alerta)];
+  })
+  .filter(Boolean)
+  .map((item) => `- ${item}`)
+  .join("\n");
 
 const userId = (user = {}) => user?.uid || user?._id || user?.id || null;
 const userName = (user = {}) => user?.nombre || user?.username || user?.email || "Usuario";
@@ -110,7 +121,14 @@ const crearSeguimiento = async ({
 });
 
 export const sincronizarAlertasOperacionalesChecklist = async (checklist, alertas = []) => {
-  if (!checklist?._id || !Array.isArray(alertas) || !alertas.length) return [];
+  if (!checklist?._id || !Array.isArray(alertas)) return [];
+  if (!alertas.length) {
+    await AlertaCamioneta.updateMany(
+      { checklistId: checklist._id, estado: "ABIERTA" },
+      { $set: { activo: false, fechaUltimoMovimiento: new Date() } }
+    );
+    return [];
+  }
 
   const fotos = Array.isArray(checklist.fotosObservaciones)
     ? checklist.fotosObservaciones.slice(0, 4).map((foto) => ({
@@ -121,15 +139,15 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
     }))
     : [];
 
-  const resultados = [];
-  for (const alerta of alertas) {
-    const descripcion = descripcionAlerta(alerta);
-    const dedupeKey = buildDedupeKey(checklist, alerta);
-    const existente = await AlertaCamioneta.exists({ dedupeKey });
-    const update = {
+  const dedupeKey = buildDedupeKey(checklist);
+  const existente = await AlertaCamioneta.exists({ dedupeKey });
+  const resumen = resumenConsolidado(alertas);
+  const doc = await AlertaCamioneta.findOneAndUpdate(
+    { dedupeKey },
+    {
       $setOnInsert: {
         checklistId: checklist._id,
-        tipo: alerta.tipo,
+        tipo: "CHECKLIST_CAMIONETA_CONSOLIDADO",
         fechaCreacion: new Date(),
         fechaUltimoMovimiento: new Date(),
         creadoPor: checklist.creadoPor?._id || checklist.creadoPor || null,
@@ -137,47 +155,48 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
         dedupeKey
       },
       $set: {
-        patente: checklist.patente || alerta.patente || "",
-        descripcion,
-        prioridad: prioridadOperacional(alerta),
-        operador: alerta.operador || checklist.conductorResponsable || "",
-        observaciones: alerta.observacion || alerta.mensaje || "",
+        patente: checklist.patente || "",
+        descripcion: `Checklist ${checklist.patente || ""}: ${alertas.length} hallazgo(s) consolidado(s)`,
+        prioridad: prioridadConsolidada(alertas),
+        operador: checklist.conductorResponsable || "",
+        observaciones: resumen,
         fotos,
         activo: true
       }
-    };
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
 
-    const doc = await AlertaCamioneta.findOneAndUpdate(
-      { dedupeKey },
-      update,
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    ).lean();
-    if (!existente) {
-      await registrarEvento({
-        usuario: checklist.creadoPor || {},
-        modulo: "ALERTAS",
-        entidad: "AlertaCamioneta",
-        entidadId: doc?._id,
-        accion: "ALERTA_CREADA",
-        observacion: `Alerta ${doc?.tipo || alerta.tipo || ""} para patente ${doc?.patente || checklist.patente || ""}`.trim()
-      });
-      await crearSeguimiento({
-        alerta: doc,
-        user: checklist.creadoPor || {},
-        tipoEvento: "CAMBIO_ESTADO",
-        estadoNuevo: "ABIERTA",
-        comentario: "Alerta creada automaticamente desde checklist"
-      });
-    }
-    resultados.push(doc);
+  await AlertaCamioneta.updateMany(
+    { checklistId: checklist._id, _id: { $ne: doc._id } },
+    { $set: { activo: false } }
+  );
+
+  if (!existente) {
+    await registrarEvento({
+      usuario: checklist.creadoPor || {},
+      modulo: "ALERTAS",
+      entidad: "AlertaCamioneta",
+      entidadId: doc?._id,
+      accion: "ALERTA_CREADA",
+      observacion: `Alerta consolidada para patente ${doc?.patente || checklist.patente || ""}`.trim()
+    });
+    await crearSeguimiento({
+      alerta: doc,
+      user: checklist.creadoPor || {},
+      tipoEvento: "CAMBIO_ESTADO",
+      estadoNuevo: "ABIERTA",
+      comentario: `Alerta consolidada creada automaticamente con ${alertas.length} hallazgo(s)`
+    });
   }
 
   console.log("ALERTAS OPERACIONALES SINCRONIZADAS", {
     checklistId: checklist._id,
     patente: checklist.patente,
-    total: resultados.length
+    total: 1,
+    hallazgos: alertas.length
   });
-  return resultados;
+  return [doc];
 };
 
 export const obtenerSeguimientoAlerta = async (alertaId) =>

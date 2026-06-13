@@ -330,7 +330,7 @@ const tipoInspeccionMala = (seccion, item) => {
   if (group.includes("FRENOS")) return "FRENOS_MALOS";
   if (group.includes("LUCES")) return "LUCES_MALAS";
   if (CRITICAL_ITEMS.includes(itemName)) return "ALERTA_CRITICA";
-  return "ALERTA_CRITICA";
+  return "CONDICION_NO_CRITICA";
 };
 
 const generarAlertasInspeccion = (checklist) => {
@@ -346,7 +346,9 @@ const generarAlertasInspeccion = (checklist) => {
       .filter((item) => item.estado === "MALO")
       .map((item) => {
         const tipo = tipoInspeccionMala(seccion, item);
-        const prioridad = tipo === "FRENOS_MALOS" || tipo === "ALERTA_CRITICA" ? "CRITICA" : "ALTA";
+        const prioridad = tipo === "FRENOS_MALOS" || tipo === "ALERTA_CRITICA"
+          ? "CRITICA"
+          : tipo === "LUCES_MALAS" ? "ALTA" : "BAJA";
         return buildBaseAlert(checklist, tipo, {
           categoria: "INSPECCION",
           estadoAlerta: "ITEM_DEFICIENTE",
@@ -360,6 +362,48 @@ const generarAlertasInspeccion = (checklist) => {
         });
       })
   );
+};
+
+const FATIGA_RESPUESTAS_POSITIVAS = new Set([
+  "SE SIENTE EN CONDICIONES DE CONDUCIR?",
+  "CONSIDERA USTED QUE DESCANSO LO SUFICIENTE?"
+]);
+
+const FATIGA_MENSAJES = {
+  "HA TENIDO DIFICULTADES DE LOGRAR UN SUENO REPARADOR?": "Operador indica dificultades para lograr sueno reparador.",
+  "PRESENTA ALGUN EVENTO QUE DIFICULTE SU BUEN DORMIR?": "Operador reporta eventos que dificultan su buen dormir.",
+  "SUFRE DE INSOMNIO ULTIMAMENTE?": "Operador reporta insomnio.",
+  "DURMIO MENOS TIEMPO DEL NECESARIO DURANTE SU ULTIMO PERIODO DE SUENO?": "Operador reporta menos horas de descanso de las necesarias.",
+  "ESTA CONSUMIENDO ALGUN MEDICAMENTO QUE PROVOQUE SOMNOLENCIA O PERDIDA DE ATENCION?": "Operador reporta consumo de medicamento que puede provocar somnolencia.",
+  "PADECE DE ALGUNA ENFERMEDAD QUE PUDIESE CAUSAR SOMNOLENCIA?": "Operador reporta una enfermedad que puede causar somnolencia.",
+  "EXISTEN FACTORES EXTERNOS QUE AFECTEN LA CALIDAD DE SU SUENO?": "Operador reporta factores externos que afectan la calidad del sueno.",
+  "HA PRESENTADO EVENTOS IMPORTANTES DE SOMNOLENCIA?": "Operador reporta eventos importantes de somnolencia.",
+  "SE SIENTE EN CONDICIONES DE CONDUCIR?": "Operador indica que no se siente en condiciones de conducir.",
+  "TIENE ALGUN PROBLEMA QUE AFECTE SU NORMAL DESEMPENO?": "Operador reporta un problema que afecta su normal desempeno.",
+  "CONSIDERA USTED QUE DESCANSO LO SUFICIENTE?": "Operador indica que no descanso lo suficiente."
+};
+
+const generarAlertaFatigaSomnolencia = (checklist) => {
+  const riesgos = (checklist.encuestaFatigaSomnolencia || []).filter((item) => {
+    const pregunta = normalizeText(item.nombre);
+    if (!["SI", "NO"].includes(item.estado)) return false;
+    return FATIGA_RESPUESTAS_POSITIVAS.has(pregunta) ? item.estado === "NO" : item.estado === "SI";
+  });
+  if (!riesgos.length) return [];
+
+  const noPuedeConducir = riesgos.some((item) => normalizeText(item.nombre) === "SE SIENTE EN CONDICIONES DE CONDUCIR?");
+  const prioridad = noPuedeConducir ? "CRITICA" : riesgos.length >= 4 ? "ALTA" : riesgos.length >= 2 ? "MEDIA" : "BAJA";
+  const anomalias = riesgos.map((item) => FATIGA_MENSAJES[normalizeText(item.nombre)] || item.nombre);
+
+  return [buildBaseAlert(checklist, "FATIGA_SOMNOLENCIA", {
+    categoria: "FATIGA_SOMNOLENCIA",
+    estadoAlerta: "HALLAZGO_FATIGA",
+    estadoTexto: "Hallazgo fatiga / somnolencia",
+    prioridad,
+    seccion: "Fatiga / Somnolencia",
+    anomalias,
+    mensaje: `${riesgos.length} respuesta(s) de riesgo en encuesta de fatiga / somnolencia.`
+  })];
 };
 
 const generarAlertasObservacionesCriticas = (checklist) => {
@@ -420,21 +464,23 @@ export const generarAlertasChecklist = async (checklistInput) => {
     ...generarAlertasMantencion(checklist),
     ...generarAlertasInspeccion(checklist),
     ...generarAlertasCarroceria(checklist),
-    ...generarAlertasObservacionesCriticas(checklist)
+    ...generarAlertasObservacionesCriticas(checklist),
+    ...generarAlertaFatigaSomnolencia(checklist)
   ];
 };
 
 const enriquecerAlertasOperacionales = async (checklist, alertas = []) => {
   if (!checklist?._id || !Array.isArray(alertas) || !alertas.length) return alertas;
 
-  const keys = alertas.map((alerta) => buildDedupeKey(checklist, alerta));
-  const operacionales = await AlertaCamioneta.find({ dedupeKey: { $in: keys } })
-    .select("_id dedupeKey estado prioridad responsable fechaAsignacion fechaResolucion fechaCierre")
+  const operacional = await AlertaCamioneta.findOne({
+    checklistId: checklist._id,
+    tipo: ALERTA_CONSOLIDADA_TIPO,
+    activo: { $ne: false }
+  })
+    .select("_id estado prioridad responsable fechaAsignacion fechaResolucion fechaCierre")
     .lean();
-  const byKey = new Map(operacionales.map((alerta) => [alerta.dedupeKey, alerta]));
 
   return alertas.map((alerta) => {
-    const operacional = byKey.get(buildDedupeKey(checklist, alerta));
     return {
       ...alerta,
       alertaOperacionalId: operacional?._id ? String(operacional._id) : "",
@@ -579,8 +625,11 @@ const prioridadConsolidada = (alertas = []) => {
 const grupoVacio = () => ({
   documentacionCritica: [],
   documentacionPorVencer: [],
-  itemsCriticos: [],
-  itemsNoCriticos: []
+  mantenciones: [],
+  condicionesCriticas: [],
+  condicionesNoCriticas: [],
+  fatigaSomnolencia: [],
+  carroceria: []
 });
 
 const clasificarAlertaConsolidada = (alerta) => {
@@ -590,25 +639,21 @@ const clasificarAlertaConsolidada = (alerta) => {
   const item = normalizeText(alerta.item || alerta.documento || alerta.seccion);
   const seccion = normalizeText(alerta.seccion);
 
+  if (categoria.includes("FATIGA")) return "fatigaSomnolencia";
+  if (categoria.includes("CARROCERIA") || seccion.includes("CARROCERIA")) return "carroceria";
+  if (categoria.includes("MANTENCION")) return "mantenciones";
+
   if (categoria.includes("DOCUMENTACION") || tipo.includes("LICENCIA") || tipo.includes("REVISION") || tipo.includes("PERMISO") || tipo.includes("SEGURO") || tipo.includes("CERTIFICACION")) {
     return estado.includes("VENCIDA") || alerta.prioridad === "CRITICA"
       ? "documentacionCritica"
       : "documentacionPorVencer";
   }
 
-  if (categoria.includes("MANTENCION")) {
-    return estado.includes("VENCIDA") || alerta.prioridad === "CRITICA"
-      ? "documentacionCritica"
-      : "documentacionPorVencer";
-  }
-
   if (categoria.includes("INSPECCION")) {
-    const menor = seccion.includes("CARROCERIA") || item.includes("ABOLLADURA") || item.includes("RAYA") || item.includes("PICADURA");
-    if (menor) return "itemsNoCriticos";
-    return "itemsCriticos";
+    return alerta.prioridad === "CRITICA" ? "condicionesCriticas" : "condicionesNoCriticas";
   }
 
-  return alerta.prioridad === "CRITICA" ? "itemsCriticos" : "itemsNoCriticos";
+  return alerta.prioridad === "CRITICA" ? "condicionesCriticas" : "condicionesNoCriticas";
 };
 
 const resumenItemAlerta = (alerta) => ({
@@ -711,8 +756,11 @@ const buildConsolidatedEmailHtml = ({ alerta }) => {
 
                 ${renderGrupoEmail("DOCUMENTACION CRITICA", grupos.documentacionCritica, "#dc2626")}
                 ${renderGrupoEmail("DOCUMENTACION POR VENCER", grupos.documentacionPorVencer, "#d97706")}
-                ${renderGrupoEmail("ITEMS CRITICOS", grupos.itemsCriticos, "#ea580c")}
-                ${renderGrupoEmail("ITEMS NO CRITICOS", grupos.itemsNoCriticos, "#2563eb")}
+                ${renderGrupoEmail("MANTENCIONES", grupos.mantenciones, "#d97706")}
+                ${renderGrupoEmail("CONDICIONES CRITICAS DE SEGURIDAD", grupos.condicionesCriticas, "#ea580c")}
+                ${renderGrupoEmail("CONDICIONES NO CRITICAS", grupos.condicionesNoCriticas, "#2563eb")}
+                ${renderGrupoEmail("FATIGA / SOMNOLENCIA", grupos.fatigaSomnolencia, "#7c3aed")}
+                ${renderGrupoEmail("CARROCERIA", grupos.carroceria, "#64748b")}
 
                 ${resumen.observaciones ? `
                   <div style="margin-top:18px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#334155;">
@@ -744,8 +792,11 @@ const buildConsolidatedPlainMessage = (alerta) => {
   for (const [titulo, items] of [
     ["DOCUMENTACION CRITICA", grupos.documentacionCritica],
     ["DOCUMENTACION POR VENCER", grupos.documentacionPorVencer],
-    ["ITEMS CRITICOS", grupos.itemsCriticos],
-    ["ITEMS NO CRITICOS", grupos.itemsNoCriticos]
+    ["MANTENCIONES", grupos.mantenciones],
+    ["CONDICIONES CRITICAS DE SEGURIDAD", grupos.condicionesCriticas],
+    ["CONDICIONES NO CRITICAS", grupos.condicionesNoCriticas],
+    ["FATIGA / SOMNOLENCIA", grupos.fatigaSomnolencia],
+    ["CARROCERIA", grupos.carroceria]
   ]) {
     if (!items.length) continue;
     lines.push(`${titulo}:`);
@@ -761,9 +812,12 @@ const buildConsolidatedWhatsappMessage = (alerta) => {
   const resumenGrupo = (nombre, items) => items.length ? `${nombre}: ${items.length}` : "";
   const principales = [
     ...grupos.documentacionCritica,
-    ...grupos.itemsCriticos,
+    ...grupos.condicionesCriticas,
     ...grupos.documentacionPorVencer,
-    ...grupos.itemsNoCriticos
+    ...grupos.mantenciones,
+    ...grupos.condicionesNoCriticas,
+    ...grupos.fatigaSomnolencia,
+    ...grupos.carroceria
   ].slice(0, 8);
 
   return [
@@ -777,8 +831,11 @@ const buildConsolidatedWhatsappMessage = (alerta) => {
     "Resumen:",
     resumenGrupo("Documentacion critica", grupos.documentacionCritica),
     resumenGrupo("Documentacion por vencer", grupos.documentacionPorVencer),
-    resumenGrupo("Items criticos", grupos.itemsCriticos),
-    resumenGrupo("Items no criticos", grupos.itemsNoCriticos),
+    resumenGrupo("Mantenciones", grupos.mantenciones),
+    resumenGrupo("Condiciones criticas", grupos.condicionesCriticas),
+    resumenGrupo("Condiciones no criticas", grupos.condicionesNoCriticas),
+    resumenGrupo("Fatiga / somnolencia", grupos.fatigaSomnolencia),
+    resumenGrupo("Carroceria", grupos.carroceria),
     "",
     "Principales hallazgos:",
     ...principales.map((item) => `- ${item.titulo}: ${item.detalle}`),
@@ -807,14 +864,19 @@ const buildAlertaConsolidadaChecklist = ({ checklist, alertas }) => {
     resumen: {
       vehiculo,
       plantaTurno: `${checklist.planta || "PC1"} / ${checklist.turno || "-"} ${checklist.turnoNumero || ""}`.trim(),
-      aptitud: checklist.aptitudOperacion || (checklist.aptaOperacion ? "APTA" : "NO_APTA"),
+      aptitud: checklist.aptaOperacion === false || checklist.aptitudOperacion === "NO_APTA"
+        ? "NO APTA PARA OPERACION"
+        : alertas.length ? "APTA CON OBSERVACIONES" : "APTA PARA OPERACION",
       observaciones
     },
     anomalias: [
       `Documentacion critica: ${grupos.documentacionCritica.length}`,
       `Documentacion por vencer: ${grupos.documentacionPorVencer.length}`,
-      `Items criticos: ${grupos.itemsCriticos.length}`,
-      `Items no criticos: ${grupos.itemsNoCriticos.length}`
+      `Mantenciones: ${grupos.mantenciones.length}`,
+      `Condiciones criticas: ${grupos.condicionesCriticas.length}`,
+      `Condiciones no criticas: ${grupos.condicionesNoCriticas.length}`,
+      `Fatiga / somnolencia: ${grupos.fatigaSomnolencia.length}`,
+      `Carroceria: ${grupos.carroceria.length}`
     ],
     mensaje: `Checklist camioneta ${checklist.patente || "-"} finalizado con ${alertas.length} alertas consolidadas.`
   };
@@ -980,6 +1042,25 @@ const destinoCanalParaDeduplicar = ({ user, tipoCorreo = "", canal }) => {
   return email ? `EMAIL:${email}` : "";
 };
 
+const notificacionChecklistYaEnviada = async ({ alerta, user, tipoCorreo = "", canal }) => {
+  const destinatario = plainUser(user);
+  const destino = canal === CANALES_HISTORIAL.whatsapp
+    ? destinatario.telefono
+    : tipoCorreo === "respaldo" ? destinatario.correoRespaldo : destinatario.correoCorporativo;
+  if (!destino) return false;
+
+  const campoDestino = canal === CANALES_HISTORIAL.whatsapp
+    ? "destinatarios.telefono"
+    : tipoCorreo === "respaldo" ? "destinatarios.correoRespaldo" : "destinatarios.correoCorporativo";
+  return Boolean(await HistorialAlerta.exists({
+    checklistId: alerta.checklistId,
+    tipo: ALERTA_CONSOLIDADA_TIPO,
+    canal,
+    estado: "enviado",
+    [campoDestino]: destino
+  }));
+};
+
 export const procesarAlertasChecklist = async (checklistOrId) => {
   const inicio = Date.now();
   try {
@@ -1069,6 +1150,15 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
               });
               continue;
             }
+            if (await notificacionChecklistYaEnviada({ alerta: alertaConsolidada, user, tipoCorreo, canal })) {
+              notificaciones.push(await omitirCanal({
+                alerta: alertaConsolidada,
+                user,
+                canal,
+                motivo: "Consolidado ya enviado anteriormente para este checklist y canal"
+              }));
+              continue;
+            }
             if (dedupeKey) enviosRealizados.add(dedupeKey);
 
             console.log("ALERTA_ENVIO_INICIADO", {
@@ -1101,6 +1191,15 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
               usuario: destinatarioPlano.nombre,
               rol: destinatarioPlano.rol
             });
+            continue;
+          }
+          if (await notificacionChecklistYaEnviada({ alerta: alertaConsolidada, user, canal })) {
+            notificaciones.push(await omitirCanal({
+              alerta: alertaConsolidada,
+              user,
+              canal,
+              motivo: "Consolidado ya enviado anteriormente para este checklist y canal"
+            }));
             continue;
           }
           if (dedupeKey) enviosRealizados.add(dedupeKey);

@@ -13,6 +13,7 @@ import {
   obtenerAlertasVencimientosChecklistCamionetaController,
   obtenerCumplimientoChecklistCamionetaController,
   obtenerChecklistCamioneta,
+  obtenerConfiguracionVehiculosChecklistCamioneta,
   revisarChecklistCamioneta,
   subirFotoChecklistCamioneta,
   uploadChecklistCamioneta
@@ -28,6 +29,7 @@ router.get("/", listarChecklistCamionetas);
 router.post("/upload", uploadChecklistCamioneta.single("foto"), subirFotoChecklistCamioneta);
 router.get("/alertas-vencimientos", obtenerAlertasVencimientosChecklistCamionetaController);
 router.get("/alertas", obtenerAlertasChecklistCamionetaController);
+router.get("/configuracion-vehiculos", obtenerConfiguracionVehiculosChecklistCamioneta);
 router.post("/alertas/enviar", enviarAlertasChecklistCamionetaController);
 router.post("/alertas/diagnostico", diagnosticoAlertasChecklistCamionetaController);
 router.get("/cumplimiento", obtenerCumplimientoChecklistCamionetaController);

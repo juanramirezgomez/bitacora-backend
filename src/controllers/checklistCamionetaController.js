@@ -28,6 +28,11 @@ import {
   normalizarCumplimientoChecklist,
   validarChecklistDiario
 } from "../services/checklistComplianceService.js";
+import {
+  applyVehicleDocumentation,
+  getVehicleDocumentation,
+  listVehicleDocumentation
+} from "../config/vehicleDocumentation.js";
 
 const ESTADOS_CHECKLIST = ["BORRADOR", "FINALIZADO", "REVISADO"];
 const ESTADOS_DOCUMENTO = ["VIGENTE", "VENCIDO", "NO_APLICA"];
@@ -383,7 +388,12 @@ const calcularAptitud = (payload) => {
     return esDocumentoBloqueante && String(item.estado || "").toUpperCase() === "VENCIDO";
   });
 
-  const noApta = documentosCriticosVencidos || grupos.some(item =>
+  const fatigaNoApta = (payload.encuestaFatigaSomnolencia || []).some((item) =>
+    normalizarNombreDocumento(item.nombre) === "SE SIENTE EN CONDICIONES DE CONDUCIR?" &&
+    String(item.estado || "").toUpperCase() === "NO"
+  );
+
+  const noApta = documentosCriticosVencidos || fatigaNoApta || grupos.some(item =>
     CRITICOS.includes(item.nombre) && item.estado === "MALO"
   );
 
@@ -422,7 +432,7 @@ const buildPayload = (body = {}) => {
     horaInspeccion: String(body.horaInspeccion || "").trim(),
     turno: ["DIA", "NOCHE"].includes(String(body.turno || "").toUpperCase()) ? String(body.turno).toUpperCase() : "",
     turnoNumero: String(body.turnoNumero || "").trim(),
-    documentacion: crearDocumentos(body.documentacion),
+    documentacion: applyVehicleDocumentation(crearDocumentos(body.documentacion), body.patente),
     aspectosInspeccionar: crearItems(ASPECTOS, body.aspectosInspeccionar),
     estadoCamioneta: crearItems(ESTADO_CAMIONETA, body.estadoCamioneta),
     frenosDireccion: crearItems(FRENOS_DIRECCION, body.frenosDireccion),
@@ -463,6 +473,14 @@ const buildPayload = (body = {}) => {
   payload.aptaOperacion = payload.aptitudOperacion === "APTA";
   Object.assign(payload, normalizarCumplimientoChecklist(payload));
   return payload;
+};
+
+export const obtenerConfiguracionVehiculosChecklistCamioneta = async (req, res) => {
+  const patente = String(req.query?.patente || "").trim();
+  return res.json({
+    vehiculo: patente ? getVehicleDocumentation(patente) : null,
+    vehiculos: patente ? [] : listVehicleDocumentation()
+  });
 };
 
 const validarRealizado = (checklist) => {
@@ -1311,7 +1329,7 @@ const drawMiniInspectionTable = (doc, title, rows = [], x, startY, width = 255) 
   return y + 8;
 };
 
-const drawMiniResponseTable = (doc, title, rows = [], startY) => {
+const drawMiniResponseTable = (doc, title, rows = [], startY, { fatiga = false } = {}) => {
   const colors = { purple: "#461D77", border: "#D7D8E8", row: "#F8FAFC", dark: "#111827" };
   const x = 35;
   const width = 525;
@@ -1342,13 +1360,20 @@ const drawMiniResponseTable = (doc, title, rows = [], startY) => {
 
   rows.forEach((row, index) => {
     const fill = index % 2 ? "#FFFFFF" : colors.row;
+    const pregunta = normalizarNombreDocumento(row.nombre);
+    const respuestaPositiva = [
+      "SE SIENTE EN CONDICIONES DE CONDUCIR?",
+      "CONSIDERA USTED QUE DESCANSO LO SUFICIENTE?"
+    ].includes(pregunta);
+    const siBueno = !fatiga || respuestaPositiva;
+    const noBueno = fatiga && !respuestaPositiva;
     const siX = x + itemWidth;
     const noX = siX + stateWidth;
     const naX = noX + stateWidth;
     const obsX = naX + stateWidth;
     doc.rect(x, y, itemWidth, rowHeight).fillAndStroke(fill, colors.border);
-    doc.rect(siX, y, stateWidth, rowHeight).fillAndStroke(row.estado === "SI" ? "#DCFCE7" : fill, colors.border);
-    doc.rect(noX, y, stateWidth, rowHeight).fillAndStroke(row.estado === "NO" ? "#FEE2E2" : fill, colors.border);
+    doc.rect(siX, y, stateWidth, rowHeight).fillAndStroke(row.estado === "SI" ? (siBueno ? "#DCFCE7" : "#FEE2E2") : fill, colors.border);
+    doc.rect(noX, y, stateWidth, rowHeight).fillAndStroke(row.estado === "NO" ? (noBueno ? "#DCFCE7" : "#FEE2E2") : fill, colors.border);
     doc.rect(naX, y, stateWidth, rowHeight).fillAndStroke(row.estado === "NA" ? "#E5E7EB" : fill, colors.border);
     doc.rect(obsX, y, obsWidth, rowHeight).fillAndStroke(fill, colors.border);
     doc.fillColor(colors.dark).font("Helvetica").fontSize(4.9)
@@ -1446,7 +1471,7 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
     y += 166;
 
     y = drawMiniResponseTable(doc, "REVISION SISTEMA DE ASISTENCIA AL CONDUCTOR", checklist.sistemaAsistenciaConductor || [], y);
-    y = drawMiniResponseTable(doc, "ENCUESTA DE FATIGA / SOMNOLENCIA", checklist.encuestaFatigaSomnolencia || [], y);
+    y = drawMiniResponseTable(doc, "ENCUESTA DE FATIGA / SOMNOLENCIA", checklist.encuestaFatigaSomnolencia || [], y, { fatiga: true });
 
     y = ensurePdfSpace(doc, y, 80);
     doc.rect(35, y, 525, 68).fillAndStroke("#F8FAFC", "#D7D8E8");
