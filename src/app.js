@@ -31,6 +31,7 @@ import systemHealthRoutes from "./routes/systemHealthRoutes.js";
 import systemBackupRoutes from "./routes/systemBackupRoutes.js";
 import executiveReportsRoutes from "./routes/executiveReportsRoutes.js";
 import emailConfigRoutes from "./routes/emailConfigRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -125,6 +126,7 @@ app.use("/api/system-health", systemHealthRoutes);
 app.use("/api/system-backups", systemBackupRoutes);
 app.use("/api/executive-reports", executiveReportsRoutes);
 app.use("/api", emailConfigRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.use("/api/bitacoras", checklistRoutes);
 app.use("/api/bitacoras", registroOperacionRoutes);
