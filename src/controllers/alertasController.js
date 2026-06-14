@@ -35,7 +35,24 @@ export const uploadAlertaEvidencias = multer({
   }
 });
 
-export const mapAlerta = (alerta, seguimiento = []) => ({
+const permisosGestion = (user = {}, alerta = {}) => {
+  const rol = String(user.rol || "").toUpperCase();
+  const estado = String(alerta.estado || "ABIERTA").toUpperCase();
+  const supervisor = ["SUPERVISION", "SUPERVISOR", "JEFE_PLANTA", "JEFE_TURNO", "ECM"].includes(rol);
+  const superintendente = rol === "SUPERINTENDENTE";
+  const admin = rol === "ADMIN";
+  return {
+    asignar: estado === "ABIERTA" && (supervisor || superintendente || admin),
+    reasignar: estado === "ASIGNADA" && (superintendente || admin),
+    iniciarGestion: estado === "ASIGNADA" && (supervisor || admin),
+    resolver: estado === "EN_PROCESO" && (supervisor || superintendente || admin),
+    cerrar: estado === "RESUELTA" && (supervisor || superintendente || admin),
+    comentar: true,
+    adjuntarEvidencia: true
+  };
+};
+
+export const mapAlerta = (alerta, seguimiento = [], user = {}) => ({
   id: String(alerta._id),
   patente: alerta.patente || "-",
   tipo: alerta.tipo || "ALERTA_OPERACIONAL",
@@ -48,7 +65,17 @@ export const mapAlerta = (alerta, seguimiento = []) => ({
   responsableRol: alerta.responsableRol || "",
   accionCorrectiva: alerta.accionCorrectiva || alerta.solucion || "",
   solucion: alerta.solucion || alerta.accionCorrectiva || "",
+  comentarioCierre: alerta.comentarioCierre || "",
   observaciones: alerta.observaciones || "",
+  observacionesChecklist: alerta.observacionesChecklist || "",
+  documentacionChecklist: alerta.documentacionChecklist || [],
+  hallazgos: alerta.hallazgos || [],
+  resumenHallazgos: alerta.resumenHallazgos || {},
+  resolucionAutomatica: alerta.resolucionAutomatica || false,
+  motivoNoApta: alerta.checklistId?.motivoNoApta || "",
+  alertaDetonante: alerta.checklistId?.alertaDetonante || "",
+  prioridadDetonante: alerta.checklistId?.prioridadDetonante || "",
+  categoriaDetonante: alerta.checklistId?.categoriaDetonante || "",
   fecha: alerta.fechaCreacion || alerta.createdAt,
   fechaAsignacion: alerta.fechaAsignacion || null,
   fechaResolucion: alerta.fechaResolucion || null,
@@ -60,7 +87,8 @@ export const mapAlerta = (alerta, seguimiento = []) => ({
   checklistId: alerta.checklistId || null,
   fotos: alerta.fotos || [],
   origen: inferirOrigenAlerta(alerta),
-  seguimiento
+  seguimiento,
+  permisos: permisosGestion(user, alerta)
 });
 
 const inferirOrigenAlerta = (alerta = {}) => {
@@ -79,7 +107,7 @@ const requireAlerta = (alerta, res) => {
   return true;
 };
 
-const esOperadorSoloPropias = (user = {}) => ["OPERADOR_PLANTA", "OPERADOR"].includes(String(user.rol || "").toUpperCase());
+const esOperadorSoloPropias = (user = {}) => ["OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"].includes(String(user.rol || "").toUpperCase());
 
 const puedeVerAlerta = (alerta, user = {}) => {
   if (!esOperadorSoloPropias(user)) return true;
@@ -90,12 +118,12 @@ const puedeVerAlerta = (alerta, user = {}) => {
 export const obtenerDetalleAlerta = async (req, res) => {
   try {
     const alerta = await AlertaCamioneta.findById(req.params.id)
-      .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion patente")
+      .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante patente")
       .lean();
     if (requireAlerta(alerta, res)) return;
     if (!puedeVerAlerta(alerta, req.user)) return res.status(403).json({ message: "Sin permisos" });
     const seguimiento = await obtenerSeguimientoAlerta(alerta._id);
-    return res.json({ alerta: mapAlerta(alerta, seguimiento) });
+    return res.json({ alerta: mapAlerta(alerta, seguimiento, req.user) });
   } catch (error) {
     console.error("ERROR DETALLE ALERTA", error);
     return res.status(500).json({ message: "Error obteniendo detalle de alerta" });
@@ -126,7 +154,7 @@ export const asignarAlerta = async (req, res) => {
       observacion: `Alerta asignada a ${alerta.responsableNombre || alerta.responsable}`
     });
 
-    return res.json({ message: "Alerta asignada", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id)) });
+    return res.json({ message: "Alerta asignada", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
   } catch (error) {
     console.error("ERROR ASIGNANDO ALERTA", error);
     return res.status(400).json({ message: error?.message || "Error asignando alerta" });
@@ -151,7 +179,7 @@ export const ponerAlertaEnProceso = async (req, res) => {
       observacion: "Alerta en proceso"
     });
 
-    return res.json({ message: "Alerta en proceso", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id)) });
+    return res.json({ message: "Alerta en proceso", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
   } catch (error) {
     console.error("ERROR CAMBIANDO ALERTA", error);
     return res.status(400).json({ message: error?.message || "Error cambiando alerta a en proceso" });
@@ -160,6 +188,9 @@ export const ponerAlertaEnProceso = async (req, res) => {
 
 export const comentarAlerta = async (req, res) => {
   try {
+    const acceso = await AlertaCamioneta.findById(req.params.id).select("creadoPor").lean();
+    if (requireAlerta(acceso, res)) return;
+    if (!puedeVerAlerta(acceso, req.user)) return res.status(403).json({ message: "Sin permisos" });
     const alerta = await agregarComentarioAlerta({
       id: req.params.id,
       user: req.user,
@@ -174,7 +205,7 @@ export const comentarAlerta = async (req, res) => {
       accion: "ALERTA_COMENTARIO",
       observacion: String(req.body?.comentario || "").trim()
     });
-    return res.json({ message: "Comentario registrado", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id)) });
+    return res.json({ message: "Comentario registrado", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
   } catch (error) {
     return res.status(400).json({ message: error?.message || "Error agregando comentario" });
   }
@@ -182,6 +213,9 @@ export const comentarAlerta = async (req, res) => {
 
 export const adjuntarEvidencia = async (req, res) => {
   try {
+    const acceso = await AlertaCamioneta.findById(req.params.id).select("creadoPor").lean();
+    if (requireAlerta(acceso, res)) return;
+    if (!puedeVerAlerta(acceso, req.user)) return res.status(403).json({ message: "Sin permisos" });
     const alerta = await adjuntarEvidenciaAlerta({
       id: req.params.id,
       user: req.user,
@@ -198,7 +232,7 @@ export const adjuntarEvidencia = async (req, res) => {
       accion: "ALERTA_EVIDENCIA",
       observacion: `Evidencias adjuntas: ${(req.files || []).length}`
     });
-    return res.json({ message: "Evidencia adjunta", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id)) });
+    return res.json({ message: "Evidencia adjunta", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
   } catch (error) {
     return res.status(400).json({ message: error?.message || "Error adjuntando evidencia" });
   }
@@ -226,7 +260,7 @@ export const resolverAlerta = async (req, res) => {
       observacion: accionCorrectiva
     });
 
-    return res.json({ message: "Alerta resuelta", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id)) });
+    return res.json({ message: "Alerta resuelta", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
   } catch (error) {
     return res.status(400).json({ message: error?.message || "Error resolviendo alerta" });
   }
@@ -254,7 +288,7 @@ export const cerrarAlerta = async (req, res) => {
       observacion: accionCorrectiva
     });
 
-    return res.json({ message: "Alerta cerrada", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id)) });
+    return res.json({ message: "Alerta cerrada", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
   } catch (error) {
     return res.status(400).json({ message: error?.message || "Error cerrando alerta" });
   }

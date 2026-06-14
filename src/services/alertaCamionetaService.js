@@ -10,8 +10,8 @@ const PRIORIDAD_ORDEN = {
   BAJA: 1
 };
 
-export const ESTADOS_ALERTA_FLUJO = ["ABIERTA", "RESUELTA", "CERRADA"];
-const RESPONSABLE_ROLES = ["SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "OPERADOR_LIDER"];
+export const ESTADOS_ALERTA_FLUJO = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
+const RESPONSABLE_ROLES = ["ADMIN", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION", "SUPERVISOR", "OPERADOR_LIDER"];
 
 const normalizeText = (value) =>
   String(value || "")
@@ -30,7 +30,8 @@ const normalizePriority = (prioridad) => {
 
 const normalizeEstado = (estado = "ABIERTA") => {
   const value = normalizeText(estado);
-  if (value === "ASIGNADA" || value.includes("PROCESO")) return "ABIERTA";
+  if (value === "ASIGNADA") return "ASIGNADA";
+  if (value.includes("PROCESO")) return "EN_PROCESO";
   if (value.includes("RESUEL")) return "RESUELTA";
   if (value.includes("CERRA")) return "CERRADA";
   return "ABIERTA";
@@ -84,6 +85,46 @@ const resumenConsolidado = (alertas = []) => alertas
   .map((item) => `- ${item}`)
   .join("\n");
 
+const categoriaHallazgo = (alerta = {}) => {
+  const categoria = normalizeText(alerta.categoria);
+  const seccion = normalizeText(alerta.seccion);
+  const tipo = normalizeText(alerta.tipo);
+  if (categoria.includes("FATIGA")) return "FATIGA_SOMNOLENCIA";
+  if (categoria.includes("CARROCERIA") || seccion.includes("CARROCERIA")) return "CARROCERIA";
+  if (categoria.includes("MANTENCION")) return "MANTENCIONES";
+  if (categoria.includes("DOCUMENTACION") || ["LICENCIA", "REVISION", "PERMISO", "SEGURO", "CERTIFICACION"].some((x) => tipo.includes(x))) return "DOCUMENTACION";
+  if (normalizePriority(alerta.prioridad) === "CRITICA") return "CONDICIONES_CRITICAS";
+  return "CONDICIONES_NO_CRITICAS";
+};
+
+const estructurarHallazgos = (alertas = []) => alertas.flatMap((alerta) => {
+  const detalles = Array.isArray(alerta.anomalias) && alerta.anomalias.length
+    ? alerta.anomalias
+    : [descripcionAlerta(alerta)];
+  return detalles.filter(Boolean).map((detalle) => ({
+    categoria: categoriaHallazgo(alerta),
+    tipo: alerta.tipo || "",
+    prioridad: prioridadOperacional(alerta),
+    titulo: alerta.documento || alerta.item || alerta.seccion || alerta.titulo || alerta.tipo || "",
+    detalle,
+    observacion: alerta.observacion || "",
+    fechaVencimiento: alerta.fechaVencimiento || null,
+    diasRestantes: Number.isFinite(alerta.diasRestantes) ? alerta.diasRestantes : null
+  }));
+});
+
+const resumirHallazgos = (hallazgos = []) => {
+  const resumen = { documentacion: 0, mantenciones: 0, seguridad: 0, fatiga: 0, carroceria: 0, total: hallazgos.length };
+  for (const item of hallazgos) {
+    if (item.categoria === "DOCUMENTACION") resumen.documentacion += 1;
+    else if (item.categoria === "MANTENCIONES") resumen.mantenciones += 1;
+    else if (item.categoria === "FATIGA_SOMNOLENCIA") resumen.fatiga += 1;
+    else if (item.categoria === "CARROCERIA") resumen.carroceria += 1;
+    else resumen.seguridad += 1;
+  }
+  return resumen;
+};
+
 const userId = (user = {}) => user?.uid || user?._id || user?.id || null;
 const userName = (user = {}) => user?.nombre || user?.username || user?.email || "Usuario";
 const userRol = (user = {}) => user?.rol || "";
@@ -123,10 +164,32 @@ const crearSeguimiento = async ({
 export const sincronizarAlertasOperacionalesChecklist = async (checklist, alertas = []) => {
   if (!checklist?._id || !Array.isArray(alertas)) return [];
   if (!alertas.length) {
-    await AlertaCamioneta.updateMany(
-      { checklistId: checklist._id, estado: "ABIERTA" },
-      { $set: { activo: false, fechaUltimoMovimiento: new Date() } }
-    );
+    const existente = await AlertaCamioneta.findOne({
+      checklistId: checklist._id,
+      tipo: "CHECKLIST_CAMIONETA_CONSOLIDADO",
+      estado: { $nin: ["RESUELTA", "CERRADA"] }
+    });
+    if (existente) {
+      const estadoAnterior = normalizeEstado(existente.estado);
+      existente.estado = "RESUELTA";
+      existente.activo = true;
+      existente.resolucionAutomatica = true;
+      existente.solucion = "Condicion ya no detectada.";
+      existente.accionCorrectiva = "Condicion ya no detectada.";
+      existente.fechaResolucion = new Date();
+      existente.fechaUltimoMovimiento = new Date();
+      existente.hallazgos = [];
+      existente.resumenHallazgos = resumirHallazgos([]);
+      await existente.save();
+      await crearSeguimiento({
+        alerta: existente,
+        user: { nombre: "Sistema", rol: "SISTEMA" },
+        tipoEvento: "RESOLUCION_AUTOMATICA",
+        estadoAnterior,
+        estadoNuevo: "RESUELTA",
+        comentario: "Condicion ya no detectada."
+      });
+    }
     return [];
   }
 
@@ -142,6 +205,7 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
   const dedupeKey = buildDedupeKey(checklist);
   const existente = await AlertaCamioneta.exists({ dedupeKey });
   const resumen = resumenConsolidado(alertas);
+  const hallazgos = estructurarHallazgos(alertas);
   const doc = await AlertaCamioneta.findOneAndUpdate(
     { dedupeKey },
     {
@@ -160,6 +224,15 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
         prioridad: prioridadConsolidada(alertas),
         operador: checklist.conductorResponsable || "",
         observaciones: resumen,
+        observacionesChecklist: String(checklist.observacionesGenerales || checklist.observacionesCarroceria || ""),
+        documentacionChecklist: (checklist.documentacion || []).map((item) => ({
+          nombre: item.nombre || "",
+          estado: item.estado || "",
+          fechaVencimiento: item.fechaVencimiento || null
+        })),
+        hallazgos,
+        resumenHallazgos: resumirHallazgos(hallazgos),
+        resolucionAutomatica: false,
         fotos,
         activo: true
       }
@@ -249,8 +322,11 @@ export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsa
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
   alerta.estado = normalizeEstado(alerta.estado);
-  if (alerta.estado !== "ABIERTA") {
-    throw new Error("Solo se puede asignar una alerta abierta");
+  if (!["ABIERTA", "ASIGNADA"].includes(alerta.estado)) {
+    throw new Error("Solo se puede asignar o reasignar una alerta abierta/asignada");
+  }
+  if (alerta.estado === "ASIGNADA" && !["ADMIN", "SUPERINTENDENTE"].includes(normalizeText(userRol(user)))) {
+    throw new Error("Solo ADMIN o SUPERINTENDENTE puede reasignar una alerta");
   }
 
   let responsableUser = null;
@@ -265,6 +341,8 @@ export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsa
   alerta.responsableNombre = responsableUser?.nombre || String(responsable || userName(user)).trim();
   alerta.responsableRol = responsableUser?.rol || "";
   alerta.responsable = alerta.responsableNombre;
+  const estadoAnterior = alerta.estado;
+  alerta.estado = "ASIGNADA";
   alerta.fechaAsignacion = new Date();
   alerta.fechaUltimoMovimiento = new Date();
   if (fechaCompromiso) alerta.fechaCompromiso = new Date(fechaCompromiso);
@@ -273,8 +351,8 @@ export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsa
     alerta,
     user,
     tipoEvento: "ASIGNACION",
-    estadoAnterior: "ABIERTA",
-    estadoNuevo: "ABIERTA",
+    estadoAnterior,
+    estadoNuevo: "ASIGNADA",
     comentario: `Alerta asignada a ${alerta.responsableNombre}`
   });
   return alerta.toObject();
@@ -284,19 +362,22 @@ export const marcarAlertaEnProceso = async ({ id, user, observaciones }) => {
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
   alerta.estado = normalizeEstado(alerta.estado);
-  if (alerta.estado !== "ABIERTA") {
-    throw new Error("Solo se puede gestionar una alerta abierta");
+  validarTransicion(alerta.estado, "EN_PROCESO");
+  const comentario = String(observaciones || "").trim();
+  if (!comentario) throw new Error("Comentario de inicio de gestion obligatorio");
+  if (alerta.estado !== "ASIGNADA") {
+    throw new Error("Solo una alerta asignada puede iniciar gestion");
   }
-  alerta.observaciones = String(observaciones || alerta.observaciones || "").trim();
+  alerta.estado = "EN_PROCESO";
   alerta.fechaUltimoMovimiento = new Date();
   await alerta.save();
   await crearSeguimiento({
     alerta,
     user,
     tipoEvento: "CAMBIO_ESTADO",
-    estadoAnterior: "ABIERTA",
-    estadoNuevo: "ABIERTA",
-    comentario: alerta.observaciones || "Alerta gestionada sin cambio de estado"
+    estadoAnterior: "ASIGNADA",
+    estadoNuevo: "EN_PROCESO",
+    comentario
   });
   return alerta.toObject();
 };
@@ -320,7 +401,7 @@ export const resolverAlertaCamioneta = async ({ id, user, solucion, observacione
     alerta,
     user,
     tipoEvento: "CAMBIO_ESTADO",
-    estadoAnterior: "ABIERTA",
+    estadoAnterior: "EN_PROCESO",
     estadoNuevo: "RESUELTA",
     comentario: accionCorrectiva
   });
@@ -332,11 +413,10 @@ export const cerrarAlertaCamioneta = async ({ id, user, solucion, observaciones 
   if (!alerta) return null;
   alerta.estado = normalizeEstado(alerta.estado);
   validarTransicion(alerta.estado, "CERRADA");
-  const cierre = String(solucion || alerta.solucion || "").trim();
-  if (!cierre) throw new Error("Solucion final obligatoria");
+  const cierre = String(solucion || "").trim();
+  if (!cierre) throw new Error("Comentario de cierre obligatorio");
   alerta.estado = "CERRADA";
-  alerta.solucion = cierre;
-  alerta.accionCorrectiva = alerta.accionCorrectiva || cierre;
+  alerta.comentarioCierre = cierre;
   alerta.observaciones = String(observaciones || alerta.observaciones || "").trim();
   alerta.cerradoPor = userId(user);
   alerta.fechaCierre = new Date();
@@ -361,7 +441,7 @@ export const evaluarEscalamientoAlertas = async ({ notificar = false } = {}) => 
   const alertas = await AlertaCamioneta.find({
     activo: { $ne: false },
     prioridad: "CRITICA",
-    estado: "ABIERTA"
+    estado: { $in: ["ABIERTA", "ASIGNADA", "EN_PROCESO"] }
   }).limit(200);
 
   const resultados = [];

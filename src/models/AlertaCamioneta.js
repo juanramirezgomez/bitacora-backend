@@ -1,7 +1,21 @@
 import mongoose from "mongoose";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
-const ESTADOS = ["ABIERTA", "RESUELTA", "CERRADA"];
+const ESTADOS = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
+
+const hallazgoSchema = new mongoose.Schema(
+  {
+    categoria: { type: String, trim: true, required: true },
+    tipo: { type: String, trim: true, default: "" },
+    prioridad: { type: String, enum: PRIORIDADES, default: "MEDIA" },
+    titulo: { type: String, trim: true, default: "" },
+    detalle: { type: String, trim: true, default: "" },
+    observacion: { type: String, trim: true, default: "" },
+    fechaVencimiento: { type: Date, default: null },
+    diasRestantes: { type: Number, default: null }
+  },
+  { _id: false }
+);
 
 const fotoSchema = new mongoose.Schema(
   {
@@ -39,7 +53,13 @@ const alertaCamionetaSchema = new mongoose.Schema(
     operador: { type: String, trim: true, default: "" },
     accionCorrectiva: { type: String, trim: true, default: "" },
     solucion: { type: String, trim: true, default: "" },
+    comentarioCierre: { type: String, trim: true, default: "" },
     observaciones: { type: String, trim: true, default: "" },
+    observacionesChecklist: { type: String, trim: true, default: "" },
+    documentacionChecklist: { type: mongoose.Schema.Types.Mixed, default: () => [] },
+    hallazgos: { type: [hallazgoSchema], default: [] },
+    resumenHallazgos: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+    resolucionAutomatica: { type: Boolean, default: false },
     fotos: { type: [fotoSchema], default: [] },
     escalada: { type: Boolean, default: false, index: true },
     nivelEscalamiento: { type: Number, default: 0 },

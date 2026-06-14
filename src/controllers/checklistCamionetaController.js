@@ -5,7 +5,6 @@ import path from "path";
 import fs from "fs";
 import mongoose from "mongoose";
 import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
-import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import User from "../models/user.js";
 import {
   canalesPreparados,
@@ -159,6 +158,10 @@ const CHECKLIST_LIST_FIELDS = [
   "estado",
   "aptaOperacion",
   "aptitudOperacion",
+  "motivoNoApta",
+  "alertaDetonante",
+  "prioridadDetonante",
+  "categoriaDetonante",
   "patente",
   "marca",
   "modelo",
@@ -365,7 +368,7 @@ const crearDocumentos = (input = []) => {
   });
 };
 
-const calcularAptitud = (payload) => {
+export const evaluarAptitud = (payload) => {
   const grupos = [
     ...(payload.aspectosInspeccionar || []),
     ...(payload.estadoCamioneta || []),
@@ -373,7 +376,7 @@ const calcularAptitud = (payload) => {
     ...(payload.luces || [])
   ];
 
-  const documentosCriticosVencidos = (payload.documentacion || []).some((item) => {
+  const documentoCriticoVencido = (payload.documentacion || []).find((item) => {
     const nombre = String(item.nombre || "").toUpperCase();
     const esDocumentoBloqueante = [
       "LICENCIA MUNICIPAL",
@@ -388,16 +391,56 @@ const calcularAptitud = (payload) => {
     return esDocumentoBloqueante && String(item.estado || "").toUpperCase() === "VENCIDO";
   });
 
-  const fatigaNoApta = (payload.encuestaFatigaSomnolencia || []).some((item) =>
+  const fatigaNoApta = (payload.encuestaFatigaSomnolencia || []).find((item) =>
     normalizarNombreDocumento(item.nombre) === "SE SIENTE EN CONDICIONES DE CONDUCIR?" &&
     String(item.estado || "").toUpperCase() === "NO"
   );
 
-  const noApta = documentosCriticosVencidos || fatigaNoApta || grupos.some(item =>
+  const itemCriticoMalo = grupos.find(item =>
     CRITICOS.includes(item.nombre) && item.estado === "MALO"
   );
 
-  return noApta ? "NO_APTA" : "APTA";
+  if (documentoCriticoVencido) {
+    return {
+      aptitudOperacion: "NO_APTA",
+      aptaOperacion: false,
+      motivoNoApta: `${documentoCriticoVencido.nombre} vencido`,
+      alertaDetonante: "DOCUMENTO_CRITICO_VENCIDO",
+      prioridadDetonante: "CRITICA",
+      categoriaDetonante: "DOCUMENTACION_CRITICA"
+    };
+  }
+
+  if (fatigaNoApta) {
+    return {
+      aptitudOperacion: "NO_APTA",
+      aptaOperacion: false,
+      motivoNoApta: "Operador indica que no se siente en condiciones de conducir",
+      alertaDetonante: "FATIGA_SOMNOLENCIA",
+      prioridadDetonante: "CRITICA",
+      categoriaDetonante: "FATIGA_SOMNOLENCIA"
+    };
+  }
+
+  if (itemCriticoMalo) {
+    return {
+      aptitudOperacion: "NO_APTA",
+      aptaOperacion: false,
+      motivoNoApta: `${itemCriticoMalo.nombre} en mal estado${itemCriticoMalo.observacion ? `: ${itemCriticoMalo.observacion}` : ""}`,
+      alertaDetonante: itemCriticoMalo.nombre,
+      prioridadDetonante: "CRITICA",
+      categoriaDetonante: "CONDICION_CRITICA_SEGURIDAD"
+    };
+  }
+
+  return {
+    aptitudOperacion: "APTA",
+    aptaOperacion: true,
+    motivoNoApta: "",
+    alertaDetonante: "",
+    prioridadDetonante: "",
+    categoriaDetonante: ""
+  };
 };
 
 const buildPayload = (body = {}) => {
@@ -469,8 +512,7 @@ const buildPayload = (body = {}) => {
     firmaRevisadoPor: String(body.firmaRevisadoPor || body.firmaRevisor || "")
   };
 
-  payload.aptitudOperacion = calcularAptitud(payload);
-  payload.aptaOperacion = payload.aptitudOperacion === "APTA";
+  Object.assign(payload, evaluarAptitud(payload));
   Object.assign(payload, normalizarCumplimientoChecklist(payload));
   return payload;
 };
@@ -617,31 +659,6 @@ const validarHabilitacionChecklistUsuario = (user = {}) => {
   licenciaInternaVence.setHours(0, 0, 0, 0);
   if (licenciaInternaVence < hoy) return "No puedes crear checklist: Licencia Interna vencida";
   return "";
-};
-
-const tieneBloqueoOperacionPatente = async (patente = "") => {
-  const patenteClean = String(patente || "").trim().toUpperCase();
-  if (!patenteClean) return false;
-  const alertas = await AlertaCamioneta.find({
-    activo: { $ne: false },
-    patente: patenteClean,
-    estado: "ABIERTA"
-  }).select("tipo descripcion prioridad estado").lean();
-
-  return alertas.some((alerta) => {
-    const texto = `${alerta.tipo || ""} ${alerta.descripcion || ""}`.toUpperCase();
-    if (String(alerta.prioridad || "").toUpperCase() === "CRITICA") return true;
-    return [
-      "LICENCIA MUNICIPAL",
-      "LICENCIA INTERNA",
-      "REVISION TECNICA",
-      "REVISIÓN TÉCNICA",
-      "SOAP",
-      "SEGURO OBLIGATORIO",
-      "PERMISO DE CIRCULACION",
-      "PERMISO DE CIRCULACIÓN"
-    ].some((doc) => texto.includes(doc)) && texto.includes("VENC");
-  });
 };
 
 const getChecklistOr404 = async (req, res) => {
@@ -1021,19 +1038,7 @@ export const finalizarChecklistCamioneta = async (req, res) => {
     if (!checklist.fechaProgramada) checklist.fechaProgramada = checklist.fechaInspeccion || new Date();
     checklist.fechaRealizacion = checklist.fechaRealizacion || checklist.fechaInspeccion || new Date();
     Object.assign(checklist, normalizarCumplimientoChecklist(checklist));
-    checklist.aptitudOperacion = calcularAptitud(checklist);
-    if (await tieneBloqueoOperacionPatente(checklist.patente)) {
-      checklist.aptitudOperacion = "NO_APTA";
-      await registrarEvento({
-        req,
-        modulo: "CHECKLIST_CAMIONETA",
-        entidad: "ChecklistCamioneta",
-        entidadId: checklist._id,
-        accion: "VEHICULO_NO_APTO",
-        observacion: `Vehiculo ${checklist.patente || ""} no apto por alerta activa`.trim()
-      });
-    }
-    checklist.aptaOperacion = checklist.aptitudOperacion === "APTA";
+    Object.assign(checklist, evaluarAptitud(checklist));
 
     const faltantes = validarRealizado(checklist);
     if (faltantes.length) {
@@ -1069,6 +1074,7 @@ export const finalizarChecklistCamioneta = async (req, res) => {
         estado: checklist.estado,
         patente: checklist.patente,
         aptaOperacion: checklist.aptaOperacion,
+        motivoNoApta: checklist.motivoNoApta,
         fechaActualizacion: checklist.fechaActualizacion
       },
       alertasEnProceso: true
@@ -1415,6 +1421,10 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
     doc.fillColor("#111827").font("Helvetica-Bold").fontSize(11)
       .text(`Estado: ${checklist.estado}`, 35, 110)
       .text(`Aptitud: ${checklist.aptitudOperacion === "NO_APTA" ? "NO APTA PARA OPERACION" : "APTA PARA OPERACION"}`, 250, 110);
+    if (checklist.motivoNoApta) {
+      doc.fillColor("#B91C1C").font("Helvetica-Bold").fontSize(8)
+        .text(`Motivo NO APTA: ${checklist.motivoNoApta}`, 35, 128, { width: 525 });
+    }
 
     const datos = [
       ["Tipo", checklist.tipoVehiculo], ["Marca", checklist.marca], ["Modelo", checklist.modelo], ["Patente", checklist.patente],
@@ -1424,7 +1434,7 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
       ["Turno", checklist.turno || "-"], ["N turno", checklist.turnoNumero || "-"]
     ];
 
-    let y = 145;
+    let y = checklist.motivoNoApta ? 160 : 145;
     datos.forEach((item, index) => {
       const x = index % 2 === 0 ? 35 : 300;
       if (index % 2 === 0 && index !== 0) y += 28;

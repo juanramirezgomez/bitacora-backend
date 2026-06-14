@@ -11,6 +11,7 @@ import { authorizeModule } from "../middlewares/authorizeModule.js";
 const router = express.Router();
 
 const gestoresAlertas = ["ADMIN", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION", "SUPERVISOR"];
+const iniciadoresAlertas = ["ADMIN", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION", "SUPERVISOR"];
 const lectoresAlertas = [...gestoresAlertas, "OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"];
 
 router.get(
@@ -29,7 +30,7 @@ router.patch(
 
 router.patch(
   "/alertas/:id/gestionar",
-  requireRole(...gestoresAlertas),
+  requireRole(...iniciadoresAlertas),
   authorizeModule("alertas"),
   gestionarAlertaDashboard
 );

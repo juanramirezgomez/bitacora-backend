@@ -12,7 +12,8 @@ import {
 import { registrarEvento } from "../services/operationalAuditService.js";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
-const ACTIVAS = ["ABIERTA"];
+const ESTADOS_ALERTA = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
+const ACTIVAS = ["ABIERTA", "ASIGNADA", "EN_PROCESO"];
 
 const startOfDay = (date) => {
   const value = new Date(date);
@@ -50,7 +51,8 @@ const normalizePriority = (prioridad) => {
 
 const normalizeEstado = (estado) => {
   const value = String(estado || "ABIERTA").trim().toUpperCase();
-  if (value.includes("ASIGN") || value.includes("PROCESO")) return "ABIERTA";
+  if (value.includes("ASIGN")) return "ASIGNADA";
+  if (value.includes("PROCESO")) return "EN_PROCESO";
   if (value.includes("RESUEL")) return "RESUELTA";
   if (value.includes("CERRA")) return "CERRADA";
   return "ABIERTA";
@@ -104,7 +106,24 @@ const estadoOperacionalCamioneta = (checklist, alertasActivasPorPatente) => {
   return "OPERATIVA";
 };
 
-const mapAlerta = (alerta) => ({
+const permisosGestion = (user = {}, alerta = {}) => {
+  const rol = String(user.rol || "").toUpperCase();
+  const estado = normalizeEstado(alerta.estado);
+  const supervisor = ["SUPERVISION", "SUPERVISOR", "JEFE_PLANTA", "JEFE_TURNO", "ECM"].includes(rol);
+  const superintendente = rol === "SUPERINTENDENTE";
+  const admin = rol === "ADMIN";
+  return {
+    asignar: estado === "ABIERTA" && (supervisor || superintendente || admin),
+    reasignar: estado === "ASIGNADA" && (superintendente || admin),
+    iniciarGestion: estado === "ASIGNADA" && (supervisor || admin),
+    resolver: estado === "EN_PROCESO" && (supervisor || superintendente || admin),
+    cerrar: estado === "RESUELTA" && (supervisor || superintendente || admin),
+    comentar: true,
+    adjuntarEvidencia: true
+  };
+};
+
+const mapAlerta = (alerta, user = {}) => ({
   id: String(alerta._id),
   prioridad: normalizePriority(alerta.prioridad),
   patente: alerta.patente || "-",
@@ -118,7 +137,17 @@ const mapAlerta = (alerta) => ({
   responsableRol: alerta.responsableRol || "",
   accionCorrectiva: alerta.accionCorrectiva || alerta.solucion || "",
   solucion: alerta.solucion || "",
+  comentarioCierre: alerta.comentarioCierre || "",
   observaciones: alerta.observaciones || "",
+  observacionesChecklist: alerta.observacionesChecklist || "",
+  documentacionChecklist: alerta.documentacionChecklist || [],
+  hallazgos: alerta.hallazgos || [],
+  resumenHallazgos: alerta.resumenHallazgos || {},
+  resolucionAutomatica: alerta.resolucionAutomatica || false,
+  motivoNoApta: alerta.checklistId?.motivoNoApta || "",
+  alertaDetonante: alerta.checklistId?.alertaDetonante || "",
+  prioridadDetonante: alerta.checklistId?.prioridadDetonante || "",
+  categoriaDetonante: alerta.checklistId?.categoriaDetonante || "",
   fecha: alerta.fechaCreacion || alerta.createdAt,
   fechaAsignacion: alerta.fechaAsignacion || null,
   fechaResolucion: alerta.fechaResolucion || null,
@@ -130,6 +159,7 @@ const mapAlerta = (alerta) => ({
   checklistId: alerta.checklistId?._id || alerta.checklistId || null,
   fotos: alerta.fotos || [],
   origen: inferirOrigenAlerta(alerta),
+  permisos: permisosGestion(user, alerta),
   checklist: alerta.checklistId && typeof alerta.checklistId === "object" ? {
     _id: alerta.checklistId._id,
     conductorResponsable: alerta.checklistId.conductorResponsable,
@@ -137,7 +167,11 @@ const mapAlerta = (alerta) => ({
     turno: alerta.checklistId.turno,
     turnoNumero: alerta.checklistId.turnoNumero,
     aptaOperacion: alerta.checklistId.aptaOperacion,
-    aptitudOperacion: alerta.checklistId.aptitudOperacion
+    aptitudOperacion: alerta.checklistId.aptitudOperacion,
+    motivoNoApta: alerta.checklistId.motivoNoApta,
+    alertaDetonante: alerta.checklistId.alertaDetonante,
+    prioridadDetonante: alerta.checklistId.prioridadDetonante,
+    categoriaDetonante: alerta.checklistId.categoriaDetonante
   } : null
 });
 
@@ -227,6 +261,26 @@ const asegurarAlertasOperacionalesRecientes = async (desde) => {
   }
 };
 
+const asegurarDetalleConsolidadosRecientes = async (desde) => {
+  const incompletas = await AlertaCamioneta.find({
+    tipo: "CHECKLIST_CAMIONETA_CONSOLIDADO",
+    fechaCreacion: { $gte: desde },
+    $or: [
+      { hallazgos: { $exists: false } },
+      { resumenHallazgos: { $exists: false } }
+    ]
+  }).select("checklistId").limit(25).lean();
+  if (!incompletas.length) return;
+
+  const ids = incompletas.map((item) => item.checklistId).filter(Boolean);
+  const checklists = await ChecklistCamioneta.find({ _id: { $in: ids } })
+    .select("-revisionCarroceria.imagenMarcada -firmaConductor -firmaRevisor -firmaRealizadoPor -firmaRevisadoPor")
+    .populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas");
+  for (const checklist of checklists) {
+    await sincronizarAlertasOperacionalesChecklist(checklist, await generarAlertasChecklist(checklist));
+  }
+};
+
 const backfillAlertasDesdeHistorial = async (desde) => {
   const historial = await HistorialAlerta.find({
     checklistId: { $ne: null },
@@ -279,7 +333,7 @@ const backfillAlertasDesdeHistorial = async (desde) => {
 const normalizarAlertasExistentes = async () => {
   const existentes = await AlertaCamioneta.find({
     $or: [
-      { estado: { $nin: ["ABIERTA", "RESUELTA", "CERRADA"] } },
+      { estado: { $nin: ESTADOS_ALERTA } },
       { prioridad: { $nin: PRIORIDADES } },
       { estado: { $exists: false } },
       { prioridad: { $exists: false } }
@@ -329,11 +383,12 @@ export const obtenerDashboardAlertas = async (req, res) => {
       activo: { $ne: false },
       fechaCreacion: { $gte: last30Start }
     };
-    if (["OPERADOR_PLANTA", "OPERADOR"].includes(rolActual) && userActualId && mongoose.Types.ObjectId.isValid(userActualId)) {
+    if (["OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"].includes(rolActual) && userActualId && mongoose.Types.ObjectId.isValid(userActualId)) {
       filtroAlertasAcceso.creadoPor = new mongoose.Types.ObjectId(userActualId);
     }
 
     await asegurarAlertasOperacionalesRecientes(last30Start);
+    await asegurarDetalleConsolidadosRecientes(last30Start);
     await backfillAlertasDesdeHistorial(last30Start);
     await normalizarAlertasExistentes();
 
@@ -366,7 +421,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
         eliminado: { $ne: true },
         patente: { $nin: [null, ""] }
       })
-        .select("patente estado aptaOperacion aptitudOperacion fechaInspeccion fechaCreacion createdAt conductorResponsable turno turnoNumero")
+        .select("patente estado aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante fechaInspeccion fechaCreacion createdAt conductorResponsable turno turnoNumero")
         .sort({ fechaInspeccion: -1, createdAt: -1 })
         .limit(160)
         .lean(),
@@ -375,13 +430,13 @@ export const obtenerDashboardAlertas = async (req, res) => {
         patente: { $nin: [null, ""] },
         createdAt: { $gte: last30Start }
       })
-        .select("patente aptaOperacion aptitudOperacion fechaInspeccion fechaCreacion createdAt")
+        .select("patente aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante fechaInspeccion fechaCreacion createdAt")
         .sort({ createdAt: -1 })
         .limit(80)
         .lean(),
       AlertaCamioneta.find(filtroAlertasAcceso)
-        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion observaciones fechaCreacion fechaAsignacion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero")
-        .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion")
+        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion comentarioCierre observaciones observacionesChecklist documentacionChecklist hallazgos resumenHallazgos resolucionAutomatica fechaCreacion fechaAsignacion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero creadoPor")
+        .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante")
         .sort({ fechaCreacion: -1 })
         .limit(500)
         .lean()
@@ -393,9 +448,13 @@ export const obtenerDashboardAlertas = async (req, res) => {
       mongoose.Types.ObjectId.isValid(alertaSeleccionadaId) &&
       !alertasRaw.some((alerta) => String(alerta._id) === alertaSeleccionadaId)
     ) {
-      const alertaSeleccionada = await AlertaCamioneta.findById(alertaSeleccionadaId)
-        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion observaciones fechaCreacion fechaAsignacion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero")
-        .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion")
+      const filtroSeleccionada = { _id: alertaSeleccionadaId, activo: { $ne: false } };
+      if (["OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"].includes(rolActual) && mongoose.Types.ObjectId.isValid(userActualId)) {
+        filtroSeleccionada.creadoPor = new mongoose.Types.ObjectId(userActualId);
+      }
+      const alertaSeleccionada = await AlertaCamioneta.findOne(filtroSeleccionada)
+        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion comentarioCierre observaciones observacionesChecklist documentacionChecklist hallazgos resumenHallazgos resolucionAutomatica fechaCreacion fechaAsignacion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero creadoPor")
+        .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante")
         .lean();
       if (alertaSeleccionada) {
         alertasRaw = [alertaSeleccionada, ...alertasRaw];
@@ -480,7 +539,9 @@ export const obtenerDashboardAlertas = async (req, res) => {
         };
       });
 
-    const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && alerta.estado === "ABIERTA").length;
+    const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && ACTIVAS.includes(alerta.estado)).length;
+    const asignadas = alertasFiltradas.filter((alerta) => alerta.estado === "ASIGNADA").length;
+    const enProceso = alertasFiltradas.filter((alerta) => alerta.estado === "EN_PROCESO").length;
     const resueltas = alertasFiltradas.filter((alerta) => alerta.estado === "RESUELTA").length;
     const cerradas = alertasFiltradas.filter((alerta) => alerta.estado === "CERRADA").length;
     const escaladas = alertasFiltradas.filter((alerta) => alerta.escalada).length;
@@ -488,14 +549,14 @@ export const obtenerDashboardAlertas = async (req, res) => {
     const camionetasOperativas = estadosCamionetas.filter((item) => item.estado === "OPERATIVA").length ||
       Array.from(latestByPatente.values()).filter(esChecklistApto).length;
     const alertasRecientesRaw = alertasFiltradas.slice(0, 16);
-    const alertasRecientes = alertasRecientesRaw.map(mapAlerta);
-    const alertasActivas = alertasActivasRaw.map(mapAlerta);
+    const alertasRecientes = alertasRecientesRaw.map((alerta) => mapAlerta(alerta, req.user));
+    const alertasActivas = alertasActivasRaw.map((alerta) => mapAlerta(alerta, req.user));
 
     const response = {
       criticas,
       activas,
-      asignadas: 0,
-      enProceso: 0,
+      asignadas,
+      enProceso,
       resueltas,
       cerradas,
       escaladas,
@@ -546,7 +607,7 @@ export const gestionarAlertaDashboard = async (req, res) => {
       estado: alerta.estado,
       patente: alerta.patente
     });
-    return res.json({ message: "Alerta en proceso", alerta: mapAlerta(alerta) });
+    return res.json({ message: "Alerta en proceso", alerta: mapAlerta(alerta, req.user) });
   } catch (error) {
     console.error("❌ ERROR GESTIONANDO ALERTA:", error);
     return res.status(400).json({ message: error?.message || "Error gestionando alerta" });
@@ -582,7 +643,7 @@ export const resolverAlertaDashboard = async (req, res) => {
       estado: alerta.estado,
       patente: alerta.patente
     });
-    return res.json({ message: "Alerta resuelta", alerta: mapAlerta(alerta) });
+    return res.json({ message: "Alerta resuelta", alerta: mapAlerta(alerta, req.user) });
   } catch (error) {
     console.error("❌ ERROR RESOLVIENDO ALERTA:", error);
     return res.status(400).json({ message: error?.message || "Error resolviendo alerta" });
@@ -617,7 +678,7 @@ export const cerrarAlertaDashboard = async (req, res) => {
       estado: alerta.estado,
       patente: alerta.patente
     });
-    return res.json({ message: "Alerta cerrada", alerta: mapAlerta(alerta) });
+    return res.json({ message: "Alerta cerrada", alerta: mapAlerta(alerta, req.user) });
   } catch (error) {
     console.error("âŒ ERROR CERRANDO ALERTA:", error);
     return res.status(500).json({ message: "Error cerrando alerta" });

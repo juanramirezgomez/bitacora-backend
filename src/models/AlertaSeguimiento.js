@@ -22,7 +22,7 @@ const alertaSeguimientoSchema = new mongoose.Schema(
     evidencias: { type: [evidenciaSchema], default: [] },
     tipoEvento: {
       type: String,
-      enum: ["COMENTARIO", "EVIDENCIA", "CAMBIO_ESTADO", "ASIGNACION", "ESCALAMIENTO"],
+      enum: ["COMENTARIO", "EVIDENCIA", "CAMBIO_ESTADO", "ASIGNACION", "ESCALAMIENTO", "RESOLUCION_AUTOMATICA"],
       default: "COMENTARIO",
       index: true
     },

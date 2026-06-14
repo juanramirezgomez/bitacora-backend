@@ -136,7 +136,11 @@ const checklistCamionetaSchema = new mongoose.Schema(
       type: String,
       enum: ["APTA", "NO_APTA"],
       default: "APTA"
-    }
+    },
+    motivoNoApta: { type: String, trim: true, default: "" },
+    alertaDetonante: { type: String, trim: true, default: "" },
+    prioridadDetonante: { type: String, trim: true, default: "" },
+    categoriaDetonante: { type: String, trim: true, default: "" }
   },
   { timestamps: true }
 );
