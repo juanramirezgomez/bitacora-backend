@@ -4,12 +4,10 @@ import multer from "multer";
 import {
   adjuntarEvidenciaAlerta,
   agregarComentarioAlerta,
-  asignarAlertaCamioneta,
   cerrarAlertaCamioneta,
   evaluarEscalamientoAlertas,
-  marcarAlertaEnProceso,
   obtenerSeguimientoAlerta,
-  resolverAlertaCamioneta
+  tomarGestionAlertaCamioneta
 } from "../services/alertaCamionetaService.js";
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import { registrarEvento } from "../services/operationalAuditService.js";
@@ -42,13 +40,11 @@ const permisosGestion = (user = {}, alerta = {}) => {
   const superintendente = rol === "SUPERINTENDENTE";
   const admin = rol === "ADMIN";
   return {
-    asignar: estado === "ABIERTA" && (supervisor || superintendente || admin),
-    reasignar: estado === "ASIGNADA" && (superintendente || admin),
-    iniciarGestion: estado === "ASIGNADA" && (supervisor || admin),
-    resolver: estado === "EN_PROCESO" && (supervisor || superintendente || admin),
-    cerrar: estado === "RESUELTA" && (supervisor || superintendente || admin),
-    comentar: true,
-    adjuntarEvidencia: true
+    tomarGestion: estado === "ABIERTA" && (supervisor || superintendente || admin),
+    cerrar: estado === "EN_GESTION" && (supervisor || superintendente || admin),
+    comentar: estado !== "CERRADA",
+    adjuntarEvidencia: estado === "EN_GESTION",
+    verHistorial: true
   };
 };
 
@@ -78,6 +74,7 @@ export const mapAlerta = (alerta, seguimiento = [], user = {}) => ({
   categoriaDetonante: alerta.checklistId?.categoriaDetonante || "",
   fecha: alerta.fechaCreacion || alerta.createdAt,
   fechaAsignacion: alerta.fechaAsignacion || null,
+  fechaInicioGestion: alerta.fechaInicioGestion || null,
   fechaResolucion: alerta.fechaResolucion || null,
   fechaCierre: alerta.fechaCierre || null,
   fechaCompromiso: alerta.fechaCompromiso || null,
@@ -130,40 +127,9 @@ export const obtenerDetalleAlerta = async (req, res) => {
   }
 };
 
-export const asignarAlerta = async (req, res) => {
+export const tomarGestionAlerta = async (req, res) => {
   try {
-    const responsable = String(req.body?.responsable || "").trim();
-    const responsableId = String(req.body?.responsableId || "").trim();
-    if (!responsable && !responsableId) return res.status(400).json({ message: "responsable es obligatorio" });
-
-    const alerta = await asignarAlertaCamioneta({
-      id: req.params.id,
-      user: req.user,
-      responsable,
-      responsableId,
-      fechaCompromiso: req.body?.fechaCompromiso
-    });
-    if (requireAlerta(alerta, res)) return;
-
-    await registrarEvento({
-      req,
-      modulo: "ALERTAS",
-      entidad: "AlertaCamioneta",
-      entidadId: alerta._id,
-      accion: "ALERTA_ASIGNADA",
-      observacion: `Alerta asignada a ${alerta.responsableNombre || alerta.responsable}`
-    });
-
-    return res.json({ message: "Alerta asignada", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
-  } catch (error) {
-    console.error("ERROR ASIGNANDO ALERTA", error);
-    return res.status(400).json({ message: error?.message || "Error asignando alerta" });
-  }
-};
-
-export const ponerAlertaEnProceso = async (req, res) => {
-  try {
-    const alerta = await marcarAlertaEnProceso({
+    const alerta = await tomarGestionAlertaCamioneta({
       id: req.params.id,
       user: req.user,
       observaciones: req.body?.observaciones
@@ -175,14 +141,14 @@ export const ponerAlertaEnProceso = async (req, res) => {
       modulo: "ALERTAS",
       entidad: "AlertaCamioneta",
       entidadId: alerta._id,
-      accion: "ALERTA_CAMBIO_ESTADO",
-      observacion: "Alerta en proceso"
+      accion: "ALERTA_EN_GESTION",
+      observacion: `Gestion tomada por ${alerta.responsableNombre || alerta.responsable}`
     });
 
-    return res.json({ message: "Alerta en proceso", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
+    return res.json({ message: "Gestion tomada", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
   } catch (error) {
-    console.error("ERROR CAMBIANDO ALERTA", error);
-    return res.status(400).json({ message: error?.message || "Error cambiando alerta a en proceso" });
+    console.error("ERROR TOMANDO GESTION ALERTA", error);
+    return res.status(400).json({ message: error?.message || "Error tomando gestion de alerta" });
   }
 };
 
@@ -235,34 +201,6 @@ export const adjuntarEvidencia = async (req, res) => {
     return res.json({ message: "Evidencia adjunta", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
   } catch (error) {
     return res.status(400).json({ message: error?.message || "Error adjuntando evidencia" });
-  }
-};
-
-export const resolverAlerta = async (req, res) => {
-  try {
-    const accionCorrectiva = String(req.body?.accionCorrectiva || req.body?.solucion || "").trim();
-    if (!accionCorrectiva) return res.status(400).json({ message: "accionCorrectiva es obligatoria" });
-
-    const alerta = await resolverAlertaCamioneta({
-      id: req.params.id,
-      user: req.user,
-      solucion: accionCorrectiva,
-      observaciones: req.body?.observaciones
-    });
-    if (requireAlerta(alerta, res)) return;
-
-    await registrarEvento({
-      req,
-      modulo: "ALERTAS",
-      entidad: "AlertaCamioneta",
-      entidadId: alerta._id,
-      accion: "ALERTA_RESUELTA",
-      observacion: accionCorrectiva
-    });
-
-    return res.json({ message: "Alerta resuelta", alerta: mapAlerta(alerta, await obtenerSeguimientoAlerta(alerta._id), req.user) });
-  } catch (error) {
-    return res.status(400).json({ message: error?.message || "Error resolviendo alerta" });
   }
 };
 

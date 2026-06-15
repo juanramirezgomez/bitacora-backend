@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
-const ESTADOS = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
+const ESTADOS = ["ABIERTA", "EN_GESTION", "CERRADA"];
 
 const hallazgoSchema = new mongoose.Schema(
   {
@@ -39,6 +39,7 @@ const alertaCamionetaSchema = new mongoose.Schema(
     estado: { type: String, enum: ESTADOS, default: "ABIERTA", index: true },
     fechaCreacion: { type: Date, default: Date.now, index: true },
     fechaAsignacion: { type: Date, default: null },
+    fechaInicioGestion: { type: Date, default: null },
     fechaResolucion: { type: Date, default: null },
     fechaCierre: { type: Date, default: null },
     fechaCompromiso: { type: Date, default: null, index: true },

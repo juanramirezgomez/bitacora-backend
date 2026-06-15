@@ -10,6 +10,7 @@
   "scripts": {
     "seed:users": "node src/scripts/seedUsers.js",
     "audit:checklist-aptitud": "node src/scripts/diagnosticarAptitudChecklists.js",
+    "migrate:alert-states": "node src/scripts/migrarEstadosAlertasSimplificados.js",
     "backup:scheduled": "node src/scripts/scheduledBackup.js",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js"

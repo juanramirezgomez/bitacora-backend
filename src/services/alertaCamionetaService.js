@@ -1,6 +1,5 @@
 import AlertaCamioneta from "../models/AlertaCamioneta.js";
 import AlertaSeguimiento from "../models/AlertaSeguimiento.js";
-import User from "../models/user.js";
 import { registrarEvento } from "./operationalAuditService.js";
 
 const PRIORIDAD_ORDEN = {
@@ -10,8 +9,7 @@ const PRIORIDAD_ORDEN = {
   BAJA: 1
 };
 
-export const ESTADOS_ALERTA_FLUJO = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
-const RESPONSABLE_ROLES = ["ADMIN", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION", "SUPERVISOR", "OPERADOR_LIDER"];
+export const ESTADOS_ALERTA_FLUJO = ["ABIERTA", "EN_GESTION", "CERRADA"];
 
 const normalizeText = (value) =>
   String(value || "")
@@ -30,9 +28,8 @@ const normalizePriority = (prioridad) => {
 
 const normalizeEstado = (estado = "ABIERTA") => {
   const value = normalizeText(estado);
-  if (value === "ASIGNADA") return "ASIGNADA";
-  if (value.includes("PROCESO")) return "EN_PROCESO";
-  if (value.includes("RESUEL")) return "RESUELTA";
+  if (value === "ASIGNADA" || value.includes("PROCESO") || value.includes("GESTION")) return "EN_GESTION";
+  if (value.includes("RESUEL")) return "CERRADA";
   if (value.includes("CERRA")) return "CERRADA";
   return "ABIERTA";
 };
@@ -167,16 +164,18 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
     const existente = await AlertaCamioneta.findOne({
       checklistId: checklist._id,
       tipo: "CHECKLIST_CAMIONETA_CONSOLIDADO",
-      estado: { $nin: ["RESUELTA", "CERRADA"] }
+      estado: { $nin: ["CERRADA"] }
     });
     if (existente) {
       const estadoAnterior = normalizeEstado(existente.estado);
-      existente.estado = "RESUELTA";
+      existente.estado = "CERRADA";
       existente.activo = true;
       existente.resolucionAutomatica = true;
       existente.solucion = "Condicion ya no detectada.";
       existente.accionCorrectiva = "Condicion ya no detectada.";
       existente.fechaResolucion = new Date();
+      existente.fechaCierre = new Date();
+      existente.comentarioCierre = "Condicion ya no detectada.";
       existente.fechaUltimoMovimiento = new Date();
       existente.hallazgos = [];
       existente.resumenHallazgos = resumirHallazgos([]);
@@ -186,7 +185,7 @@ export const sincronizarAlertasOperacionalesChecklist = async (checklist, alerta
         user: { nombre: "Sistema", rol: "SISTEMA" },
         tipoEvento: "RESOLUCION_AUTOMATICA",
         estadoAnterior,
-        estadoNuevo: "RESUELTA",
+        estadoNuevo: "CERRADA",
         comentario: "Condicion ya no detectada."
       });
     }
@@ -278,6 +277,7 @@ export const obtenerSeguimientoAlerta = async (alertaId) =>
 export const agregarComentarioAlerta = async ({ id, user, comentario }) => {
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
+  if (normalizeEstado(alerta.estado) === "CERRADA") throw new Error("Una alerta cerrada es de solo lectura");
   const texto = String(comentario || "").trim();
   if (!texto) throw new Error("Comentario obligatorio");
   alerta.fechaUltimoMovimiento = new Date();
@@ -289,6 +289,8 @@ export const agregarComentarioAlerta = async ({ id, user, comentario }) => {
 export const adjuntarEvidenciaAlerta = async ({ id, user, files = [], tipo = "GENERAL", comentario = "" }) => {
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
+  if (normalizeEstado(alerta.estado) === "CERRADA") throw new Error("Una alerta cerrada es de solo lectura");
+  if (normalizeEstado(alerta.estado) !== "EN_GESTION") throw new Error("Solo se puede adjuntar evidencia a una alerta en gestion");
   const evidencias = files.map((file) => ({
     nombre: file.originalname || file.filename || "",
     url: `/uploads/alertas/${file.filename}`,
@@ -318,92 +320,27 @@ export const adjuntarEvidenciaAlerta = async ({ id, user, files = [], tipo = "GE
   return alerta.toObject();
 };
 
-export const asignarAlertaCamioneta = async ({ id, user, responsableId, responsable, fechaCompromiso }) => {
+export const tomarGestionAlertaCamioneta = async ({ id, user, observaciones = "" }) => {
   const alerta = await AlertaCamioneta.findById(id);
   if (!alerta) return null;
   alerta.estado = normalizeEstado(alerta.estado);
-  if (!["ABIERTA", "ASIGNADA"].includes(alerta.estado)) {
-    throw new Error("Solo se puede asignar o reasignar una alerta abierta/asignada");
-  }
-  if (alerta.estado === "ASIGNADA" && !["ADMIN", "SUPERINTENDENTE"].includes(normalizeText(userRol(user)))) {
-    throw new Error("Solo ADMIN o SUPERINTENDENTE puede reasignar una alerta");
-  }
-
-  let responsableUser = null;
-  if (responsableId) {
-    responsableUser = await User.findById(responsableId).select("nombre rol estado activo").lean();
-  }
-  if (responsableUser && (!RESPONSABLE_ROLES.includes(responsableUser.rol) || responsableUser.estado !== "ACTIVO" || responsableUser.activo === false)) {
-    throw new Error("Responsable no habilitado para alertas");
-  }
-
-  alerta.responsableId = responsableUser?._id || null;
-  alerta.responsableNombre = responsableUser?.nombre || String(responsable || userName(user)).trim();
-  alerta.responsableRol = responsableUser?.rol || "";
+  validarTransicion(alerta.estado, "EN_GESTION");
+  alerta.responsableId = userId(user);
+  alerta.responsableNombre = userName(user);
+  alerta.responsableRol = userRol(user);
   alerta.responsable = alerta.responsableNombre;
   const estadoAnterior = alerta.estado;
-  alerta.estado = "ASIGNADA";
-  alerta.fechaAsignacion = new Date();
+  alerta.estado = "EN_GESTION";
+  alerta.fechaInicioGestion = new Date();
   alerta.fechaUltimoMovimiento = new Date();
-  if (fechaCompromiso) alerta.fechaCompromiso = new Date(fechaCompromiso);
   await alerta.save();
   await crearSeguimiento({
     alerta,
     user,
-    tipoEvento: "ASIGNACION",
+    tipoEvento: "CAMBIO_ESTADO",
     estadoAnterior,
-    estadoNuevo: "ASIGNADA",
-    comentario: `Alerta asignada a ${alerta.responsableNombre}`
-  });
-  return alerta.toObject();
-};
-
-export const marcarAlertaEnProceso = async ({ id, user, observaciones }) => {
-  const alerta = await AlertaCamioneta.findById(id);
-  if (!alerta) return null;
-  alerta.estado = normalizeEstado(alerta.estado);
-  validarTransicion(alerta.estado, "EN_PROCESO");
-  const comentario = String(observaciones || "").trim();
-  if (!comentario) throw new Error("Comentario de inicio de gestion obligatorio");
-  if (alerta.estado !== "ASIGNADA") {
-    throw new Error("Solo una alerta asignada puede iniciar gestion");
-  }
-  alerta.estado = "EN_PROCESO";
-  alerta.fechaUltimoMovimiento = new Date();
-  await alerta.save();
-  await crearSeguimiento({
-    alerta,
-    user,
-    tipoEvento: "CAMBIO_ESTADO",
-    estadoAnterior: "ASIGNADA",
-    estadoNuevo: "EN_PROCESO",
-    comentario
-  });
-  return alerta.toObject();
-};
-
-export const resolverAlertaCamioneta = async ({ id, user, solucion, observaciones }) => {
-  const alerta = await AlertaCamioneta.findById(id);
-  if (!alerta) return null;
-  alerta.estado = normalizeEstado(alerta.estado);
-  validarTransicion(alerta.estado, "RESUELTA");
-  const accionCorrectiva = String(solucion || "").trim();
-  if (!accionCorrectiva) throw new Error("Accion correctiva obligatoria");
-  alerta.estado = "RESUELTA";
-  alerta.accionCorrectiva = accionCorrectiva;
-  alerta.solucion = accionCorrectiva;
-  alerta.observaciones = String(observaciones || alerta.observaciones || "").trim();
-  alerta.resueltoPor = userId(user);
-  alerta.fechaResolucion = new Date();
-  alerta.fechaUltimoMovimiento = new Date();
-  await alerta.save();
-  await crearSeguimiento({
-    alerta,
-    user,
-    tipoEvento: "CAMBIO_ESTADO",
-    estadoAnterior: "EN_PROCESO",
-    estadoNuevo: "RESUELTA",
-    comentario: accionCorrectiva
+    estadoNuevo: "EN_GESTION",
+    comentario: String(observaciones || "").trim() || `Gestion tomada por ${alerta.responsableNombre}`
   });
   return alerta.toObject();
 };
@@ -426,7 +363,7 @@ export const cerrarAlertaCamioneta = async ({ id, user, solucion, observaciones 
     alerta,
     user,
     tipoEvento: "CAMBIO_ESTADO",
-    estadoAnterior: "RESUELTA",
+    estadoAnterior: "EN_GESTION",
     estadoNuevo: "CERRADA",
     comentario: cierre
   });
@@ -441,7 +378,7 @@ export const evaluarEscalamientoAlertas = async ({ notificar = false } = {}) => 
   const alertas = await AlertaCamioneta.find({
     activo: { $ne: false },
     prioridad: "CRITICA",
-    estado: { $in: ["ABIERTA", "ASIGNADA", "EN_PROCESO"] }
+    estado: { $in: ["ABIERTA", "EN_GESTION"] }
   }).limit(200);
 
   const resultados = [];

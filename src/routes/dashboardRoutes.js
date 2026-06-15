@@ -1,9 +1,8 @@
 import express from "express";
 import {
   cerrarAlertaDashboard,
-  gestionarAlertaDashboard,
+  tomarGestionAlertaDashboard,
   obtenerDashboardAlertas,
-  resolverAlertaDashboard
 } from "../controllers/dashboardAlertasController.js";
 import { requireRole } from "../middlewares/requireRole.js";
 import { authorizeModule } from "../middlewares/authorizeModule.js";
@@ -22,17 +21,10 @@ router.get(
 );
 
 router.patch(
-  "/alertas/:id/resolver",
-  requireRole(...gestoresAlertas),
-  authorizeModule("alertas"),
-  resolverAlertaDashboard
-);
-
-router.patch(
-  "/alertas/:id/gestionar",
+  "/alertas/:id/tomar-gestion",
   requireRole(...iniciadoresAlertas),
   authorizeModule("alertas"),
-  gestionarAlertaDashboard
+  tomarGestionAlertaDashboard
 );
 
 router.patch(

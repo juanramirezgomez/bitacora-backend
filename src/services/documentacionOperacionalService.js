@@ -69,7 +69,7 @@ const registrarResolucionAutomatica = async (alerta, user, comentario, estadoAnt
     rol: user.rol || "",
     tipoEvento: "RESOLUCION_AUTOMATICA",
     estadoAnterior,
-    estadoNuevo: "RESUELTA",
+    estadoNuevo: "CERRADA",
     comentario,
     fecha: new Date()
   });
@@ -79,7 +79,7 @@ const registrarResolucionAutomatica = async (alerta, user, comentario, estadoAnt
     modulo: "ALERTAS",
     entidad: "AlertaCamioneta",
     entidadId: alerta._id,
-    accion: "ALERTA_RESUELTA",
+    accion: "ALERTA_CERRADA",
     observacion: comentario
   });
 };
@@ -94,7 +94,7 @@ export const reevaluarAlertasDocumentales = async (usuario) => {
     activo: { $ne: false },
     creadoPor: id,
     tipo: { $in: TIPOS_DOCUMENTALES },
-    estado: { $in: ["ABIERTA", "ASIGNADA", "EN_PROCESO"] }
+    estado: { $in: ["ABIERTA", "EN_GESTION"] }
   }).limit(200);
 
   let cerradas = 0;
@@ -102,13 +102,15 @@ export const reevaluarAlertasDocumentales = async (usuario) => {
   for (const alerta of alertas) {
     if (!alertaResueltaPorDocumentacion(alerta, usuario)) continue;
     const estadoAnterior = alerta.estado;
-    alerta.estado = "RESUELTA";
+    alerta.estado = "CERRADA";
     alerta.fechaResolucion = new Date();
+    alerta.fechaCierre = new Date();
     alerta.fechaUltimoMovimiento = new Date();
     alerta.resueltoPor = id;
     alerta.resolucionAutomatica = true;
     alerta.accionCorrectiva = comentario;
     alerta.solucion = comentario;
+    alerta.comentarioCierre = comentario;
     await alerta.save();
     await registrarResolucionAutomatica(alerta, usuario, comentario, estadoAnterior);
     cerradas += 1;

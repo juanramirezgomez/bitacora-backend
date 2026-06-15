@@ -5,15 +5,14 @@ import mongoose from "mongoose";
 import { generarAlertasChecklist } from "../services/alertService.js";
 import {
   cerrarAlertaCamioneta,
-  marcarAlertaEnProceso,
-  resolverAlertaCamioneta,
+  tomarGestionAlertaCamioneta,
   sincronizarAlertasOperacionalesChecklist
 } from "../services/alertaCamionetaService.js";
 import { registrarEvento } from "../services/operationalAuditService.js";
 
 const PRIORIDADES = ["CRITICA", "ALTA", "MEDIA", "BAJA"];
-const ESTADOS_ALERTA = ["ABIERTA", "ASIGNADA", "EN_PROCESO", "RESUELTA", "CERRADA"];
-const ACTIVAS = ["ABIERTA", "ASIGNADA", "EN_PROCESO"];
+const ESTADOS_ALERTA = ["ABIERTA", "EN_GESTION", "CERRADA"];
+const ACTIVAS = ["ABIERTA", "EN_GESTION"];
 
 const startOfDay = (date) => {
   const value = new Date(date);
@@ -51,9 +50,8 @@ const normalizePriority = (prioridad) => {
 
 const normalizeEstado = (estado) => {
   const value = String(estado || "ABIERTA").trim().toUpperCase();
-  if (value.includes("ASIGN")) return "ASIGNADA";
-  if (value.includes("PROCESO")) return "EN_PROCESO";
-  if (value.includes("RESUEL")) return "RESUELTA";
+  if (value.includes("ASIGN") || value.includes("PROCESO") || value.includes("GESTION")) return "EN_GESTION";
+  if (value.includes("RESUEL")) return "CERRADA";
   if (value.includes("CERRA")) return "CERRADA";
   return "ABIERTA";
 };
@@ -113,13 +111,11 @@ const permisosGestion = (user = {}, alerta = {}) => {
   const superintendente = rol === "SUPERINTENDENTE";
   const admin = rol === "ADMIN";
   return {
-    asignar: estado === "ABIERTA" && (supervisor || superintendente || admin),
-    reasignar: estado === "ASIGNADA" && (superintendente || admin),
-    iniciarGestion: estado === "ASIGNADA" && (supervisor || admin),
-    resolver: estado === "EN_PROCESO" && (supervisor || superintendente || admin),
-    cerrar: estado === "RESUELTA" && (supervisor || superintendente || admin),
-    comentar: true,
-    adjuntarEvidencia: true
+    tomarGestion: estado === "ABIERTA" && (supervisor || superintendente || admin),
+    cerrar: estado === "EN_GESTION" && (supervisor || superintendente || admin),
+    comentar: estado !== "CERRADA",
+    adjuntarEvidencia: estado === "EN_GESTION",
+    verHistorial: true
   };
 };
 
@@ -150,6 +146,7 @@ const mapAlerta = (alerta, user = {}) => ({
   categoriaDetonante: alerta.checklistId?.categoriaDetonante || "",
   fecha: alerta.fechaCreacion || alerta.createdAt,
   fechaAsignacion: alerta.fechaAsignacion || null,
+  fechaInicioGestion: alerta.fechaInicioGestion || null,
   fechaResolucion: alerta.fechaResolucion || null,
   fechaCierre: alerta.fechaCierre || null,
   fechaCompromiso: alerta.fechaCompromiso || null,
@@ -206,13 +203,13 @@ const buildTimeline = (alertas, checklists) => {
       estado: alerta.estado,
       prioridad: alerta.prioridad
     });
-    if (alerta.fechaResolucion) {
+    if (alerta.fechaCierre) {
       eventos.push({
-        fecha: alerta.fechaResolucion,
+        fecha: alerta.fechaCierre,
         patente: alerta.patente,
-        tipo: "RESOLUCION",
-        texto: alerta.solucion || "Alerta resuelta",
-        estado: "RESUELTA",
+        tipo: "CIERRE",
+        texto: alerta.comentarioCierre || alerta.solucion || "Alerta cerrada",
+        estado: "CERRADA",
         prioridad: alerta.prioridad
       });
     }
@@ -435,7 +432,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
         .limit(80)
         .lean(),
       AlertaCamioneta.find(filtroAlertasAcceso)
-        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion comentarioCierre observaciones observacionesChecklist documentacionChecklist hallazgos resumenHallazgos resolucionAutomatica fechaCreacion fechaAsignacion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero creadoPor")
+        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion comentarioCierre observaciones observacionesChecklist documentacionChecklist hallazgos resumenHallazgos resolucionAutomatica fechaCreacion fechaAsignacion fechaInicioGestion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero creadoPor")
         .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante")
         .sort({ fechaCreacion: -1 })
         .limit(500)
@@ -453,7 +450,7 @@ export const obtenerDashboardAlertas = async (req, res) => {
         filtroSeleccionada.creadoPor = new mongoose.Types.ObjectId(userActualId);
       }
       const alertaSeleccionada = await AlertaCamioneta.findOne(filtroSeleccionada)
-        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion comentarioCierre observaciones observacionesChecklist documentacionChecklist hallazgos resumenHallazgos resolucionAutomatica fechaCreacion fechaAsignacion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero creadoPor")
+        .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion comentarioCierre observaciones observacionesChecklist documentacionChecklist hallazgos resumenHallazgos resolucionAutomatica fechaCreacion fechaAsignacion fechaInicioGestion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero creadoPor")
         .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante")
         .lean();
       if (alertaSeleccionada) {
@@ -540,9 +537,8 @@ export const obtenerDashboardAlertas = async (req, res) => {
       });
 
     const criticas = alertasFiltradas.filter((alerta) => alerta.prioridad === "CRITICA" && ACTIVAS.includes(alerta.estado)).length;
-    const asignadas = alertasFiltradas.filter((alerta) => alerta.estado === "ASIGNADA").length;
-    const enProceso = alertasFiltradas.filter((alerta) => alerta.estado === "EN_PROCESO").length;
-    const resueltas = alertasFiltradas.filter((alerta) => alerta.estado === "RESUELTA").length;
+    const abiertas = alertasFiltradas.filter((alerta) => alerta.estado === "ABIERTA").length;
+    const enGestion = alertasFiltradas.filter((alerta) => alerta.estado === "EN_GESTION").length;
     const cerradas = alertasFiltradas.filter((alerta) => alerta.estado === "CERRADA").length;
     const escaladas = alertasFiltradas.filter((alerta) => alerta.escalada).length;
     const activas = alertasActivasRaw.length;
@@ -555,9 +551,8 @@ export const obtenerDashboardAlertas = async (req, res) => {
     const response = {
       criticas,
       activas,
-      asignadas,
-      enProceso,
-      resueltas,
+      abiertas,
+      enGestion,
       cerradas,
       escaladas,
       checklistsHoy,
@@ -583,10 +578,10 @@ export const obtenerDashboardAlertas = async (req, res) => {
   }
 };
 
-export const gestionarAlertaDashboard = async (req, res) => {
+export const tomarGestionAlertaDashboard = async (req, res) => {
   try {
     const observaciones = String(req.body?.observaciones || "").trim();
-    const alerta = await marcarAlertaEnProceso({
+    const alerta = await tomarGestionAlertaCamioneta({
       id: req.params.id,
       user: req.user,
       observaciones
@@ -598,57 +593,22 @@ export const gestionarAlertaDashboard = async (req, res) => {
       modulo: "ALERTAS",
       entidad: "AlertaCamioneta",
       entidadId: alerta._id,
-      accion: "ALERTA_CAMBIO_ESTADO",
-      observacion: observaciones || "Alerta en proceso"
+      accion: "ALERTA_EN_GESTION",
+      observacion: observaciones || "Gestion tomada"
     });
 
-    console.log("✅ ALERTA EN PROCESO", {
+    console.log("ALERTA EN GESTION", {
       alertaId: alerta._id,
       estado: alerta.estado,
       patente: alerta.patente
     });
-    return res.json({ message: "Alerta en proceso", alerta: mapAlerta(alerta, req.user) });
+    return res.json({ message: "Gestion tomada", alerta: mapAlerta(alerta, req.user) });
   } catch (error) {
     console.error("❌ ERROR GESTIONANDO ALERTA:", error);
-    return res.status(400).json({ message: error?.message || "Error gestionando alerta" });
+    return res.status(400).json({ message: error?.message || "Error tomando gestion" });
   }
 };
 
-export const resolverAlertaDashboard = async (req, res) => {
-  try {
-    const solucion = String(req.body?.solucion || req.body?.accionCorrectiva || req.body?.observacion || "").trim();
-    const observaciones = String(req.body?.observaciones || "").trim();
-    if (!solucion) {
-      return res.status(400).json({ message: "La solucion es obligatoria" });
-    }
-
-    const alerta = await resolverAlertaCamioneta({
-      id: req.params.id,
-      user: req.user,
-      solucion,
-      observaciones
-    });
-    if (!alerta) return res.status(404).json({ message: "Alerta no encontrada" });
-    await registrarEvento({
-      req,
-      modulo: "ALERTAS",
-      entidad: "AlertaCamioneta",
-      entidadId: alerta._id,
-      accion: "ALERTA_RESUELTA",
-      observacion: solucion || observaciones || "Alerta resuelta"
-    });
-
-    console.log("✅ ALERTA RESUELTA", {
-      alertaId: alerta._id,
-      estado: alerta.estado,
-      patente: alerta.patente
-    });
-    return res.json({ message: "Alerta resuelta", alerta: mapAlerta(alerta, req.user) });
-  } catch (error) {
-    console.error("❌ ERROR RESOLVIENDO ALERTA:", error);
-    return res.status(400).json({ message: error?.message || "Error resolviendo alerta" });
-  }
-};
 export const cerrarAlertaDashboard = async (req, res) => {
   try {
     const solucion = String(req.body?.solucion || req.body?.observacion || "").trim();
@@ -673,7 +633,7 @@ export const cerrarAlertaDashboard = async (req, res) => {
       observacion: solucion || observaciones || "Alerta cerrada"
     });
 
-    console.log("âœ… ALERTA RESUELTA", {
+    console.log("ALERTA CERRADA", {
       alertaId: alerta._id,
       estado: alerta.estado,
       patente: alerta.patente
