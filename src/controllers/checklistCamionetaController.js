@@ -274,9 +274,10 @@ const normalizarEstadosChecklistAntiguos = async () => {
 
   const variantes = await ChecklistCamioneta.find({
     eliminado: { $ne: true },
-    estado: { $exists: true, $ne: null }
+    estado: { $exists: true, $nin: [...ESTADOS_CHECKLIST, null, ""] }
   })
     .select("estado")
+    .limit(200)
     .lean();
 
   const operaciones = variantes
@@ -331,6 +332,17 @@ const normalizarChecklistListItem = (item) => ({
   aptitudOperacion: String(item.aptitudOperacion || (item.aptaOperacion === false ? "NO_APTA" : "APTA")).toUpperCase(),
   aptaOperacion: item.aptaOperacion !== false && String(item.aptitudOperacion || "APTA").toUpperCase() !== "NO_APTA"
 });
+
+const parsePagination = (query = {}) => {
+  const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  const limitRaw = Number.parseInt(query.limit, 10) || 50;
+  const limit = Math.min(Math.max(1, limitRaw), 100);
+  return {
+    page,
+    limit,
+    skip: (page - 1) * limit
+  };
+};
 
 const crearItems = (nombres, input = []) => {
   const map = new Map((Array.isArray(input) ? input : []).map(item => [String(item.nombre || ""), item]));
@@ -747,6 +759,7 @@ export const listarChecklistCamionetas = async (req, res) => {
       return res.status(403).json({ message: "No autorizado" });
     }
 
+    const { page, limit, skip } = parsePagination(req.query);
     const { patente = "", estado = "", desde = "", hasta = "" } = req.query;
     const { turno = "", turnoNumero = "" } = req.query;
     const { conductor = "", usuario = "", planta = "" } = req.query;
@@ -789,19 +802,24 @@ export const listarChecklistCamionetas = async (req, res) => {
 
     const mongoInicio = Date.now();
     await normalizarEstadosChecklistAntiguos();
-    const [checklistsRaw, kpis] = await Promise.all([
+    const [checklistsRaw, total, kpis] = await Promise.all([
       ChecklistCamioneta.find(filter)
         .select(CHECKLIST_LIST_FIELDS)
-        .sort({ fechaInspeccion: -1, createdAt: -1 })
-        .limit(250)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .allowDiskUse(true)
         .populate("creadoPor", "nombre email rol")
         .populate("revisadoPor", "nombre email rol")
         .lean(),
+      ChecklistCamioneta.countDocuments(filter),
       calcularKpisChecklist(filtroKpi)
     ]);
     const checklists = checklistsRaw.map(normalizarChecklistListItem);
     console.log("⚡ Tiempo Mongo listar checklist:", `${Date.now() - mongoInicio}ms`, {
-      total: checklists.length,
+      total,
+      page,
+      limit,
       filtros: Object.keys(filter),
       filtrosKpi: Object.keys(filtroKpi),
       kpis
@@ -810,8 +828,12 @@ export const listarChecklistCamionetas = async (req, res) => {
 
     return res.json({
       checklists,
+      datos: checklists,
       kpis,
-      total: kpis.total
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
     });
   } catch (error) {
     console.error("❌ ERROR KPI CHECKLIST:", error);
@@ -848,11 +870,17 @@ export const obtenerAlertasVencimientosChecklistCamionetaController = async (req
       filter.creadoPor = autor;
     }
 
-    const alertas = await obtenerAlertasVencimientosChecklistCamioneta(filter);
+    const { page, limit, skip } = parsePagination(req.query);
+    const resultado = await obtenerAlertasVencimientosChecklistCamioneta(filter, { page, limit, skip });
+    const alertas = resultado.alertas || [];
 
     return res.json({
       alertas,
-      total: alertas.length,
+      datos: alertas,
+      total: resultado.total ?? alertas.length,
+      page,
+      limit,
+      totalPages: resultado.totalPages ?? Math.ceil(alertas.length / limit),
       variablesEnvPreparadas: variablesNotificacionChecklistCamioneta,
       notificacionesActivas: canalesPreparados()
     });
@@ -868,8 +896,19 @@ export const obtenerCumplimientoChecklistCamionetaController = async (req, res) 
     }
 
     const fecha = req.query?.fecha ? parseDate(req.query.fecha) : new Date();
+    const { page, limit, skip } = parsePagination(req.query);
     const cumplimiento = await validarChecklistDiario({ fecha: fecha || new Date(), user: req.user });
-    return res.json(cumplimiento);
+    const vehiculos = Array.isArray(cumplimiento?.vehiculos) ? cumplimiento.vehiculos : [];
+    const datos = vehiculos.slice(skip, skip + limit);
+    return res.json({
+      ...cumplimiento,
+      vehiculos: datos,
+      datos,
+      page,
+      limit,
+      total: vehiculos.length,
+      totalPages: Math.ceil(vehiculos.length / limit)
+    });
   } catch (error) {
     console.error("❌ ERROR CUMPLIMIENTO CHECKLIST:", error);
     return res.status(500).json({ message: "Error obteniendo cumplimiento checklist camioneta" });
@@ -882,6 +921,7 @@ export const obtenerAlertasChecklistCamionetaController = async (req, res) => {
       return res.status(403).json({ message: "No autorizado" });
     }
 
+    const { page, limit, skip } = parsePagination(req.query);
     const filter = {};
     if (esOperadorPlanta(req) && !esAdmin(req)) {
       const autor = await resolverUserId(req);
@@ -889,10 +929,15 @@ export const obtenerAlertasChecklistCamionetaController = async (req, res) => {
       filter.creadoPor = autor;
     }
 
-    const alertas = await obtenerAlertasChecklistCamioneta(filter);
+    const resultado = await obtenerAlertasChecklistCamioneta(filter, { page, limit, skip });
+    const alertas = Array.isArray(resultado) ? resultado : resultado.alertas;
     return res.json({
       alertas,
-      total: alertas.length,
+      datos: alertas,
+      total: resultado.total ?? alertas.length,
+      page,
+      limit,
+      totalPages: resultado.totalPages ?? Math.ceil(alertas.length / limit),
       variablesEnvPreparadas: variablesNotificacionChecklistCamioneta,
       notificacionesActivas: canalesPreparados()
     });
@@ -908,23 +953,23 @@ export const enviarAlertasChecklistCamionetaController = async (req, res) => {
       return res.status(403).json({ message: "No autorizado para enviar alertas" });
     }
 
-    const checklists = await ChecklistCamioneta.find({ eliminado: { $ne: true } })
+    const cursor = ChecklistCamioneta.find({ eliminado: { $ne: true } })
       .populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
-      .sort({ fechaInspeccion: -1, createdAt: -1 });
+      .cursor();
     const resultados = [];
 
-    for (const checklist of checklists) {
+    for await (const checklist of cursor) {
       resultados.push(await procesarAlertasChecklist(checklist));
     }
 
     console.log("✅ ALERTAS MANUALES FINALIZADAS", {
-      checklists: checklists.length,
+      checklists: resultados.length,
       alertas: resultados.reduce((sum, item) => sum + (item.alertasGeneradas?.length || 0), 0)
     });
 
     return res.json({
       message: "Proceso de alertas ejecutado",
-      totalChecklistsProcesados: checklists.length,
+      totalChecklistsProcesados: resultados.length,
       totalAlertas: resultados.reduce((sum, item) => sum + (item.alertasGeneradas?.length || 0), 0),
       notificacionesActivas: canalesPreparados(),
       resultados

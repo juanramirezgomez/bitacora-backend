@@ -75,6 +75,7 @@ const alertaCamionetaSchema = new mongoose.Schema(
 alertaCamionetaSchema.index({ estado: 1, prioridad: 1, fechaCreacion: -1 });
 alertaCamionetaSchema.index({ patente: 1, estado: 1, fechaCreacion: -1 });
 alertaCamionetaSchema.index({ checklistId: 1, estado: 1 });
+alertaCamionetaSchema.index({ activo: 1, fechaCreacion: -1 });
 
 export default mongoose.model("AlertaCamioneta", alertaCamionetaSchema);
 export { PRIORIDADES, ESTADOS };

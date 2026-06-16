@@ -419,7 +419,8 @@ export const obtenerDashboardAlertas = async (req, res) => {
         patente: { $nin: [null, ""] }
       })
         .select("patente estado aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante fechaInspeccion fechaCreacion createdAt conductorResponsable turno turnoNumero")
-        .sort({ fechaInspeccion: -1, createdAt: -1 })
+        .sort({ createdAt: -1 })
+        .allowDiskUse(true)
         .limit(160)
         .lean(),
       ChecklistCamioneta.find({
@@ -429,12 +430,14 @@ export const obtenerDashboardAlertas = async (req, res) => {
       })
         .select("patente aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante fechaInspeccion fechaCreacion createdAt")
         .sort({ createdAt: -1 })
+        .allowDiskUse(true)
         .limit(80)
         .lean(),
       AlertaCamioneta.find(filtroAlertasAcceso)
         .select("patente prioridad estado tipo descripcion operador responsable responsableId responsableNombre responsableRol accionCorrectiva solucion comentarioCierre observaciones observacionesChecklist documentacionChecklist hallazgos resumenHallazgos resolucionAutomatica fechaCreacion fechaAsignacion fechaInicioGestion fechaResolucion fechaCierre fechaCompromiso fechaUltimoMovimiento escalada nivelEscalamiento checklistId fotos turno turnoNumero creadoPor")
         .populate("checklistId", "conductorResponsable fechaInspeccion turno turnoNumero aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante")
         .sort({ fechaCreacion: -1 })
+        .allowDiskUse(true)
         .limit(500)
         .lean()
     ]);

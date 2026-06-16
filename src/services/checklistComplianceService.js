@@ -198,7 +198,7 @@ export const obtenerFlotaChecklistActiva = async ({ filtroBase = {} } = {}) => {
         ...filtroBase
       }
     },
-    { $sort: { fechaInspeccion: -1, createdAt: -1 } },
+    { $sort: { createdAt: -1 } },
     {
       $group: {
         _id: "$patente",
@@ -210,7 +210,7 @@ export const obtenerFlotaChecklistActiva = async ({ filtroBase = {} } = {}) => {
       }
     },
     { $limit: 80 }
-  ]);
+  ]).allowDiskUse(true);
 
   const map = new Map();
   [...DEFAULT_VEHICLES, ...recientes].forEach((item) => {
@@ -265,7 +265,8 @@ export const validarChecklistDiario = async ({ fecha = new Date(), user = null }
       ]
     })
       .select("_id patente estado fechaProgramada fechaRealizacion fechaInspeccion turno turnoNumero planta areaTrabajo conductorResponsable aptaOperacion aptitudOperacion checklistAtrasado cumplimientoEstado")
-      .sort({ fechaInspeccion: -1, createdAt: -1 })
+      .sort({ createdAt: -1 })
+      .allowDiskUse(true)
       .lean(),
     ChecklistCamioneta.countDocuments({
       eliminado: { $ne: true },

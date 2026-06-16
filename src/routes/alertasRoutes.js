@@ -4,6 +4,7 @@ import {
   cerrarAlerta,
   comentarAlerta,
   evaluarEscalamiento,
+  listarAlertas,
   obtenerDetalleAlerta,
   tomarGestionAlerta,
   uploadAlertaEvidencias
@@ -17,6 +18,7 @@ const supervisores = ["ADMIN", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION"
 const resolutores = [...supervisores, "SUPERINTENDENTE"];
 const lectores = [...resolutores, "OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"];
 
+router.get("/", requireRole(...lectores), authorizeModule("alertas"), listarAlertas);
 router.get("/:id", requireRole(...lectores), authorizeModule("alertas"), obtenerDetalleAlerta);
 router.post("/:id/comentarios", requireRole(...lectores), authorizeModule("alertas"), comentarAlerta);
 router.post("/:id/evidencias", requireRole(...lectores), authorizeModule("alertas"), uploadAlertaEvidencias.array("evidencias", 6), adjuntarEvidencia);

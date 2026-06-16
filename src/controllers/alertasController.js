@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
+import mongoose from "mongoose";
 import {
   adjuntarEvidenciaAlerta,
   agregarComentarioAlerta,
@@ -106,10 +107,63 @@ const requireAlerta = (alerta, res) => {
 
 const esOperadorSoloPropias = (user = {}) => ["OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"].includes(String(user.rol || "").toUpperCase());
 
+const parsePagination = (query = {}) => {
+  const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  const limitRaw = Number.parseInt(query.limit, 10) || 50;
+  const limit = Math.min(Math.max(1, limitRaw), 100);
+  return { page, limit, skip: (page - 1) * limit };
+};
+
 const puedeVerAlerta = (alerta, user = {}) => {
   if (!esOperadorSoloPropias(user)) return true;
   const userId = String(user.id || user._id || user.uid || "");
   return userId && String(alerta?.creadoPor || "") === userId;
+};
+
+export const listarAlertas = async (req, res) => {
+  try {
+    const { page, limit, skip } = parsePagination(req.query);
+    const filter = { activo: { $ne: false } };
+    const patente = String(req.query?.patente || "").trim();
+    const estado = String(req.query?.estado || "").trim().toUpperCase();
+    const prioridad = String(req.query?.prioridad || "").trim().toUpperCase();
+    const tipo = String(req.query?.tipo || "").trim();
+
+    if (patente) filter.patente = { $regex: patente, $options: "i" };
+    if (estado) filter.estado = estado;
+    if (prioridad) filter.prioridad = prioridad;
+    if (tipo) filter.tipo = { $regex: tipo, $options: "i" };
+    if (esOperadorSoloPropias(req.user)) {
+      const id = req.user?.id || req.user?._id || req.user?.uid;
+      if (id && mongoose.Types.ObjectId.isValid(String(id))) {
+        filter.creadoPor = new mongoose.Types.ObjectId(String(id));
+      }
+    }
+
+    const [alertasRaw, total] = await Promise.all([
+      AlertaCamioneta.find(filter)
+        .select("patente prioridad estado tipo descripcion operador responsable responsableNombre comentarioCierre observaciones hallazgos resumenHallazgos fechaCreacion fechaInicioGestion fechaCierre fechaUltimoMovimiento checklistId fotos creadoPor")
+        .populate("checklistId", "conductorResponsable fechaInspeccion aptaOperacion aptitudOperacion motivoNoApta alertaDetonante prioridadDetonante categoriaDetonante patente")
+        .sort({ fechaCreacion: -1 })
+        .skip(skip)
+        .limit(limit)
+        .allowDiskUse(true)
+        .lean(),
+      AlertaCamioneta.countDocuments(filter)
+    ]);
+    const datos = alertasRaw.map((alerta) => mapAlerta(alerta, [], req.user));
+    return res.json({
+      alertas: datos,
+      datos,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    console.error("ERROR LISTANDO ALERTAS", error);
+    return res.status(500).json({ message: "Error listando alertas" });
+  }
 };
 
 export const obtenerDetalleAlerta = async (req, res) => {

@@ -494,11 +494,22 @@ const enriquecerAlertasOperacionales = async (checklist, alertas = []) => {
   });
 };
 
-export const obtenerAlertasVencimientosChecklistCamioneta = async (filter = {}) => {
+const paginacionAlertas = ({ page = 1, limit = 100, skip = 0 } = {}) => ({
+  page: Math.max(1, Number(page) || 1),
+  limit: Math.min(Math.max(1, Number(limit) || 100), 200),
+  skip: Math.max(0, Number(skip) || 0)
+});
+
+export const obtenerAlertasVencimientosChecklistCamioneta = async (filter = {}, options = {}) => {
   console.log("PASO 1 ALERT SERVICE: obtener alertas de vencimientos");
+  const { page, limit, skip } = paginacionAlertas(options);
+  const total = await ChecklistCamioneta.countDocuments({ eliminado: { $ne: true }, ...filter });
   const checklists = await ChecklistCamioneta.find({ eliminado: { $ne: true }, ...filter })
     .populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
-    .sort({ fechaInspeccion: -1, createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .allowDiskUse(true);
 
   const alertas = [];
   for (const checklist of checklists) {
@@ -514,14 +525,19 @@ export const obtenerAlertasVencimientosChecklistCamioneta = async (filter = {}) 
   }
 
   console.log("PASO 2 ALERT SERVICE: alertas de vencimientos generadas", alertas.length);
-  return alertas;
+  return { alertas, total, page, limit, totalPages: Math.ceil(total / limit) };
 };
 
-export const obtenerAlertasChecklistCamioneta = async (filter = {}) => {
+export const obtenerAlertasChecklistCamioneta = async (filter = {}, options = {}) => {
   console.log("PASO 1 ALERT SERVICE: obtener todas las alertas checklist camioneta");
+  const { page, limit, skip } = paginacionAlertas(options);
+  const total = await ChecklistCamioneta.countDocuments({ eliminado: { $ne: true }, ...filter });
   const checklists = await ChecklistCamioneta.find({ eliminado: { $ne: true }, ...filter })
     .populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
-    .sort({ fechaInspeccion: -1, createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .allowDiskUse(true);
 
   const alertas = [];
   for (const checklist of checklists) {
@@ -533,7 +549,7 @@ export const obtenerAlertasChecklistCamioneta = async (filter = {}) => {
   }
 
   console.log("PASO 2 ALERT SERVICE: total alertas checklist camioneta", alertas.length);
-  return alertas;
+  return { alertas, total, page, limit, totalPages: Math.ceil(total / limit) };
 };
 
 export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
