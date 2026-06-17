@@ -10,19 +10,8 @@ import { sincronizarAlertasOperacionalesChecklist } from "./alertaCamionetaServi
 const ALERTA_DIAS = 30;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
-const ROLES_VALIDOS_ALERTA = [
-  "ADMIN",
-  "SUPERINTENDENTE",
-  "JEFE_PLANTA",
-  "JEFE_TURNO",
-  "ECM",
-  "OPERADOR_LIDER",
-  "SUPERVISION",
-  "SUPERVISOR",
-  "OPERADOR",
-  "OPERADOR_PLANTA",
-  "OPERADOR_CALDERA"
-];
+const ROLES_VALIDOS_ALERTA = ["ADMIN", "SUPERVISION", "JEFE_TURNO", "OPERADOR", "OPERADOR_PLANTA", "OPERADOR_LIDER"];
+const ROLES_SUPERVISION_ALERTA = ["ADMIN", "SUPERVISION", "JEFE_TURNO"];
 const MATRIZ_NOTIFICACION_ALERTAS = {
   CRITICA: ["JEFE_PLANTA", "JEFE_TURNO", "SUPERINTENDENTE"],
   MEDIA: ["JEFE_PLANTA", "JEFE_TURNO"],
@@ -131,6 +120,7 @@ const plainUser = (user) => ({
   correoRespaldo: String(user?.correoRespaldo || "").trim().toLowerCase(),
   telefono: String(user?.telefono || "").trim(),
   rol: user?.rol || "",
+  turnoAsignado: user?.turnoAsignado || "Ambos",
   estadoUsuario: user?.estado || "",
   activo: user?.activo !== false,
   preferenciasAlertas: preferenciasAlertasDe(user)
@@ -180,9 +170,27 @@ const nivelNotificacionAlerta = (alerta = {}) => {
 };
 
 const rolesDestinoParaAlerta = (alerta = {}) =>
-  MATRIZ_NOTIFICACION_ALERTAS[nivelNotificacionAlerta(alerta)] || MATRIZ_NOTIFICACION_ALERTAS.MENOR;
+  ROLES_SUPERVISION_ALERTA;
 
-const ALERT_USER_SELECT = "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas area turno planta";
+const ALERT_USER_SELECT = "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas area turno turnoAsignado planta";
+
+const normalizarTurnoAsignado = (value = "") => {
+  const turno = String(value || "").trim();
+  if (turno === "39" || turno === "44") return turno;
+  return "Ambos";
+};
+
+const turnoChecklist = (checklist = {}) => {
+  const turno = String(checklist.turnoNumero || checklist.turno || "").trim();
+  return turno === "39" || turno === "44" ? turno : "";
+};
+
+const perteneceAlTurnoChecklist = (user = {}, checklist = {}) => {
+  const turno = turnoChecklist(checklist);
+  if (!turno) return true;
+  const asignado = normalizarTurnoAsignado(user.turnoAsignado || user.turno);
+  return asignado === "Ambos" || asignado === turno;
+};
 
 const buildBaseAlert = (checklist, tipo, data = {}) => {
   const template = getAlertTemplate(tipo);
@@ -197,6 +205,7 @@ const buildBaseAlert = (checklist, tipo, data = {}) => {
     operador: checklist.conductorResponsable || checklist.creadoPor?.nombre || "",
     fecha: checklist.fechaInspeccion || checklist.createdAt || new Date(),
     fechaTexto: formatDate(checklist.fechaInspeccion || checklist.createdAt),
+    turnoChecklist: turnoChecklist(checklist),
     anomalias: [],
     ...data
   };
@@ -558,7 +567,13 @@ export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
   const rolesDestino = rolesDestinoParaAlerta(alerta);
   const consultas = [];
   if (operadorId) consultas.push({ _id: operadorId });
-  if (rolesDestino.length) consultas.push({ rol: { $in: rolesDestino } });
+  const turno = turnoChecklist(checklist);
+  if (rolesDestino.length) {
+    consultas.push({
+      rol: { $in: rolesDestino },
+      ...(turno ? { turnoAsignado: { $in: [turno, "Ambos", "", null] } } : {})
+    });
+  }
 
   const users = consultas.length
     ? await User.find({
@@ -584,6 +599,17 @@ export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
       continue;
     }
     seen.add(key);
+    if (String(user._id || "") !== String(operadorId || "") && !perteneceAlTurnoChecklist(user, checklist)) {
+      console.log("ALERTA_DESTINATARIO_OMITIDO_TURNO", {
+        motivo: "turno asignado no coincide",
+        userId: key,
+        rol: user.rol,
+        turnoChecklist: turno,
+        turnoAsignado: user.turnoAsignado || user.turno || "",
+        alerta: alerta.tipo
+      });
+      continue;
+    }
     destinatarios.push(user);
   }
 
@@ -592,11 +618,13 @@ export const obtenerDestinatariosAlertas = async (checklist, alerta = {}) => {
     prioridad: alerta.prioridad,
     nivel: nivelNotificacionAlerta(alerta),
     rolesDestino,
+    turnoChecklist: turno,
     creadorChecklist: operadorId ? String(operadorId) : "",
     total: destinatarios.length,
     destinatarios: destinatarios.map((u) => ({
       nombre: u.nombre,
       rol: u.rol,
+      turnoAsignado: u.turnoAsignado || "",
       estado: u.estado,
       telefono: u.telefono,
       correoCorporativo: u.correoCorporativo || u.email,
@@ -876,6 +904,7 @@ const buildAlertaConsolidadaChecklist = ({ checklist, alertas }) => {
     operador: checklist.conductorResponsable || checklist.creadoPor?.nombre || "",
     fecha: checklist.fechaInspeccion || checklist.createdAt || new Date(),
     fechaTexto: formatDate(checklist.fechaInspeccion || checklist.createdAt),
+    turnoChecklist: turnoChecklist(checklist),
     grupos,
     resumen: {
       vehiculo,
@@ -935,6 +964,19 @@ export const registrarHistorialAlerta = async ({ alerta, destinatario, canal, es
     checklistId: alerta.checklistId,
     patente: alerta.patente,
     operador: alerta.operador,
+    turnoChecklist: alerta.turnoChecklist || "",
+    usuariosNotificados: [{
+      userId: destinatario.userId || destinatario._id || null,
+      nombre: destinatario.nombre || "",
+      email: destinatario.email || "",
+      correoCorporativo: destinatario.correoCorporativo || "",
+      correoRespaldo: destinatario.correoRespaldo || "",
+      telefono: destinatario.telefono || "",
+      rol: destinatario.rol || "",
+      estadoUsuario: destinatario.estadoUsuario || destinatario.estado || "",
+      motivo: error || ""
+    }],
+    canalUtilizado: canal,
     fecha: new Date()
   });
 
@@ -1088,8 +1130,8 @@ export const procesarAlertasChecklist = async (checklistOrId) => {
     const checklist = typeof checklistOrId === "string"
       ? await ChecklistCamioneta.findById(checklistOrId)
         .select(ALERT_CHECKLIST_SELECT)
-        .populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas")
-      : await checklistOrId.populate("creadoPor", "nombre email correoCorporativo correoRespaldo telefono rol estado activo preferenciasAlertas");
+        .populate("creadoPor", ALERT_USER_SELECT)
+      : await checklistOrId.populate("creadoPor", ALERT_USER_SELECT);
     console.log("âš¡ Tiempo Mongo alertas:", `${Date.now() - mongoInicio}ms`);
 
     if (!checklist) {

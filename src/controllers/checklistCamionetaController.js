@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import mongoose from "mongoose";
-import ChecklistCamioneta from "../models/ChecklistCamioneta.js";
+import ChecklistCamioneta, { FECHA_ULTIMA_MANTENCION_FIJA } from "../models/ChecklistCamioneta.js";
 import User from "../models/user.js";
 import {
   canalesPreparados,
@@ -470,7 +470,7 @@ const buildPayload = (body = {}) => {
     tipoVehiculo: String(body.tipoVehiculo || "Camioneta").trim() || "Camioneta",
     modelo: String(body.modelo || "Hilux").trim() || "Hilux",
     kilometrajeHorometro: String(body.kilometrajeHorometro || "").trim(),
-    fechaUltimaMantencion: parseDate(body.fechaUltimaMantencion),
+    fechaUltimaMantencion: FECHA_ULTIMA_MANTENCION_FIJA,
     marca: String(body.marca || "Toyota").trim() || "Toyota",
     patente: String(body.patente || "").trim().toUpperCase(),
     color: String(body.color || "").trim(),
@@ -1473,7 +1473,7 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
 
     const datos = [
       ["Tipo", checklist.tipoVehiculo], ["Marca", checklist.marca], ["Modelo", checklist.modelo], ["Patente", checklist.patente],
-      ["Color", checklist.color], ["Km/Horometro", checklist.kilometrajeHorometro], ["Ultima mantencion", formatDate(checklist.fechaUltimaMantencion)],
+      ["Color", checklist.color], ["Km/Horometro", checklist.kilometrajeHorometro], ["Ultima mantencion", formatDate(FECHA_ULTIMA_MANTENCION_FIJA)],
       ["Proxima mantencion", formatDate(checklist.fechaProximaMantencion)], ["Conductor", checklist.conductorResponsable],
       ["Area", checklist.areaTrabajo], ["Fecha inspeccion", formatDate(checklist.fechaInspeccion)], ["Hora", checklist.horaInspeccion],
       ["Turno", checklist.turno || "-"], ["N turno", checklist.turnoNumero || "-"]
@@ -1653,6 +1653,8 @@ export const descargarChecklistCamionetaExcel = async (req, res) => {
     addRow("Vehiculo", "Marca / Modelo", "", `${checklist.marca || "-"} ${checklist.modelo || ""}`.trim());
     addRow("Vehiculo", "Patente", "", checklist.patente);
     addRow("Vehiculo", "Km/Horometro", "", checklist.kilometrajeHorometro);
+    addRow("Vehiculo", "Ultima mantencion", "", formatDate(FECHA_ULTIMA_MANTENCION_FIJA));
+    addRow("Vehiculo", "Proxima mantencion", "", formatDate(checklist.fechaProximaMantencion));
     addRow("Conductor", "Responsable", "", checklist.conductorResponsable);
     addRow("Conductor", "Area", "", checklist.areaTrabajo);
     addRow("Conductor", "Fecha / Hora", "", `${formatDate(checklist.fechaInspeccion)} ${checklist.horaInspeccion || ""}`.trim());

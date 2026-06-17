@@ -47,6 +47,9 @@ const historialAlertaSchema = new mongoose.Schema(
     checklistId: { type: mongoose.Schema.Types.ObjectId, ref: "ChecklistCamioneta", default: null },
     patente: { type: String, trim: true, uppercase: true, default: "" },
     operador: { type: String, trim: true, default: "" },
+    turnoChecklist: { type: String, trim: true, default: "" },
+    usuariosNotificados: { type: [destinatarioSchema], default: [] },
+    canalUtilizado: { type: String, trim: true, default: "" },
     fecha: { type: Date, default: Date.now }
   },
   { timestamps: true }
@@ -56,5 +59,6 @@ historialAlertaSchema.index({ checklistId: 1, tipo: 1, canal: 1, createdAt: -1 }
 historialAlertaSchema.index({ estado: 1, prioridad: 1, createdAt: -1 });
 historialAlertaSchema.index({ estadoOperacional: 1, prioridad: 1, createdAt: -1 });
 historialAlertaSchema.index({ patente: 1, createdAt: -1 });
+historialAlertaSchema.index({ turnoChecklist: 1, createdAt: -1 });
 
 export default mongoose.model("HistorialAlerta", historialAlertaSchema);

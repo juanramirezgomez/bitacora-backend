@@ -59,6 +59,7 @@ const PASSWORD_SEGURA_REGEX = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MINUTES = 5;
 const TURNOS_USUARIO = ["", "39", "44", "ADMINISTRATIVO", "OTROS"];
+const TURNOS_ASIGNADOS_ALERTA = ["39", "44", "Ambos"];
 
 const normalizarOperadorId = (value = "") => String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 const escaparRegex = (value = "") => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -106,6 +107,11 @@ const buscarUsuarioLogin = async (identificador, operadorLookup) => {
 const normalizarTurno = (value = "") => {
   const turno = String(value || "").trim();
   return TURNOS_USUARIO.includes(turno) ? turno : "";
+};
+
+const normalizarTurnoAsignado = (value = "Ambos") => {
+  const turno = String(value || "").trim();
+  return TURNOS_ASIGNADOS_ALERTA.includes(turno) ? turno : "Ambos";
 };
 
 const generarOperadorId = async (nombre = "OP", rol = "OPERADOR") => {
@@ -227,6 +233,7 @@ const publicUser = (user) => ({
   planta: user.planta,
   area: user.area || user.planta || "PC1",
   turno: normalizarTurno(user.turno),
+  turnoAsignado: normalizarTurnoAsignado(user.turnoAsignado),
   cargo: user.cargo || "",
   licenciaClaseB: user.licenciaClaseB === true,
   fechaVencimientoLicenciaB: user.fechaVencimientoLicenciaB || null,
@@ -339,6 +346,7 @@ export const register = async (req, res) => {
       telefono = "",
       operadorId = "",
       turno = "",
+      turnoAsignado = "Ambos",
       area = "PC1",
       cargo = "",
       licenciaClaseB = false,
@@ -403,6 +411,7 @@ export const register = async (req, res) => {
       planta: String(area || "PC1").trim().toUpperCase() || "PC1",
       area: String(area || "PC1").trim().toUpperCase() || "PC1",
       turno: normalizarTurno(turno),
+      turnoAsignado: normalizarTurnoAsignado(turnoAsignado),
       cargo: String(cargo || "").trim(),
       licenciaClaseB: toBoolean(licenciaClaseB),
       fechaVencimientoLicenciaB: normalizarFecha(fechaVencimientoLicenciaB),
@@ -559,7 +568,7 @@ export const logout = async (req, res) => {
 export const me = async (req, res) => {
   try {
     const user = await User.findById(req.user?.uid)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -601,6 +610,9 @@ export const actualizarMiPerfil = async (req, res) => {
     if (req.body?.preferenciasAlertas !== undefined) {
       update.preferenciasAlertas = normalizarPreferenciasAlertas(req.body.preferenciasAlertas);
     }
+    if (req.body?.turnoAsignado !== undefined) {
+      update.turnoAsignado = normalizarTurnoAsignado(req.body.turnoAsignado);
+    }
     if (req.body?.licenciaClaseB !== undefined) update.licenciaClaseB = toBoolean(req.body.licenciaClaseB);
     if (req.body?.fechaVencimientoLicenciaB !== undefined) update.fechaVencimientoLicenciaB = normalizarFecha(req.body.fechaVencimientoLicenciaB);
     if (req.body?.licenciaInterna !== undefined) update.licenciaInterna = toBoolean(req.body.licenciaInterna);
@@ -616,7 +628,7 @@ export const actualizarMiPerfil = async (req, res) => {
     if (duplicado) return res.status(409).json({ message: "El correo ya esta registrado por otro usuario" });
 
     const user = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     return res.json({ message: "Perfil actualizado", user: publicUser(user) });
   } catch (e) {
@@ -681,6 +693,7 @@ export const crearUsuario = async (req, res) => {
       estado = "ACTIVO",
       planta = "PC1",
       turno = "",
+      turnoAsignado = "Ambos",
       area = planta,
       cargo = "",
       licenciaClaseB = false,
@@ -742,6 +755,7 @@ export const crearUsuario = async (req, res) => {
       planta: String(area || planta || "PC1").trim().toUpperCase() || "PC1",
       area: String(area || planta || "PC1").trim().toUpperCase() || "PC1",
       turno: normalizarTurno(turno),
+      turnoAsignado: normalizarTurnoAsignado(turnoAsignado),
       cargo: String(cargo || "").trim(),
       licenciaClaseB: toBoolean(licenciaClaseB),
       fechaVencimientoLicenciaB: normalizarFecha(fechaVencimientoLicenciaB),
@@ -802,7 +816,7 @@ export const listarUsuarios = async (req, res) => {
 
     const users = await User.find(filter)
       .sort({ createdAt: -1 })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
     return res.json(users);
   } catch (e) {
     return res.status(500).json({ message: "Error listando usuarios" });
@@ -1126,6 +1140,9 @@ export const actualizarUsuario = async (req, res) => {
     if (req.body.turno !== undefined) {
       update.turno = normalizarTurno(req.body.turno);
     }
+    if (req.body.turnoAsignado !== undefined) {
+      update.turnoAsignado = normalizarTurnoAsignado(req.body.turnoAsignado);
+    }
     if (req.body.activo !== undefined) {
       update.activo = !!req.body.activo;
       update.estado = update.activo ? "ACTIVO" : "BLOQUEADO";
@@ -1152,7 +1169,7 @@ export const actualizarUsuario = async (req, res) => {
     }
 
     const u = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1166,6 +1183,7 @@ export const actualizarUsuario = async (req, res) => {
       "planta",
       "area",
       "turno",
+      "turnoAsignado",
       "cargo",
       "licenciaClaseB",
       "fechaVencimientoLicenciaB",
@@ -1214,7 +1232,7 @@ export const actualizarEstadoUsuario = async (req, res) => {
         activo: estadoUp === "ACTIVO"
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1261,7 +1279,7 @@ export const actualizarRolUsuario = async (req, res) => {
         modulosPermitidos: modulosPorRol(rolUp)
       },
       { new: true }
-    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+    ).select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1317,7 +1335,7 @@ export const resetPassword = async (req, res) => {
       },
       { new: true }
     )
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
 
     if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
 
@@ -1353,7 +1371,7 @@ export const eliminarUsuario = async (req, res) => {
     }
 
     const deleted = await User.findByIdAndDelete(id)
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo");
 
     if (!deleted) return res.status(404).json({ message: "Usuario no encontrado" });
 

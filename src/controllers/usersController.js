@@ -19,6 +19,7 @@ const ROLES = [
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GMAIL_REGEX = /^[^\s@]+@gmail\.com$/i;
 const TELEFONO_CL_REGEX = /^\+569\d{8}$/;
+const TURNOS_ASIGNADOS_ALERTA = ["39", "44", "Ambos"];
 const toBoolean = (value) =>
   value === true || String(value || "").trim().toUpperCase() === "SI" || String(value || "").trim().toLowerCase() === "true";
 
@@ -34,6 +35,11 @@ const preferenciasAlertasDefault = (preferencias = {}) => ({
   correoRespaldo: preferencias.correoRespaldo !== false,
   soloCriticas: preferencias.soloCriticas === true
 });
+
+const normalizarTurnoAsignado = (value = "Ambos") => {
+  const turno = String(value || "").trim();
+  return TURNOS_ASIGNADOS_ALERTA.includes(turno) ? turno : "Ambos";
+};
 
 const contactosDe = ({ username = "", email = "", correoCorporativo = "", correoRespaldo = "", telefono = "" }) => {
   const corporativo = String(correoCorporativo || email || username || "").trim().toLowerCase();
@@ -72,6 +78,7 @@ const sanitizeUser = (u) => ({
   planta: u.planta,
   area: u.area || u.planta || "PC1",
   turno: u.turno || "",
+  turnoAsignado: normalizarTurnoAsignado(u.turnoAsignado),
   cargo: u.cargo || "",
   licenciaClaseB: u.licenciaClaseB === true,
   fechaVencimientoLicenciaB: u.fechaVencimientoLicenciaB || null,
@@ -107,7 +114,7 @@ export const actualizarDocumentacionOperacional = async (req, res) => {
     }
 
     const user = await User.findByIdAndUpdate(id, update, { new: true })
-      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
+      .select("_id username operadorId nombre email correoCorporativo correoRespaldo telefono preferenciasAlertas rol estado planta area turno turnoAsignado cargo licenciaClaseB fechaVencimientoLicenciaB licenciaInterna fechaVencimientoLicenciaInterna modulosPermitidos failedLoginAttempts lockUntil lastFailedLogin debeCambiarPassword activo createdAt fechaCreacion");
     if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
 
     const reevaluacion = await reevaluarAlertasDocumentales(user);
@@ -152,7 +159,7 @@ export const listUsers = async (req, res) => {
 // POST /api/users
 export const createUser = async (req, res) => {
   try {
-    const { username, email, correoCorporativo, correoRespaldo, telefono, preferenciasAlertas, nombre, rol, password } = req.body || {};
+    const { username, email, correoCorporativo, correoRespaldo, telefono, preferenciasAlertas, nombre, rol, password, turnoAsignado } = req.body || {};
 
     const contactos = contactosDe({ username, email, correoCorporativo, correoRespaldo, telefono });
     const n = String(nombre || "").trim();
@@ -189,6 +196,7 @@ export const createUser = async (req, res) => {
       telefono: contactos.telefono,
       preferenciasAlertas: preferenciasAlertasDefault(preferenciasAlertas),
       rol: r,
+      turnoAsignado: normalizarTurnoAsignado(turnoAsignado),
       passwordHash,
       estado: "ACTIVO",
       planta: "PC1",
@@ -205,7 +213,7 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { username, email, correoCorporativo, correoRespaldo, telefono, preferenciasAlertas, nombre, rol } = req.body || {};
+    const { username, email, correoCorporativo, correoRespaldo, telefono, preferenciasAlertas, nombre, rol, turnoAsignado } = req.body || {};
 
     const update = {};
 
@@ -254,6 +262,9 @@ export const updateUser = async (req, res) => {
 
     if (preferenciasAlertas !== undefined) {
       update.preferenciasAlertas = preferenciasAlertasDefault(preferenciasAlertas);
+    }
+    if (turnoAsignado !== undefined) {
+      update.turnoAsignado = normalizarTurnoAsignado(turnoAsignado);
     }
 
     const updated = await User.findByIdAndUpdate(id, update, { new: true });

@@ -48,6 +48,7 @@ const userSchema = new mongoose.Schema(
     planta: { type: String, trim: true, default: "PC1" },
     area: { type: String, trim: true, default: "PC1", index: true },
     turno: { type: String, trim: true, default: "", index: true },
+    turnoAsignado: { type: String, enum: ["39", "44", "Ambos"], default: "Ambos", index: true },
     cargo: { type: String, trim: true, default: "" },
     licenciaClaseB: { type: Boolean, default: false, index: true },
     fechaVencimientoLicenciaB: { type: Date, default: null },
