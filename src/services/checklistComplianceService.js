@@ -35,6 +35,8 @@ const addDays = (date, days) => {
   return value;
 };
 
+const CHECKLISTS_ESPERADOS_DIA = 2;
+
 const normalizePatente = (value) => String(value || "").trim().toUpperCase();
 
 const dayRange = (date = new Date()) => ({
@@ -42,7 +44,7 @@ const dayRange = (date = new Date()) => ({
   end: endOfDay(date)
 });
 
-const pct = (realizados, total) => total ? Math.round((realizados / total) * 100) : 100;
+const pct = (realizados, total) => total ? Math.min(100, Math.round((realizados / total) * 100)) : 100;
 
 const isNoAptaPorAlerta = (alerta = {}) => {
   const tipo = String(alerta.tipo || alerta.descripcion || "").toUpperCase();
@@ -228,16 +230,70 @@ export const obtenerFlotaChecklistActiva = async ({ filtroBase = {} } = {}) => {
   return Array.from(map.values());
 };
 
-const contarRealizadosPeriodo = async ({ desde, hasta, filtroBase = {} }) =>
-  ChecklistCamioneta.countDocuments({
+const turnoOperacionalKey = (checklist = {}) => {
+  const turno = String(checklist.turno || "").trim().toUpperCase();
+  if (["DIA", "A", "TURNO A"].includes(turno)) return "A";
+  if (["NOCHE", "B", "TURNO B"].includes(turno)) return "B";
+
+  const fecha = checklist.fechaRealizacion || checklist.fechaInspeccion || checklist.fechaProgramada || checklist.createdAt;
+  const hora = fecha ? new Date(fecha).getHours() : null;
+  if (hora !== null && !Number.isNaN(hora)) return hora >= 7 && hora < 19 ? "A" : "B";
+
+  return String(checklist._id || Math.random());
+};
+
+const dateKey = (value) => {
+  const date = startOfDay(value);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+};
+
+const diasInclusivos = (desde, hasta) => {
+  const inicio = startOfDay(desde);
+  const fin = startOfDay(hasta);
+  const diff = fin.getTime() - inicio.getTime();
+  return Math.max(1, Math.floor(diff / 86400000) + 1);
+};
+
+const contarRealizadosOperacionalesPeriodo = async ({ desde, hasta, filtroBase = {} }) => {
+  const checklists = await ChecklistCamioneta.find({
     eliminado: { $ne: true },
     estado: { $in: ["FINALIZADO", "REVISADO"] },
     ...filtroBase,
     $or: [
       { fechaProgramada: { $gte: desde, $lte: hasta } },
-      { fechaInspeccion: { $gte: desde, $lte: hasta } }
+      { fechaInspeccion: { $gte: desde, $lte: hasta } },
+      { fechaRealizacion: { $gte: desde, $lte: hasta } }
     ]
-  });
+  })
+    .select("_id fechaProgramada fechaInspeccion fechaRealizacion createdAt turno")
+    .lean();
+
+  const realizadosPorDia = new Map();
+  for (const checklist of checklists) {
+    const fecha = checklist.fechaProgramada || checklist.fechaInspeccion || checklist.fechaRealizacion || checklist.createdAt;
+    const dia = dateKey(fecha);
+    const turnos = realizadosPorDia.get(dia) || new Set();
+    turnos.add(turnoOperacionalKey(checklist));
+    realizadosPorDia.set(dia, turnos);
+  }
+
+  let realizados = 0;
+  for (const turnos of realizadosPorDia.values()) {
+    realizados += Math.min(turnos.size, CHECKLISTS_ESPERADOS_DIA);
+  }
+
+  const esperados = diasInclusivos(desde, hasta) * CHECKLISTS_ESPERADOS_DIA;
+  const realizadosAjustados = Math.min(realizados, esperados);
+  return {
+    realizados: realizadosAjustados,
+    esperados,
+    porcentaje: pct(realizadosAjustados, esperados)
+  };
+};
 
 export const validarChecklistDiario = async ({ fecha = new Date(), user = null } = {}) => {
   const inicio = Date.now();
@@ -315,22 +371,28 @@ export const validarChecklistDiario = async ({ fecha = new Date(), user = null }
   });
 
   const totalVehiculos = vehiculos.length;
-  const realizadosHoy = vehiculos.filter((item) => item.estadoCumplimiento === "CUMPLIDO").length;
-  const pendientesHoy = Math.max(totalVehiculos - realizadosHoy, 0);
   const noAptos = vehiculos.filter((item) => item.noApto).length;
   const incumplimientosCriticos = vehiculos.filter((item) => item.estadoCumplimiento === "PENDIENTE" && item.noApto).length;
 
   const weekStart = addDays(start, -6);
   const monthStart = addDays(start, -29);
-  const [realizadosSemana, realizadosMes] = await Promise.all([
-    contarRealizadosPeriodo({ desde: weekStart, hasta: end, filtroBase }),
-    contarRealizadosPeriodo({ desde: monthStart, hasta: end, filtroBase })
+  const [metricaHoy, metricaSemana, metricaMes] = await Promise.all([
+    contarRealizadosOperacionalesPeriodo({ desde: start, hasta: end, filtroBase }),
+    contarRealizadosOperacionalesPeriodo({ desde: weekStart, hasta: end, filtroBase }),
+    contarRealizadosOperacionalesPeriodo({ desde: monthStart, hasta: end, filtroBase })
   ]);
+  const realizadosHoy = metricaHoy.realizados;
+  const pendientesHoy = Math.max(metricaHoy.esperados - realizadosHoy, 0);
 
   const cumplimiento = {
-    hoy: pct(realizadosHoy, totalVehiculos),
-    semana: pct(realizadosSemana, totalVehiculos * 7),
-    mes: pct(realizadosMes, totalVehiculos * 30)
+    hoy: metricaHoy.porcentaje,
+    semana: metricaSemana.porcentaje,
+    mes: metricaMes.porcentaje,
+    detalle: {
+      hoy: metricaHoy,
+      semana: metricaSemana,
+      mes: metricaMes
+    }
   };
 
   const turnos = ["39", "44"].map((turnoNumero) => {
@@ -361,6 +423,11 @@ export const validarChecklistDiario = async ({ fecha = new Date(), user = null }
     incumplimientosCriticos,
     vehiculosNoAptos: noAptos,
     totalVehiculos,
+    checklistEsperadosHoy: metricaHoy.esperados,
+    checklistRealizadosSemana: metricaSemana.realizados,
+    checklistEsperadosSemana: metricaSemana.esperados,
+    checklistRealizadosMes: metricaMes.realizados,
+    checklistEsperadosMes: metricaMes.esperados,
     cumplimiento,
     turnos,
     areas: Array.from(areasMap.values()),
