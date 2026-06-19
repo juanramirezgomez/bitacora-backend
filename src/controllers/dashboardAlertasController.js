@@ -108,13 +108,12 @@ const permisosGestion = (user = {}, alerta = {}) => {
   const rol = String(user.rol || "").toUpperCase();
   const estado = normalizeEstado(alerta.estado);
   const supervisor = ["SUPERVISION", "SUPERVISOR", "JEFE_PLANTA", "JEFE_TURNO", "ECM"].includes(rol);
-  const superintendente = rol === "SUPERINTENDENTE";
   const admin = rol === "ADMIN";
   return {
-    tomarGestion: estado === "ABIERTA" && (supervisor || superintendente || admin),
-    cerrar: estado === "EN_GESTION" && (supervisor || superintendente || admin),
-    comentar: estado !== "CERRADA",
-    adjuntarEvidencia: estado === "EN_GESTION",
+    tomarGestion: estado === "ABIERTA" && (supervisor || admin),
+    cerrar: estado === "EN_GESTION" && (supervisor || admin),
+    comentar: estado !== "CERRADA" && rol !== "SUPERINTENDENTE",
+    adjuntarEvidencia: estado === "EN_GESTION" && rol !== "SUPERINTENDENTE",
     verHistorial: true
   };
 };

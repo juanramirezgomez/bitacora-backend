@@ -9,9 +9,9 @@ import { authorizeModule } from "../middlewares/authorizeModule.js";
 
 const router = express.Router();
 
-const gestoresAlertas = ["ADMIN", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION", "SUPERVISOR"];
+const gestoresAlertas = ["ADMIN", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION", "SUPERVISOR"];
 const iniciadoresAlertas = ["ADMIN", "JEFE_PLANTA", "JEFE_TURNO", "ECM", "SUPERVISION", "SUPERVISOR"];
-const lectoresAlertas = [...gestoresAlertas, "OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"];
+const lectoresAlertas = [...gestoresAlertas, "SUPERINTENDENTE", "OPERADOR_LIDER", "OPERADOR_PLANTA", "OPERADOR"];
 
 router.get(
   "/alertas",

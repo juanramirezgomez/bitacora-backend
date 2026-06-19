@@ -157,11 +157,11 @@ export const tienePermiso = (rol = "", modulo = "") => {
   if (permisos.includes(moduloNormalizado)) return true;
 
   if (moduloNormalizado === "pdf") {
-    return permisos.includes("pdf_bitacora") || permisos.includes("reportes_bitacora") || permisos.includes("reportes_registro_datos");
+    return permisos.includes("pdf_bitacora") || permisos.includes("reportes_bitacora") || permisos.includes("reportes_registro_datos") || permisos.includes("reportes_ejecutivos");
   }
 
   if (moduloNormalizado === "excel") {
-    return permisos.includes("excel_bitacora") || permisos.includes("reportes_bitacora") || permisos.includes("reportes_registro_datos");
+    return permisos.includes("excel_bitacora") || permisos.includes("reportes_bitacora") || permisos.includes("reportes_registro_datos") || permisos.includes("reportes_ejecutivos");
   }
 
   if (moduloNormalizado === "libro_diario") {

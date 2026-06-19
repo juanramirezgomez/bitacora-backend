@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import mongoose from "mongoose";
+import { fileURLToPath } from "url";
 import ChecklistCamioneta, { FECHA_ULTIMA_MANTENCION_FIJA } from "../models/ChecklistCamioneta.js";
 import User from "../models/user.js";
 import {
@@ -152,6 +153,7 @@ const CRITICOS = [
 ];
 
 const UPLOAD_DIR = path.join(process.cwd(), "src", "uploads", "checklist-camionetas");
+const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CHECKLIST_LIST_FIELDS = [
   "_id",
   "planta",
@@ -224,6 +226,7 @@ export const uploadChecklistCamioneta = multer({
 
 const rolActual = (req) => String(req.user?.rol || "").toUpperCase();
 const esAdmin = (req) => rolActual(req) === "ADMIN";
+const esSuperintendente = (req) => rolActual(req) === "SUPERINTENDENTE";
 const esSupervision = (req) =>
   ["SUPERVISION", "SUPERVISOR", "SUPERINTENDENTE", "JEFE_PLANTA", "JEFE_TURNO", "ECM"].includes(rolActual(req));
 const esOperadorPlanta = (req) => ["OPERADOR_PLANTA", "OPERADOR", "OPERADOR_LIDER"].includes(rolActual(req));
@@ -617,7 +620,7 @@ const sincronizarDocumentacionUsuario = (documentacion = [], user = {}) => {
   });
 };
 
-const aplicarDatosUsuarioChecklist = (body = {}, user = null, admin = false) => {
+const aplicarDatosUsuarioChecklist = (body = {}, user = null, admin = false, superintendente = false) => {
   if (!user) return body;
   const fechaInterna = fechaLicenciaInternaUsuario(user);
   const planta = String(user.area || user.planta || body.planta || "PC1").trim().toUpperCase();
@@ -636,9 +639,11 @@ const aplicarDatosUsuarioChecklist = (body = {}, user = null, admin = false) => 
       tipoVehiculo: "Camioneta",
       marca: "TOYOTA",
       modelo: "HILUX",
-      patente: "SWJJ-86",
       color: "ROJO"
     });
+    if (!superintendente) {
+      payload.patente = "SWJJ-86";
+    }
   }
 
   if (!admin) {
@@ -700,7 +705,7 @@ export const crearChecklistCamioneta = async (req, res) => {
   const inicio = Date.now();
   try {
     console.time("⚡ Tiempo crear checklist");
-    if (!(esAdmin(req) || esOperadorPlanta(req))) {
+    if (!(esAdmin(req) || esSuperintendente(req) || esOperadorPlanta(req))) {
       return res.status(403).json({ message: "No autorizado" });
     }
 
@@ -719,7 +724,7 @@ export const crearChecklistCamioneta = async (req, res) => {
       if (bloqueo) return res.status(403).json({ message: bloqueo });
     }
 
-    const payload = buildPayload(aplicarDatosUsuarioChecklist(req.body, autorUser, esAdmin(req)));
+    const payload = buildPayload(aplicarDatosUsuarioChecklist(req.body, autorUser, esAdmin(req), esSuperintendente(req)));
     const checklist = await ChecklistCamioneta.create({
       ...payload,
       estado: "BORRADOR",
@@ -1217,7 +1222,7 @@ export const subirFotoChecklistCamioneta = async (req, res) => {
   const inicio = Date.now();
   try {
     console.time("⚡ Tiempo upload checklist");
-    if (!(esAdmin(req) || esOperadorPlanta(req))) {
+    if (!(esAdmin(req) || esSuperintendente(req) || esOperadorPlanta(req))) {
       return res.status(403).json({ message: "No autorizado para subir fotos" });
     }
 
@@ -1269,6 +1274,29 @@ const drawBase64Image = (doc, dataUrl, x, y, fit) => {
   } catch {
     return false;
   }
+};
+
+const resolveChecklistFotoPath = (foto = {}) => {
+  const rawRuta = String(foto.ruta || foto.url || "").trim();
+  const nombre = String(foto.nombre || "").trim();
+  const normalizedRuta = rawRuta
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/+/, "")
+    .replace(/\\/g, "/");
+  const relativeUpload = normalizedRuta.replace(/^uploads\//, "");
+
+  const candidates = [
+    rawRuta && path.isAbsolute(rawRuta) ? rawRuta : "",
+    normalizedRuta ? path.join(process.cwd(), normalizedRuta) : "",
+    normalizedRuta ? path.join(process.cwd(), "src", normalizedRuta) : "",
+    relativeUpload ? path.join(process.cwd(), "src", "uploads", relativeUpload) : "",
+    relativeUpload ? path.join(CURRENT_DIR, "..", "uploads", relativeUpload) : "",
+    nombre ? path.join(UPLOAD_DIR, nombre) : "",
+    nombre ? path.join(process.cwd(), "src", "uploads", "checklist-camionetas", nombre) : "",
+    nombre ? path.join(CURRENT_DIR, "..", "uploads", "checklist-camionetas", nombre) : ""
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
 };
 
 const ensurePdfSpace = (doc, y, needed = 120) => {
@@ -1544,25 +1572,34 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
     y += 18;
 
     if (checklist.fotosObservaciones?.length) {
-      const foto = checklist.fotosObservaciones[0];
-        const imgPath = path.join(process.cwd(), "src", String(foto.ruta || "").replace(/^\/uploads\//, "uploads/"));
-        if (fs.existsSync(imgPath)) {
+      checklist.fotosObservaciones.forEach((foto, index) => {
+        y = ensurePdfSpace(doc, y, 288);
+        if (index > 0 && y > 430) {
+          doc.addPage();
+          y = 40;
+        }
+
+        const imgPath = resolveChecklistFotoPath(foto);
+        doc.rect(35, y, 525, 245).stroke("#D7D8E8");
+
+        if (imgPath) {
           try {
             doc.image(imgPath, 35, y, { fit: [525, 245], align: "center", valign: "center" });
-            doc.rect(35, y, 525, 245).stroke("#D7D8E8");
-          } catch {
-            doc.rect(35, y, 525, 245).stroke("#D7D8E8");
+          } catch (error) {
+            console.error("Error dibujando evidencia checklist:", { ruta: foto.ruta, nombre: foto.nombre, error: error?.message });
+            doc.fillColor("#64748B").font("Helvetica").fontSize(8)
+              .text(`No se pudo renderizar la evidencia: ${foto.nombre || "Foto"}`, 43, y + 112, { width: 509, align: "center" });
           }
         } else {
-          doc.rect(35, y, 525, 245).stroke("#D7D8E8");
-          doc.fillColor("#64748B").font("Helvetica").fontSize(8).text(foto.nombre || "Foto", 43, y + 116, { width: 509, align: "center" });
+          console.warn("Evidencia checklist no encontrada en disco:", { ruta: foto.ruta, nombre: foto.nombre });
+          doc.fillColor("#64748B").font("Helvetica").fontSize(8)
+            .text(`Archivo de evidencia no disponible: ${foto.nombre || foto.ruta || "Foto"}`, 43, y + 108, { width: 509, align: "center" });
         }
-        doc.fillColor("#111827").font("Helvetica").fontSize(7).text(`${foto.nombre || "Foto"} - ${formatDate(foto.fecha)}`, 35, y + 249, { width: 525 });
-        if (checklist.fotosObservaciones.length > 1) {
-          doc.fillColor("#64748B").font("Helvetica").fontSize(7)
-            .text(`Hay ${checklist.fotosObservaciones.length - 1} evidencia(s) adicional(es) disponible(s) en el sistema.`, 35, y + 261, { width: 525 });
-        }
+
+        doc.fillColor("#111827").font("Helvetica").fontSize(7)
+          .text(`${index + 1}. ${foto.nombre || "Foto"} - ${formatDate(foto.fecha)}`, 35, y + 249, { width: 525 });
         y += 282;
+      });
     } else {
       doc.fillColor("#64748B").font("Helvetica").fontSize(8).text("Sin evidencias adjuntas", 35, y);
       y += 24;
