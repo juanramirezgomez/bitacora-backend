@@ -289,13 +289,21 @@ const obtenerReporteData = async ({ tipo = "semanal", fecha = null }) => {
       .sort({ fechaCreacion: 1 })
       .limit(80)
       .lean(),
-    ChecklistCamioneta.aggregate([
-      { $match: checklistBase },
-      { $sort: { fechaInspeccion: -1, fechaCreacion: -1 } },
-      { $group: { _id: "$patente", checklist: { $first: "$$ROOT" } } },
-      { $replaceRoot: { newRoot: "$checklist" } },
-      { $limit: 120 }
-    ]),
+    ChecklistCamioneta.find(checklistBase)
+      .select("patente estado aptaOperacion aptitudOperacion motivoNoApta alertaDetonante fechaInspeccion fechaRealizacion fechaCreacion fechaProximaMantencion observacionesGenerales")
+      .sort({ fechaInspeccion: -1 })
+      .limit(500)
+      .lean()
+      .then((rows) => {
+        const latestByPatente = new Map();
+        for (const row of rows) {
+          const key = String(row.patente || "").toUpperCase();
+          if (!key || latestByPatente.has(key)) continue;
+          latestByPatente.set(key, row);
+          if (latestByPatente.size >= 120) break;
+        }
+        return Array.from(latestByPatente.values());
+      }),
     AlertaCamioneta.find({ activo: { $ne: false }, estado: { $in: ["ABIERTA", "EN_GESTION"] } })
       .select("patente prioridad tipo estado fechaCreacion")
       .lean(),

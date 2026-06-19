@@ -160,6 +160,7 @@ checklistCamionetaSchema.index({ turno: 1, turnoNumero: 1, fechaInspeccion: -1 }
 checklistCamionetaSchema.index({ estado: 1, creadoPor: 1 });
 checklistCamionetaSchema.index({ eliminado: 1, createdAt: -1 });
 checklistCamionetaSchema.index({ eliminado: 1, estado: 1, fechaInspeccion: -1 });
+checklistCamionetaSchema.index({ eliminado: 1, fechaInspeccion: -1, fechaCreacion: -1 });
 checklistCamionetaSchema.index({ conductorResponsable: 1, planta: 1, eliminado: 1 });
 checklistCamionetaSchema.index({ patente: 1, fechaProgramada: -1, eliminado: 1 });
 checklistCamionetaSchema.index({ cumplimientoEstado: 1, fechaProgramada: -1 });
