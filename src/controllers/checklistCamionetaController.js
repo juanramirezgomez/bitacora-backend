@@ -152,8 +152,8 @@ const CRITICOS = [
   "Estado de bocina"
 ];
 
-const UPLOAD_DIR = path.join(process.cwd(), "src", "uploads", "checklist-camionetas");
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const UPLOAD_DIR = path.join(CURRENT_DIR, "..", "uploads", "checklist-camionetas");
 const CHECKLIST_LIST_FIELDS = [
   "_id",
   "planta",
@@ -1233,6 +1233,8 @@ export const subirFotoChecklistCamioneta = async (req, res) => {
     const foto = {
       nombre: req.file.filename,
       ruta: `/uploads/checklist-camionetas/${req.file.filename}`,
+      dataUrl: `data:${req.file.mimetype || "image/jpeg"};base64,${fs.readFileSync(req.file.path).toString("base64")}`,
+      tipo: req.file.mimetype || "image/jpeg",
       fecha: new Date(),
       subidoPor: await resolverUserId(req)
     };
@@ -1580,17 +1582,24 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
         }
 
         const imgPath = resolveChecklistFotoPath(foto);
+        const dataUrl = String(foto.dataUrl || "").trim();
         doc.rect(35, y, 525, 245).stroke("#D7D8E8");
 
+        let imageDrawn = false;
         if (imgPath) {
           try {
             doc.image(imgPath, 35, y, { fit: [525, 245], align: "center", valign: "center" });
+            imageDrawn = true;
           } catch (error) {
             console.error("Error dibujando evidencia checklist:", { ruta: foto.ruta, nombre: foto.nombre, error: error?.message });
-            doc.fillColor("#64748B").font("Helvetica").fontSize(8)
-              .text(`No se pudo renderizar la evidencia: ${foto.nombre || "Foto"}`, 43, y + 112, { width: 509, align: "center" });
           }
-        } else {
+        }
+
+        if (!imageDrawn && dataUrl) {
+          imageDrawn = drawBase64Image(doc, dataUrl, 35, y, [525, 245]);
+        }
+
+        if (!imageDrawn) {
           console.warn("Evidencia checklist no encontrada en disco:", { ruta: foto.ruta, nombre: foto.nombre });
           doc.fillColor("#64748B").font("Helvetica").fontSize(8)
             .text(`Archivo de evidencia no disponible: ${foto.nombre || foto.ruta || "Foto"}`, 43, y + 108, { width: 509, align: "center" });

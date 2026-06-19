@@ -37,6 +37,8 @@ const fotoObservacionSchema = new mongoose.Schema(
   {
     nombre: { type: String, required: true, trim: true },
     ruta: { type: String, required: true, trim: true },
+    dataUrl: { type: String, default: "" },
+    tipo: { type: String, trim: true, default: "" },
     fecha: { type: Date, default: Date.now },
     subidoPor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }
   },
