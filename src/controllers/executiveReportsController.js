@@ -628,7 +628,10 @@ const fmtFecha = (value) => new Intl.DateTimeFormat("es-CL", {
 const obtenerLogoPath = () => {
   const candidates = [
     process.env.REPORT_LOGO_PATH,
+    path.resolve(process.cwd(), "src", "assets", "logo-novandino5.png"),
+    path.resolve(process.cwd(), "src", "assets", "logo-novandino.png"),
     path.resolve(process.cwd(), "assets", "logo-novandino.png"),
+    path.resolve(process.cwd(), "..", "bitacora-frontend", "src", "assets", "logo-novandino-purple.png"),
     path.resolve(process.cwd(), "..", "bitacora-frontend", "src", "assets", "logo-novandino.png")
   ].filter(Boolean);
 
@@ -653,11 +656,26 @@ export const obtenerReporteEjecutivo = async (req, res) => {
   }
 };
 
-const drawKpi = (doc, x, y, w, title, value, subtitle) => {
-  doc.roundedRect(x, y, w, 58, 6).fillAndStroke("#f6f7fb", "#d7dbe8");
-  doc.fillColor("#4c1d95").fontSize(8).font("Helvetica-Bold").text(title, x + 10, y + 9, { width: w - 20 });
-  doc.fillColor("#111827").fontSize(18).font("Helvetica-Bold").text(String(value), x + 10, y + 23, { width: w - 20 });
-  doc.fillColor("#64748b").fontSize(7).font("Helvetica").text(subtitle || "", x + 10, y + 45, { width: w - 20 });
+const REPORT_COLORS = {
+  primary: "#461D77",
+  primarySoft: "#EDE9FE",
+  primaryLine: "#C7B7F3",
+  ink: "#111827",
+  muted: "#4B5563",
+  border: "#D7D8E8",
+  panel: "#F8FAFC",
+  success: "#16A34A",
+  warning: "#D97706",
+  danger: "#DC2626",
+  slate: "#64748B"
+};
+
+const drawKpi = (doc, x, y, w, title, value, subtitle, tone = REPORT_COLORS.primary) => {
+  doc.roundedRect(x, y, w, 64, 7).fillAndStroke("#FFFFFF", REPORT_COLORS.border);
+  doc.roundedRect(x, y, 5, 64, 3).fill(tone);
+  doc.fillColor(REPORT_COLORS.muted).fontSize(7).font("Helvetica-Bold").text(String(title).toUpperCase(), x + 14, y + 11, { width: w - 24 });
+  doc.fillColor(REPORT_COLORS.ink).fontSize(19).font("Helvetica-Bold").text(String(value), x + 14, y + 27, { width: w - 24 });
+  doc.fillColor(REPORT_COLORS.slate).fontSize(7).font("Helvetica").text(subtitle || "", x + 14, y + 50, { width: w - 24 });
 };
 
 const drawList = (doc, title, items, x, y, w) => {
@@ -677,29 +695,120 @@ const ensureSpace = (doc, y, needed = 80) => {
   return 42;
 };
 
+const drawReportHeader = (doc, data, logoPath) => {
+  doc.rect(0, 0, doc.page.width, 112).fill("#FFFFFF");
+  doc.rect(0, 0, doc.page.width, 6).fill(REPORT_COLORS.primary);
+  doc.rect(34, 94, 528, 4).fill(REPORT_COLORS.primary);
+
+  if (logoPath) {
+    doc.image(logoPath, 34, 24, { width: 128, height: 42, fit: [128, 42] });
+  } else {
+    doc.fillColor(REPORT_COLORS.primary).font("Helvetica-Bold").fontSize(16).text("NOVANDINO", 34, 32);
+  }
+
+  doc.fillColor(REPORT_COLORS.primary).font("Helvetica-Bold").fontSize(8)
+    .text("INFORME EJECUTIVO CORPORATIVO", 312, 26, { width: 250, align: "right" });
+  doc.fillColor(REPORT_COLORS.ink).font("Helvetica-Bold").fontSize(20)
+    .text("Reporte Camioneta", 240, 39, { width: 322, align: "right" });
+  doc.fillColor(REPORT_COLORS.muted).font("Helvetica").fontSize(9)
+    .text(`${data.tipo.toUpperCase()} - ${fmtFecha(data.periodo.inicio)} al ${fmtFecha(data.periodo.fin)}`, 260, 66, { width: 302, align: "right" });
+  doc.fillColor(REPORT_COLORS.slate).fontSize(8)
+    .text(`Generado: ${fmtFecha(data.generadoEn)}`, 260, 80, { width: 302, align: "right" });
+};
+
+const drawReportFooters = (doc) => {
+  const range = doc.bufferedPageRange();
+  for (let i = range.start; i < range.start + range.count; i += 1) {
+    doc.switchToPage(i);
+    doc.rect(34, 774, 528, 1).fill(REPORT_COLORS.border);
+    doc.fillColor(REPORT_COLORS.muted).font("Helvetica").fontSize(7)
+      .text("NOVANDINO - Superintendencia Operaciones Litio", 34, 785, { width: 260, lineBreak: false });
+    doc.fillColor(REPORT_COLORS.slate).fontSize(7)
+      .text(`Pagina ${i + 1} de ${range.count}`, 420, 785, { width: 142, align: "right", lineBreak: false });
+  }
+};
+
+const drawSectionTitle = (doc, title, y, subtitle = "") => {
+  y = ensureSpace(doc, y, subtitle ? 54 : 38);
+  doc.fillColor(REPORT_COLORS.primary).font("Helvetica-Bold").fontSize(12).text(title, 34, y);
+  doc.rect(34, y + 17, 42, 3).fill(REPORT_COLORS.primary);
+  if (subtitle) {
+    doc.fillColor(REPORT_COLORS.muted).font("Helvetica").fontSize(8).text(subtitle, 34, y + 26, { width: 528 });
+    return y + 48;
+  }
+  return y + 30;
+};
+
+const drawTextPanel = (doc, title, text, x, y, w, h = 84) => {
+  doc.roundedRect(x, y, w, h, 7).fillAndStroke("#FFFFFF", REPORT_COLORS.border);
+  doc.fillColor(REPORT_COLORS.primary).font("Helvetica-Bold").fontSize(9).text(title, x + 12, y + 12, { width: w - 24 });
+  doc.fillColor(REPORT_COLORS.ink).font("Helvetica").fontSize(8.5).text(text || "-", x + 12, y + 30, { width: w - 24, height: h - 40, lineGap: 2 });
+  return y + h + 14;
+};
+
+const drawComplianceCards = (doc, cumplimiento = {}, y) => {
+  y = drawSectionTitle(doc, "Cumplimiento operacional", y, "Base operacional: dos checklist esperados por dia, uno por cada turno.");
+  const items = [
+    ["Hoy", cumplimiento.hoy],
+    ["Semana", cumplimiento.semana],
+    ["Mes", cumplimiento.mes]
+  ];
+  const w = 166;
+  items.forEach(([title, item], index) => {
+    const x = 34 + index * 181;
+    const pctValue = item?.porcentaje || 0;
+    const tone = pctValue >= 90 ? REPORT_COLORS.success : pctValue >= 70 ? REPORT_COLORS.warning : REPORT_COLORS.danger;
+    doc.roundedRect(x, y, w, 74, 7).fillAndStroke("#FFFFFF", REPORT_COLORS.border);
+    doc.fillColor(REPORT_COLORS.muted).font("Helvetica-Bold").fontSize(8).text(String(title).toUpperCase(), x + 12, y + 11);
+    doc.fillColor(REPORT_COLORS.ink).font("Helvetica-Bold").fontSize(16)
+      .text(`${item?.realizados || 0} de ${item?.esperados || 0}`, x + 12, y + 28);
+    doc.roundedRect(x + 12, y + 54, w - 24, 6, 3).fill("#E5E7EB");
+    doc.roundedRect(x + 12, y + 54, Math.max(4, (w - 24) * Math.min(100, pctValue) / 100), 6, 3).fill(tone);
+    doc.fillColor(tone).font("Helvetica-Bold").fontSize(8).text(`${pctValue}%`, x + 118, y + 42, { width: 34, align: "right" });
+  });
+  return y + 94;
+};
+
+const drawBarList = (doc, title, rows = [], x, y, w, tone = REPORT_COLORS.primary) => {
+  doc.roundedRect(x, y, w, 126, 7).fillAndStroke("#FFFFFF", REPORT_COLORS.border);
+  doc.fillColor(REPORT_COLORS.primary).font("Helvetica-Bold").fontSize(9).text(title, x + 12, y + 12, { width: w - 24 });
+  const list = rows.length ? rows.slice(0, 5) : [{ nombre: "Sin datos", total: 0 }];
+  const max = Math.max(1, ...list.map((item) => Number(item.total || 0)));
+  let cy = y + 32;
+  list.forEach((item) => {
+    const total = Number(item.total || 0);
+    doc.fillColor(REPORT_COLORS.ink).font("Helvetica").fontSize(7.5).text(item.nombre || item.label || "-", x + 12, cy, { width: w - 68 });
+    doc.fillColor(REPORT_COLORS.muted).text(String(total), x + w - 42, cy, { width: 24, align: "right" });
+    doc.roundedRect(x + 12, cy + 10, w - 36, 5, 2).fill("#E5E7EB");
+    doc.roundedRect(x + 12, cy + 10, Math.max(3, (w - 36) * total / max), 5, 2).fill(tone);
+    cy += 17;
+  });
+  return y + 140;
+};
+
 const drawSimpleTable = (doc, title, headers, rows, x, y, widths, limit = 8) => {
-  y = ensureSpace(doc, y, 44);
-  doc.fillColor("#4c1d95").font("Helvetica-Bold").fontSize(11).text(title, x, y);
+  y = ensureSpace(doc, y, 56);
+  y = drawSectionTitle(doc, title, y);
   y += 16;
   const tableW = widths.reduce((sum, width) => sum + width, 0);
-  doc.rect(x, y, tableW, 18).fillAndStroke("#ede9fe", "#d7dbe8");
+  doc.roundedRect(x, y, tableW, 20, 4).fillAndStroke(REPORT_COLORS.primarySoft, REPORT_COLORS.border);
   let cx = x;
   headers.forEach((header, index) => {
-    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(7).text(header, cx + 4, y + 5, { width: widths[index] - 8 });
+    doc.fillColor(REPORT_COLORS.ink).font("Helvetica-Bold").fontSize(7).text(header, cx + 5, y + 6, { width: widths[index] - 10 });
     cx += widths[index];
   });
-  y += 18;
+  y += 20;
   const safeRows = rows.length ? rows.slice(0, limit) : [headers.map((_, index) => index === 0 ? "Sin datos" : "-")];
-  for (const row of safeRows) {
-    y = ensureSpace(doc, y, 22);
+  for (const [rowIndex, row] of safeRows.entries()) {
+    y = ensureSpace(doc, y, 24);
     cx = x;
     const values = Array.isArray(row) ? row : headers.map((header) => row[header] || "-");
-    doc.rect(x, y, tableW, 20).fillAndStroke("#ffffff", "#e5e7eb");
+    doc.rect(x, y, tableW, 22).fillAndStroke(rowIndex % 2 ? "#FFFFFF" : REPORT_COLORS.panel, "#E5E7EB");
     values.forEach((value, index) => {
-      doc.fillColor("#111827").font("Helvetica").fontSize(7).text(String(value ?? "-"), cx + 4, y + 5, { width: widths[index] - 8, height: 11 });
+      doc.fillColor(REPORT_COLORS.ink).font("Helvetica").fontSize(7).text(String(value ?? "-"), cx + 5, y + 6, { width: widths[index] - 10, height: 12 });
       cx += widths[index];
     });
-    y += 20;
+    y += 22;
   }
   return y + 12;
 };
@@ -799,6 +908,7 @@ export const descargarReporteEjecutivoPdf = async (req, res) => {
     const data = await obtenerReporteData(req.query || {});
     const reporte = data.reporteCamioneta || {};
     const resumen = reporte.resumenEjecutivo || {};
+    const cumplimiento = reporte.cumplimientoOperacional || {};
 
     await registrarEvento({
       req,
@@ -808,43 +918,27 @@ export const descargarReporteEjecutivoPdf = async (req, res) => {
       observacion: `Reporte camioneta ${data.tipo} descargado en PDF`
     });
 
-    const doc = new PDFDocument({ size: "A4", margin: 34 });
+    const doc = new PDFDocument({ size: "A4", margin: 34, bufferPages: true });
     const filename = `reporte-camioneta-${data.tipo}-${fmtFecha(data.periodo.inicio).replace(/\//g, "-")}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename=${filename}`);
     doc.pipe(res);
 
-    doc.rect(0, 0, doc.page.width, 92).fill("#111827");
     const logoPath = obtenerLogoPath();
-    if (logoPath) doc.image(logoPath, 34, 18, { width: 82, height: 32, fit: [82, 32] });
-    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(20).text("NOVANDINO | REPORTE CAMIONETA", logoPath ? 132 : 34, 25);
-    doc.fillColor("#c7d2fe").font("Helvetica").fontSize(10)
-      .text(`${data.tipo.toUpperCase()} - ${fmtFecha(data.periodo.inicio)} al ${fmtFecha(data.periodo.fin)}`, logoPath ? 132 : 34, 52);
-    doc.text(`Generado: ${fmtFecha(data.generadoEn)}`, logoPath ? 132 : 34, 68);
+    drawReportHeader(doc, data, logoPath);
 
-    let y = 112;
-    doc.fillColor("#4c1d95").font("Helvetica-Bold").fontSize(13).text("Resumen Ejecutivo", 34, y);
-    y += 18;
-    doc.fillColor("#111827").font("Helvetica").fontSize(10).text(data.resumenEjecutivo, 34, y, { width: 528, lineGap: 3 });
-    y += 48;
+    let y = 124;
+    y = drawTextPanel(doc, "Resumen Ejecutivo", data.resumenEjecutivo, 34, y, 528, 92);
 
+    y = drawSectionTitle(doc, "Indicadores principales", y);
     const kpiW = 124;
-    drawKpi(doc, 34, y, kpiW, "CHECKLIST", resumen.checklistRealizados || 0, `${resumen.checklistPendientes || 0} pendientes`);
-    drawKpi(doc, 168, y, kpiW, "VEHICULOS APTOS", resumen.vehiculosAptos || 0, `${resumen.vehiculosNoAptos || 0} no aptos`);
-    drawKpi(doc, 302, y, kpiW, "ALERTAS", resumen.alertasGeneradas || 0, `${resumen.alertasPendientes || 0} pendientes`);
-    drawKpi(doc, 436, y, kpiW, "RESOLUCION", `${resumen.tiempoPromedioResolucion || 0} d`, "promedio cierre");
-    y += 82;
+    drawKpi(doc, 34, y, kpiW, "Checklist", resumen.checklistRealizados || 0, `${resumen.checklistPendientes || 0} pendientes`, REPORT_COLORS.primary);
+    drawKpi(doc, 168, y, kpiW, "Vehiculos aptos", resumen.vehiculosAptos || 0, `${resumen.vehiculosNoAptos || 0} no aptos`, REPORT_COLORS.success);
+    drawKpi(doc, 302, y, kpiW, "Alertas", resumen.alertasGeneradas || 0, `${resumen.alertasPendientes || 0} pendientes`, REPORT_COLORS.warning);
+    drawKpi(doc, 436, y, kpiW, "Resolucion", `${resumen.tiempoPromedioResolucion || 0} d`, "promedio cierre", REPORT_COLORS.slate);
+    y += 84;
 
-    const cumplimiento = reporte.cumplimientoOperacional || {};
-    doc.fillColor("#4c1d95").font("Helvetica-Bold").fontSize(12).text("Cumplimiento operacional", 34, y);
-    y += 18;
-    doc.fillColor("#111827").fontSize(9).font("Helvetica")
-      .text(`Hoy: ${cumplimiento.hoy?.realizados || 0}/${cumplimiento.hoy?.esperados || 0} (${cumplimiento.hoy?.porcentaje || 0}%).`, 34, y);
-    y += 13;
-    doc.text(`Semana: ${cumplimiento.semana?.realizados || 0}/${cumplimiento.semana?.esperados || 0} (${cumplimiento.semana?.porcentaje || 0}%).`, 34, y);
-    y += 13;
-    doc.text(`Mes: ${cumplimiento.mes?.realizados || 0}/${cumplimiento.mes?.esperados || 0} (${cumplimiento.mes?.porcentaje || 0}%).`, 34, y);
-    y += 26;
+    y = drawComplianceCards(doc, cumplimiento, y);
 
     y = drawSimpleTable(doc, "Estado general de flota",
       ["Patente", "Estado", "Ultimo checklist", "Prox. mantencion", "Observacion"],
@@ -856,6 +950,14 @@ export const descargarReporteEjecutivoPdf = async (req, res) => {
         item.observacion || "-"
       ]),
       34, y, [64, 86, 88, 86, 204], 8);
+
+    y = ensureSpace(doc, y, 150);
+    y = drawSectionTitle(doc, "Tendencias operacionales", y, "Lectura consolidada de las ultimas 12 semanas para supervision.");
+    const tendencias = reporte.tendenciasOperacionales || {};
+    drawBarList(doc, "Alertas generadas", tendencias.alertasGeneradas || [], 34, y, 164, REPORT_COLORS.warning);
+    drawBarList(doc, "Alertas cerradas", tendencias.alertasCerradas || [], 216, y, 164, REPORT_COLORS.success);
+    drawBarList(doc, "Checklist realizados", tendencias.checklistRealizados || [], 398, y, 164, REPORT_COLORS.primary);
+    y += 150;
 
     y = drawSimpleTable(doc, "Alertas generadas",
       ["Fecha", "Patente", "Tipo", "Criticidad", "Estado"],
@@ -878,6 +980,17 @@ export const descargarReporteEjecutivoPdf = async (req, res) => {
         item.tiempoResolucion
       ]),
       34, y, [70, 58, 190, 130, 80], 6);
+
+    y = drawSimpleTable(doc, "Alertas pendientes",
+      ["Patente", "Tipo", "Dias abierta", "Prioridad", "Estado"],
+      (reporte.gestionAlertas?.pendientes || []).map((item) => [
+        item.patente,
+        item.tipo,
+        item.diasAbierta,
+        item.prioridad,
+        item.estado
+      ]),
+      34, y, [64, 220, 72, 78, 94], 8);
 
     y = drawSimpleTable(doc, "Vehiculos NO aptos",
       ["Patente", "Motivo", "Fecha", "Estado"],
@@ -905,15 +1018,27 @@ export const descargarReporteEjecutivoPdf = async (req, res) => {
       ]),
       34, y, [48, 58, 180, 82, 160], 9);
 
-    y = ensureSpace(doc, y, 90);
-    doc.fillColor("#4c1d95").font("Helvetica-Bold").fontSize(12).text("Hallazgos y conclusiones", 34, y);
-    y += 16;
-    for (const conclusion of [...(data.hallazgosRelevantes || []), ...(data.conclusiones || [])]) {
-      y = ensureSpace(doc, y, 18);
-      doc.fillColor("#111827").font("Helvetica").fontSize(9).text(`- ${conclusion}`, 42, y, { width: 510 });
-      y += 14;
+    y = ensureSpace(doc, y, 120);
+    y = drawSectionTitle(doc, "Hallazgos relevantes", y);
+    for (const hallazgo of data.hallazgosRelevantes || []) {
+      y = ensureSpace(doc, y, 28);
+      doc.roundedRect(34, y, 528, 24, 5).fillAndStroke("#FFFFFF", REPORT_COLORS.border);
+      doc.circle(46, y + 12, 3).fill(REPORT_COLORS.primary);
+      doc.fillColor(REPORT_COLORS.ink).font("Helvetica").fontSize(8.2).text(hallazgo, 58, y + 7, { width: 488, height: 12 });
+      y += 30;
     }
 
+    y = ensureSpace(doc, y, 150);
+    y = drawSectionTitle(doc, "Conclusiones automaticas", y);
+    for (const conclusion of data.conclusiones || []) {
+      y = ensureSpace(doc, y, 32);
+      doc.roundedRect(34, y, 528, 28, 5).fillAndStroke(REPORT_COLORS.panel, REPORT_COLORS.border);
+      doc.fillColor(REPORT_COLORS.primary).font("Helvetica-Bold").fontSize(8).text("Conclusion", 46, y + 8, { width: 70 });
+      doc.fillColor(REPORT_COLORS.ink).font("Helvetica").fontSize(8).text(conclusion, 118, y + 8, { width: 426, height: 12 });
+      y += 34;
+    }
+
+    drawReportFooters(doc);
     doc.end();
   } catch (error) {
     console.error("ERROR PDF REPORTE CAMIONETA:", error);
