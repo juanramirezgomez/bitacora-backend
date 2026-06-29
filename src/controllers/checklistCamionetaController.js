@@ -5,7 +5,10 @@ import path from "path";
 import fs from "fs";
 import mongoose from "mongoose";
 import { fileURLToPath } from "url";
-import ChecklistCamioneta, { FECHA_ULTIMA_MANTENCION_FIJA } from "../models/ChecklistCamioneta.js";
+import ChecklistCamioneta, {
+  FECHA_ULTIMA_MANTENCION_FIJA,
+  KILOMETRAJE_PROXIMA_MANTENCION_FIJO
+} from "../models/ChecklistCamioneta.js";
 import User from "../models/user.js";
 import {
   canalesPreparados,
@@ -171,6 +174,7 @@ const CHECKLIST_LIST_FIELDS = [
   "kilometrajeHorometro",
   "fechaUltimaMantencion",
   "fechaProximaMantencion",
+  "kilometrajeProximaMantencion",
   "conductorResponsable",
   "areaTrabajo",
   "fechaInspeccion",
@@ -253,6 +257,21 @@ const parseDate = (value) => {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const parseKilometraje = (value, fallback = null) => {
+  const normalized = String(value ?? "")
+    .replace(/\./g, "")
+    .replace(/,/g, ".")
+    .replace(/[^\d.]/g, "");
+  if (!normalized) return fallback;
+  const km = Number(normalized);
+  return Number.isFinite(km) ? Math.round(km) : fallback;
+};
+
+const formatKm = (value) => {
+  const km = parseKilometraje(value, KILOMETRAJE_PROXIMA_MANTENCION_FIJO);
+  return Number.isFinite(km) ? `${new Intl.NumberFormat("es-CL").format(km)} km` : "-";
 };
 
 const normalizarEstado = (estado, permitidos, fallback) => {
@@ -478,6 +497,7 @@ const buildPayload = (body = {}) => {
     patente: String(body.patente || "").trim().toUpperCase(),
     color: String(body.color || "").trim(),
     fechaProximaMantencion: parseDate(body.fechaProximaMantencion),
+    kilometrajeProximaMantencion: parseKilometraje(body.kilometrajeProximaMantencion, KILOMETRAJE_PROXIMA_MANTENCION_FIJO),
     conductorResponsable: String(body.conductorResponsable || "").trim(),
     areaTrabajo: String(body.areaTrabajo || "").trim(),
     licenciaClaseB: body.licenciaClaseB === true,
@@ -1504,7 +1524,7 @@ export const descargarChecklistCamionetaPdf = async (req, res) => {
     const datos = [
       ["Tipo", checklist.tipoVehiculo], ["Marca", checklist.marca], ["Modelo", checklist.modelo], ["Patente", checklist.patente],
       ["Color", checklist.color], ["Km/Horometro", checklist.kilometrajeHorometro], ["Ultima mantencion", formatDate(FECHA_ULTIMA_MANTENCION_FIJA)],
-      ["Proxima mantencion", formatDate(checklist.fechaProximaMantencion)], ["Conductor", checklist.conductorResponsable],
+      ["Proxima mantencion (Km)", formatKm(checklist.kilometrajeProximaMantencion)], ["Conductor", checklist.conductorResponsable],
       ["Area", checklist.areaTrabajo], ["Fecha inspeccion", formatDate(checklist.fechaInspeccion)], ["Hora", checklist.horaInspeccion],
       ["Turno", checklist.turno || "-"], ["N turno", checklist.turnoNumero || "-"]
     ];
@@ -1700,7 +1720,7 @@ export const descargarChecklistCamionetaExcel = async (req, res) => {
     addRow("Vehiculo", "Patente", "", checklist.patente);
     addRow("Vehiculo", "Km/Horometro", "", checklist.kilometrajeHorometro);
     addRow("Vehiculo", "Ultima mantencion", "", formatDate(FECHA_ULTIMA_MANTENCION_FIJA));
-    addRow("Vehiculo", "Proxima mantencion", "", formatDate(checklist.fechaProximaMantencion));
+    addRow("Vehiculo", "Proxima mantencion (Km)", "", formatKm(checklist.kilometrajeProximaMantencion));
     addRow("Conductor", "Responsable", "", checklist.conductorResponsable);
     addRow("Conductor", "Area", "", checklist.areaTrabajo);
     addRow("Conductor", "Fecha / Hora", "", `${formatDate(checklist.fechaInspeccion)} ${checklist.horaInspeccion || ""}`.trim());

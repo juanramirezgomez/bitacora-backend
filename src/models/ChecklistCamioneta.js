@@ -4,7 +4,8 @@ const ESTADOS_CHECKLIST = ["BORRADOR", "FINALIZADO", "REVISADO"];
 const ESTADOS_DOCUMENTO = ["VIGENTE", "VENCIDO", "NO_APLICA"];
 const ESTADOS_INSPECCION = ["BUENO", "MALO", "NA"];
 const ESTADOS_RESPUESTA = ["SI", "NO", "NA"];
-const FECHA_ULTIMA_MANTENCION_FIJA = new Date("2026-03-01T12:00:00.000Z");
+const FECHA_ULTIMA_MANTENCION_FIJA = new Date("2026-06-28T12:00:00.000Z");
+const KILOMETRAJE_PROXIMA_MANTENCION_FIJO = 117501;
 
 const documentoSchema = new mongoose.Schema(
   {
@@ -77,6 +78,7 @@ const checklistCamionetaSchema = new mongoose.Schema(
     patente: { type: String, trim: true, uppercase: true, default: "" },
     color: { type: String, trim: true, default: "" },
     fechaProximaMantencion: { type: Date, default: null },
+    kilometrajeProximaMantencion: { type: Number, default: KILOMETRAJE_PROXIMA_MANTENCION_FIJO },
 
     conductorResponsable: { type: String, trim: true, default: "" },
     areaTrabajo: { type: String, trim: true, default: "" },
@@ -167,7 +169,17 @@ checklistCamionetaSchema.index({ cumplimientoEstado: 1, fechaProgramada: -1 });
 checklistCamionetaSchema.pre("save", function updateDates() {
   this.fechaActualizacion = new Date();
   this.fechaUltimaMantencion = FECHA_ULTIMA_MANTENCION_FIJA;
+  if (!Number.isFinite(this.kilometrajeProximaMantencion)) {
+    this.kilometrajeProximaMantencion = KILOMETRAJE_PROXIMA_MANTENCION_FIJO;
+  }
 });
 
 export default mongoose.model("ChecklistCamioneta", checklistCamionetaSchema);
-export { ESTADOS_CHECKLIST, ESTADOS_DOCUMENTO, ESTADOS_INSPECCION, ESTADOS_RESPUESTA, FECHA_ULTIMA_MANTENCION_FIJA };
+export {
+  ESTADOS_CHECKLIST,
+  ESTADOS_DOCUMENTO,
+  ESTADOS_INSPECCION,
+  ESTADOS_RESPUESTA,
+  FECHA_ULTIMA_MANTENCION_FIJA,
+  KILOMETRAJE_PROXIMA_MANTENCION_FIJO
+};

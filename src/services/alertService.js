@@ -56,6 +56,8 @@ const CRITICAL_ITEMS = [
 ];
 
 const ALERTA_CONSOLIDADA_TIPO = "CHECKLIST_CAMIONETA_CONSOLIDADO";
+const KILOMETRAJE_PROXIMA_MANTENCION_DEFAULT = 117501;
+const UMBRAL_MANTENCION_KM = 500;
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -103,6 +105,21 @@ const formatDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString("es-CL");
+};
+
+const parseKilometraje = (value) => {
+  const normalized = String(value ?? "")
+    .replace(/\./g, "")
+    .replace(/,/g, ".")
+    .replace(/[^\d.]/g, "");
+  if (!normalized) return null;
+  const km = Number(normalized);
+  return Number.isFinite(km) ? Math.round(km) : null;
+};
+
+const formatKm = (value) => {
+  const km = parseKilometraje(value);
+  return Number.isFinite(km) ? `${new Intl.NumberFormat("es-CL").format(km)} km` : "-";
 };
 
 const preferenciasAlertasDe = (user = {}) => ({
@@ -262,20 +279,28 @@ const generarAlertasDocumentos = (checklist) => {
 };
 
 const generarAlertasMantencion = (checklist) => {
-  if (!checklist.fechaProximaMantencion) return [];
-  const diasRestantes = calcularDiasRestantes(checklist.fechaProximaMantencion);
-  if (diasRestantes > ALERTA_DIAS) return [];
-  const estadoTexto = diasRestantes < 0 ? `vencida hace ${Math.abs(diasRestantes)} dias` : `vence en ${diasRestantes} dias`;
+  const kmActual = parseKilometraje(checklist.kilometrajeHorometro);
+  const kmProgramado = parseKilometraje(checklist.kilometrajeProximaMantencion) || KILOMETRAJE_PROXIMA_MANTENCION_DEFAULT;
+  if (!Number.isFinite(kmActual) || !Number.isFinite(kmProgramado)) return [];
+
+  const kmRestantes = kmProgramado - kmActual;
+  if (kmRestantes >= UMBRAL_MANTENCION_KM) return [];
+
+  const vencida = kmRestantes <= 0;
+  const estadoTexto = vencida
+    ? `superada por ${formatKm(Math.abs(kmRestantes))}`
+    : `faltan ${formatKm(kmRestantes)}`;
 
   return [buildBaseAlert(checklist, "MANTENCION_PROXIMA", {
     categoria: "MANTENCION",
-    estadoAlerta: diasRestantes < 0 ? "VENCIDA" : "VENCE_PRONTO",
-    estadoTexto: diasRestantes < 0 ? "Mantencion vencida" : "Mantencion proxima",
-    prioridad: diasRestantes < 0 ? "CRITICA" : "ALTA",
-    fechaVencimiento: checklist.fechaProximaMantencion,
-    diasRestantes,
-    anomalias: [`Proxima mantencion: ${estadoTexto}`],
-    mensaje: `Mantencion de camioneta ${checklist.patente || "-"} ${estadoTexto}.`
+    estadoAlerta: vencida ? "MANTENCION_SUPERADA" : "MANTENCION_PROXIMA",
+    estadoTexto: vencida ? "Mantencion superada" : "Mantencion proxima",
+    prioridad: vencida ? "CRITICA" : "ALTA",
+    kilometrajeActual: kmActual,
+    kilometrajeProgramado: kmProgramado,
+    kilometrosRestantes: kmRestantes,
+    anomalias: [`Proxima mantencion programada a ${formatKm(kmProgramado)}: ${estadoTexto}. Kilometraje actual ${formatKm(kmActual)}.`],
+    mensaje: `Mantencion de camioneta ${checklist.patente || "-"} ${estadoTexto}. Programada a ${formatKm(kmProgramado)}, actual ${formatKm(kmActual)}.`
   })];
 };
 

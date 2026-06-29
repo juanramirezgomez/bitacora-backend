@@ -66,6 +66,16 @@ const diasEntre = (inicio, fin = new Date()) => {
 
 const fechaChecklist = (item = {}) => item.fechaInspeccion || item.fechaRealizacion || item.fechaCreacion || item.createdAt;
 
+const formatKmReporte = (value) => {
+  const normalized = String(value ?? "")
+    .replace(/\./g, "")
+    .replace(/,/g, ".")
+    .replace(/[^\d.]/g, "");
+  if (!normalized) return "-";
+  const km = Number(normalized);
+  return Number.isFinite(km) ? `${new Intl.NumberFormat("es-CL").format(Math.round(km))} km` : "-";
+};
+
 const checklistEsperadosPeriodo = (inicio, fin) => {
   const dias = Math.max(1, Math.floor((inicioDia(fin).getTime() - inicioDia(inicio).getTime()) / MS_DIA) + 1);
   return dias * 2;
@@ -273,7 +283,7 @@ const obtenerReporteData = async ({ tipo = "semanal", fecha = null }) => {
     tendenciasChecklists12Raw
   ] = await Promise.all([
     ChecklistCamioneta.find({ ...checklistBase, ...fechaFiltro("fechaCreacion", inicio, fin) })
-      .select("patente estado aptaOperacion aptitudOperacion motivoNoApta alertaDetonante fechaInspeccion fechaRealizacion fechaCreacion fechaProximaMantencion observacionesGenerales fotosObservaciones documentacion")
+      .select("patente estado aptaOperacion aptitudOperacion motivoNoApta alertaDetonante fechaInspeccion fechaRealizacion fechaCreacion fechaProximaMantencion kilometrajeProximaMantencion observacionesGenerales fotosObservaciones documentacion")
       .lean(),
     AlertaCamioneta.find({ activo: { $ne: false }, ...fechaFiltro("fechaCreacion", inicio, fin) })
       .select("patente tipo descripcion prioridad estado fechaCreacion fechaCierre responsable responsableNombre fotos")
@@ -290,7 +300,7 @@ const obtenerReporteData = async ({ tipo = "semanal", fecha = null }) => {
       .limit(80)
       .lean(),
     ChecklistCamioneta.find(checklistBase)
-      .select("patente estado aptaOperacion aptitudOperacion motivoNoApta alertaDetonante fechaInspeccion fechaRealizacion fechaCreacion fechaProximaMantencion observacionesGenerales")
+      .select("patente estado aptaOperacion aptitudOperacion motivoNoApta alertaDetonante fechaInspeccion fechaRealizacion fechaCreacion fechaProximaMantencion kilometrajeProximaMantencion observacionesGenerales")
       .sort({ fechaInspeccion: -1 })
       .limit(500)
       .lean()
@@ -387,7 +397,7 @@ const obtenerReporteData = async ({ tipo = "semanal", fecha = null }) => {
       patente: checklist.patente || "-",
       estado: estadoGeneralFlota(checklist, alertas),
       ultimoChecklist: fechaChecklist(checklist),
-      proximaMantencion: checklist.fechaProximaMantencion || null,
+      proximaMantencion: formatKmReporte(checklist.kilometrajeProximaMantencion || 117501),
       observacion: checklist.motivoNoApta || checklist.observacionesGenerales || (alertas[0]?.tipo || "Sin observaciones activas")
     };
   });
@@ -941,12 +951,12 @@ export const descargarReporteEjecutivoPdf = async (req, res) => {
     y = drawComplianceCards(doc, cumplimiento, y);
 
     y = drawSimpleTable(doc, "Estado general de flota",
-      ["Patente", "Estado", "Ultimo checklist", "Prox. mantencion", "Observacion"],
+      ["Patente", "Estado", "Ultimo checklist", "Prox. mant. Km", "Observacion"],
       (reporte.estadoGeneralFlota || []).map((item) => [
         item.patente,
         item.estado,
         item.ultimoChecklist ? fmtFecha(item.ultimoChecklist) : "-",
-        item.proximaMantencion ? fmtFecha(item.proximaMantencion) : "-",
+        typeof item.proximaMantencion === "string" ? item.proximaMantencion : (item.proximaMantencion ? fmtFecha(item.proximaMantencion) : "-"),
         item.observacion || "-"
       ]),
       34, y, [64, 86, 88, 86, 204], 8);
@@ -1076,12 +1086,12 @@ export const descargarReporteEjecutivoExcel = async (req, res) => {
     ]);
 
     const flota = workbook.addWorksheet("Estado Flota");
-    flota.addRow(["Patente", "Estado", "Ultimo checklist", "Proxima mantencion", "Observacion"]);
+    flota.addRow(["Patente", "Estado", "Ultimo checklist", "Proxima mantencion (Km)", "Observacion"]);
     addWorksheetRows(flota, (reporte.estadoGeneralFlota || []).map((item) => [
       item.patente,
       item.estado,
       item.ultimoChecklist ? fmtFecha(item.ultimoChecklist) : "-",
-      item.proximaMantencion ? fmtFecha(item.proximaMantencion) : "-",
+      typeof item.proximaMantencion === "string" ? item.proximaMantencion : (item.proximaMantencion ? fmtFecha(item.proximaMantencion) : "-"),
       item.observacion || "-"
     ]));
 
